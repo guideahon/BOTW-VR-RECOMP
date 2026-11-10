@@ -120,6 +120,15 @@ def launch(args, run_dir, script_lines, frame_rate=60, extra_env=None):
     return game, proc, log
 
 
+def ready(args, game, proc):
+    """The world is up: let it settle, and close any notice the game put up (a tip, a save) with B."""
+    perf_routes.wait_world(game, proc, args.boot)
+    time.sleep(args.settle)
+    for _ in range(2):
+        game.cmd('press', 'b', ok=False)
+        time.sleep(0.7)
+
+
 def vr_state(game):
     return game.cmd('vr', ok=False)
 
@@ -132,8 +141,7 @@ def fake_log(run_dir):
 def scenario_cinema(args, run_dir):
     game, proc, log = launch(args, run_dir, ['# nothing scripted: a still head'])
     try:
-        perf_routes.wait_world(game, proc, args.boot)
-        time.sleep(args.settle)
+        ready(args, game, proc)
         v1 = vr_state(game)
         time.sleep(3)
         v2 = vr_state(game)
@@ -228,8 +236,7 @@ def scenario_headtrack(args, run_dir):
     # (mono: `camera` reads the drawn view from TAA's matrix, and stereo turns TAA off)
     game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'SAVAGEWIND_VR_STEREO': '0'})
     try:
-        perf_routes.wait_world(game, proc, args.boot)
-        time.sleep(args.settle)
+        ready(args, game, proc)
 
         def now_s():
             return vr_state(game).get('frames', 0) / 90.0
@@ -320,8 +327,7 @@ def scenario_stereo(args, run_dir):
     # (eyes 25 cm apart: four times a person's, so the shift is plain even for things at a middle distance)
     game, proc, log = launch(args, run_dir, ['# a still head'], frame_rate=0, extra_env={'FAKE_XR_IPD': '0.25'})
     try:
-        perf_routes.wait_world(game, proc, args.boot)
-        time.sleep(args.settle)
+        ready(args, game, proc)
         v1 = vr_state(game)
         time.sleep(4)
         v2 = vr_state(game)
@@ -396,8 +402,8 @@ def scenario_menus(args, run_dir):
     game, proc, log = launch(args, run_dir, ['# a still head'], frame_rate=0)
     rounds, back = args.menu_rounds, 0
     try:
-        perf_routes.wait_world(game, proc, args.boot)
-        time.sleep(args.settle)
+        ready(args, game, proc)
+        seen = []
         for i in range(rounds):
             game.cmd('press', 'plus', ok=False)  # (the pause menu)
             time.sleep(1.5)
@@ -407,8 +413,11 @@ def scenario_menus(args, run_dir):
             v1 = vr_state(game)
             time.sleep(0.5)
             v2 = vr_state(game)
-            if paused and v2.get('world_view') and v2.get('world_frames', 0) > v1.get('world_frames', 0):
-                back += 1
+            ok = paused and v2.get('world_view') and v2.get('world_frames', 0) > v1.get('world_frames', 0)
+            back += bool(ok)
+            seen.append('{}{}{}'.format('P' if paused else '-', 'W' if v2.get('world_view') else '-',
+                                        '+' if v2.get('world_frames', 0) > v1.get('world_frames', 0) else '0'))
+        print('    rounds (paused / back in play / eyes drawn): ' + ' '.join(seen))
         alive = proc.poll() is None
     finally:
         perf_routes.stop_game(game, proc, log)
@@ -416,11 +425,111 @@ def scenario_menus(args, run_dir):
     check(back == rounds, 'every time out of the pause menu the eyes come back ({} of {})'.format(back, rounds))
 
 
+def scenario_controllers(args, run_dir):
+    """The VR controllers drive the game: the right stick turns the camera, the left stick walks Link."""
+    R, L = '/user/hand/right/input/thumbstick', '/user/hand/left/input/thumbstick'
+    cycle, lines = 80.0, []
+    for k in range(60):
+        t = k * cycle
+        lines += ['{} stick {} 0 0'.format(t, R), '{} stick {} 0 0'.format(t, L),
+                  '{} stick {} 1 0'.format(t + 40, R), '{} stick {} 0 0'.format(t + 50, R),
+                  '{} stick {} 0 -1'.format(t + 60, L), '{} stick {} 0 0'.format(t + 70, L)]
+    # (mono: `camera` reads the drawn view from TAA's matrix; fake_xr's time then runs with the game's frames)
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'SAVAGEWIND_VR_STEREO': '0'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):  # the next time the cycle reaches offset
+            t = now_s()
+            target = (t // cycle) * cycle + offset
+            if target <= t:
+                target += cycle
+            while now_s() < target:
+                time.sleep(0.1)
+
+        wait_until(38)
+        cam0, pos0 = camera(game), game.cmd('pos', ok=False)
+        wait_until(45)
+        v_turning = vr_state(game)
+        wait_until(55)
+        cam1 = camera(game)
+        wait_until(58)
+        pos1 = game.cmd('pos', ok=False)
+        wait_until(65)
+        v_walking = vr_state(game)
+        wait_until(75)
+        pos2 = game.cmd('pos', ok=False)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    check(v_turning.get('controllers') is True, 'the controllers are read ({} syncs)'.format(v_turning.get('controller_syncs')))
+    check(v_turning.get('controller_rx', 0) > 0.9, 'right stick right reaches the game ({:.2f})'
+          .format(v_turning.get('controller_rx', 0)))
+    check(v_walking.get('controller_ly', 0) < -0.9, 'left stick back reaches the game ({:.2f})'
+          .format(v_walking.get('controller_ly', 0)))
+    if cam0 and cam1:
+        turn = angle_diff(cam1['yaw'], cam0['yaw'])
+        check(abs(turn) > 20, 'the right stick turned the camera ({:.1f} deg)'.format(turn))
+    else:
+        check(False, 'the camera could be read')
+    import math
+    def dist(a, b):
+        return math.sqrt(sum((a[k] - b[k]) ** 2 for k in ('x', 'z'))) if 'x' in a and 'x' in b else 0
+    check(dist(pos0, pos1) < 0.5, 'Link stood still while the camera turned ({:.2f} m)'.format(dist(pos0, pos1)))
+    # (back, towards the camera: where it is there is room; at least a metre)
+    check(dist(pos1, pos2) > 1, 'the left stick walked Link ({:.2f} m)'.format(dist(pos1, pos2)))
+
+
+def scenario_snap(args, run_dir):
+    """Snap turning: a push of the right stick turns the view one step, at once, and only one."""
+    R = '/user/hand/right/input/thumbstick'
+    cycle, lines = 40.0, []
+    for k in range(120):
+        t = k * cycle
+        lines += ['{} stick {} 0 0'.format(t, R), '{} stick {} 1 0'.format(t + 20, R),
+                  '{} stick {} 0 0'.format(t + 24, R)]
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0,
+                             extra_env={'SAVAGEWIND_VR_STEREO': '0', 'SAVAGEWIND_VR_TURN': 'snap'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):
+            t = now_s()
+            target = (t // cycle) * cycle + offset
+            if target <= t:
+                target += cycle
+            while now_s() < target:
+                time.sleep(0.1)
+
+        wait_until(15)
+        before = camera(game)
+        wait_until(22)  # (the stick still held over: one step, not one a frame)
+        held = camera(game)
+        wait_until(32)
+        after = camera(game)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    if not all((before, held, after)):
+        check(False, 'the camera could be read')
+        return
+    step = angle_diff(after['yaw'], before['yaw'])
+    check(abs(step + 45) < 3, 'a push right turns the view 45 deg right ({:.1f})'.format(step))
+    check(abs(angle_diff(held['yaw'], after['yaw'])) < 3, 'one step for one push, however long it is held ({:.1f})'
+          .format(angle_diff(held['yaw'], after['yaw'])))
+    check('[vr] snap turning: 45 degrees a step' in open(os.path.join(run_dir, 'game.log'), errors='replace').read(),
+          'snap turning on')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'controllers', 'snap', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -450,6 +559,10 @@ def main(argv=None):
             scenario_hud(args, run_dir)
         elif sc == 'menus':
             scenario_menus(args, run_dir)
+        elif sc == 'controllers':
+            scenario_controllers(args, run_dir)
+        elif sc == 'snap':
+            scenario_snap(args, run_dir)
         else:
             check(False, 'known scenario ' + sc)
     print('{} failed'.format(len(failures)) if failures else 'all passed')

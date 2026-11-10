@@ -183,6 +183,7 @@ void vr_vk_session_start(VkInstance vk, VkPhysicalDevice pd, VkDevice dev, uint3
     g.hud_dist = env_float("SAVAGEWIND_VR_HUD_DISTANCE", 1.4f, 0.2f, 20.0f);
     LOG("[vr] session on queue family %u index %u; virtual screen %.1f m wide at %.1f m; HUD %s\n", qfam, qindex,
         g.screen_w, g.screen_dist, g.hud_on ? "apart, in front of the eyes" : "in the eyes' pictures");
+    vr_input_setup(g.session);
 }
 
 // ---- swapchains: the window image's size, in the sRGB twin of its format (its bytes are already gamma-encoded, so

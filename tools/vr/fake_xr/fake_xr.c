@@ -30,11 +30,14 @@
 #define MAX_SCRIPT 4096
 
 // ---- the script ----
-enum { EV_HEAD, EV_UNFOCUS, EV_FOCUS, EV_EXIT, EV_LOSE };
+enum { EV_HEAD, EV_UNFOCUS, EV_FOCUS, EV_EXIT, EV_LOSE, EV_INPUT };
 typedef struct {
     double t;
     int kind;
     vr_pose head;
+    char input_kind[8];  // EV_INPUT: button, value or stick, the input's path and its value(s)
+    char path[96];
+    float x, y;
 } script_line;
 
 typedef struct {
@@ -81,6 +84,7 @@ struct session {
     int script_at;          // the next script line to apply
     vr_pose head;           // VIEW in STAGE space
     struct fxvk *vk;        // the graphics binding (fake_xr_vk.inc), NULL headless
+    bool attached;          // action sets attached (fake_xr_actions.inc)
 };
 
 typedef struct {
@@ -91,6 +95,10 @@ typedef struct {
 } space;
 
 static fake_xr_stats_t g_stats;
+
+// the controllers (fake_xr_actions.inc)
+static void fxa_script(const char *kind, const char *path, float x, float y);
+static void fxa_reset(void);
 
 FAKE_XR_EXPORT void fake_xr_stats(fake_xr_stats_t *out) { *out = g_stats; }
 
@@ -148,7 +156,18 @@ static bool load_script(config *c, const char *path) {
         else if (!strcmp(word, "focus")) l->kind = EV_FOCUS;
         else if (!strcmp(word, "exit")) l->kind = EV_EXIT;
         else if (!strcmp(word, "lose")) l->kind = EV_LOSE;
-        else {
+        else if (!strcmp(word, "button") || !strcmp(word, "value") || !strcmp(word, "stick")) {
+            float x = 0, y = 0;
+            int want = !strcmp(word, "stick") ? 3 : 2;
+            if (sscanf(buf + used, "%95s %f %f", l->path, &x, &y) < want) {
+                fprintf(stderr, "fake_xr: %s:%d: %s needs a path and %s\n", path, lineno, word,
+                        want == 3 ? "x y" : "a value");
+                continue;
+            }
+            l->kind = EV_INPUT;
+            snprintf(l->input_kind, sizeof l->input_kind, "%s", word);
+            l->x = x, l->y = y;
+        } else {
             fprintf(stderr, "fake_xr: %s:%d: unknown event '%s'\n", path, lineno, word);
             continue;
         }
@@ -237,6 +256,7 @@ static XrResult XRAPI_CALL fx_CreateInstance(const XrInstanceCreateInfo *ci, XrI
     }
     instance *in = calloc(1, sizeof *in);
     in->magic = MAGIC_INSTANCE;
+    fxa_reset();
     in->headless = headless;
     in->vulkan = vulkan;
     in->cfg.ipd = FAKE_XR_DEFAULT_IPD;
@@ -512,6 +532,7 @@ static void run_script(session *s, XrTime display) {
             if (s->queued == XR_SESSION_STATE_VISIBLE) queue_state(s, XR_SESSION_STATE_FOCUSED);
             break;
         case EV_EXIT: queue_stop(s); break;
+        case EV_INPUT: fxa_script(l->input_kind, l->path, l->x, l->y); break;
         case EV_LOSE:
             if (!s->lost) {
                 s->lost = true;
@@ -703,6 +724,9 @@ static XrResult XRAPI_CALL fx_LocateViews(XrSession h, const XrViewLocateInfo *l
 }
 
 #include "fake_xr_vk.inc"
+#include "fake_xr_actions.inc"
+
+static void fxa_reset(void) { memset(&ctl, 0, sizeof ctl); }
 
 // ---- the loader's entry points ----
 typedef struct {
@@ -721,6 +745,9 @@ static const proc procs[] = {
     P(GetVulkanGraphicsRequirements2KHR), P(CreateVulkanInstanceKHR), P(GetVulkanGraphicsDevice2KHR),
     P(CreateVulkanDeviceKHR), P(EnumerateSwapchainFormats), P(CreateSwapchain), P(DestroySwapchain),
     P(EnumerateSwapchainImages), P(AcquireSwapchainImage), P(WaitSwapchainImage), P(ReleaseSwapchainImage),
+    P(StringToPath), P(PathToString), P(CreateActionSet), P(DestroyActionSet), P(CreateAction), P(DestroyAction),
+    P(SuggestInteractionProfileBindings), P(AttachSessionActionSets), P(SyncActions), P(GetActionStateBoolean),
+    P(GetActionStateFloat), P(GetActionStateVector2f), P(GetCurrentInteractionProfile),
 };
 #undef P
 

@@ -26,6 +26,7 @@ float vr_frame_ratio(float ratio, bool paused);  // runtime/hle/framepace.c rt_v
 void vr_present_mark(void);         // runtime/nvn/objects.c nvnQueuePresentTexture: the game's frame is done
 void vr_present_begin(void);        // runtime/nvn/vulkan/device.c backend_present: a frame is being presented
 void vr_recenter(void);             // the head's current pose becomes the game camera's (next camera update)
+void vr_turn(float radians);        // the view turns this much about the vertical (+: to the left), on top of the game's
 uint64_t vr_camera_updates(void);   // camera updates the head was applied to
 uint64_t vr_stereo_pairs(void);     // left-right frame pairs made
 

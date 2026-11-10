@@ -947,7 +947,7 @@ $(B)/test_vr_math: tests/vr/test_vr_math.c runtime/vr/vr_math.h tests/vr/vr_test
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
 
-$(FAKE_XR): tools/vr/fake_xr/fake_xr.c tools/vr/fake_xr/fake_xr_vk.inc tools/vr/fake_xr/fake_xr.h runtime/vr/vr_math.h
+$(FAKE_XR): tools/vr/fake_xr/fake_xr.c tools/vr/fake_xr/fake_xr_vk.inc tools/vr/fake_xr/fake_xr_actions.inc tools/vr/fake_xr/fake_xr.h runtime/vr/vr_math.h
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -fvisibility=hidden $(FAKE_XR_LD) -o $@ $< -lm
 
@@ -980,9 +980,14 @@ $(B)/test_vr_pair: tests/vr/test_vr_pair.c runtime/vr/vr_pair.h tests/vr/vr_test
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
 
-test-vr: $(B)/test_vr_math $(B)/test_vr_pair $(B)/test_fake_xr_session fake-xr
+$(B)/test_vr_input_map: tests/vr/test_vr_input_map.c runtime/vr/vr_input_map.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
+
+test-vr: $(B)/test_vr_math $(B)/test_vr_pair $(B)/test_vr_input_map $(B)/test_fake_xr_session fake-xr
 	$(B)/test_vr_math
 	$(B)/test_vr_pair
+	$(B)/test_vr_input_map
 	$(B)/test_fake_xr_session $(FAKE_XR) $(B)/vr
 
 $(B)/test_vr_init: tests/vr/test_vr_init.c runtime/vr/vr.c runtime/vr/vr.h tests/vr/vr_test.h

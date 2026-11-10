@@ -28,6 +28,9 @@ typedef struct {
     XrFovf fov;
 } vr_view;
 
+// vr_input.c: the controllers' actions on the session (at its start)
+void vr_input_setup(XrSession session);
+
 // the frame being presented now (the queue thread), in the order the game presented them
 bool vr_present_take(vr_view *out);
 void vr_window_aspect(float width_over_height);

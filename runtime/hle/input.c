@@ -1002,6 +1002,9 @@ uint64_t input_buttons_now(void) {
     bool muted = (!win_focused && !host_test) || menu_input_captured();
     uint64_t b = (muted ? 0 : key_buttons | pad_buttons | escape_buttons) | script_buttons;
     control_input_apply(&b, NULL, NULL, NULL, NULL);
+#ifdef SW_VR  // (make VR=1: the VR controllers, runtime/vr/vr_input.c)
+    { extern void vr_input_apply(uint64_t *, int32_t *, int32_t *, int32_t *, int32_t *); vr_input_apply(&b, NULL, NULL, NULL, NULL); }
+#endif
     return b;
 }
 
@@ -1065,6 +1068,9 @@ static void fill_state(Cpu *c) {
         if (dx || dy) lx = dx * m, ly = dy * m;
     }
     control_input_apply(&b, &lx, &ly, &rx, &ry);
+#ifdef SW_VR  // (make VR=1: the VR controllers, runtime/vr/vr_input.c)
+    { extern void vr_input_apply(uint64_t *, int32_t *, int32_t *, int32_t *, int32_t *); vr_input_apply(&b, &lx, &ly, &rx, &ry); }
+#endif
     b = unconsumed_buttons(b);
     b = quick_drop_action_filter_buttons(b);
     // stick directions also appear as buttons (bits 16-23)

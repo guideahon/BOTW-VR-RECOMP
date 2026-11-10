@@ -42,6 +42,7 @@ static struct {
     bool have_neutral;     // the head's pose at the last recentring
     vr_pose neutral;
     bool recenter;         // asked for (vr_recenter): taken at the next camera update
+    float turn;            // snap turning's turns so far (radians, +: to the left), on top of the game camera's heading
     float window_aspect;   // the window image's width / height
     float out[9];          // the last eye / at / up written
     bool out_ok;
@@ -85,6 +86,12 @@ bool vr_world_view(void) {
 void vr_recenter(void) {
     pthread_mutex_lock(&lock);
     c.recenter = true;
+    pthread_mutex_unlock(&lock);
+}
+
+void vr_turn(float radians) {
+    pthread_mutex_lock(&lock);
+    c.turn = remainderf(c.turn + radians, 2 * VR_PI);
     pthread_mutex_unlock(&lock);
 }
 
@@ -171,7 +178,7 @@ void vr_camera_lookat(float *f) {
     vr_vec3 geye = vr_v3(gf[0], gf[1], gf[2]);
     float yaw = vr_game_yaw_of(vr_v3(gf[3] - gf[0], gf[4] - gf[1], gf[5] - gf[2]));
     // the anchor that puts the neutral head at the game's eye, looking the game's way; the eye's pose from there
-    vr_anchor a = vr_anchor_recenter(c.neutral, geye, yaw, 1.0f);
+    vr_anchor a = vr_anchor_recenter(c.neutral, geye, yaw + c.turn, 1.0f);
     vr_lookat_from_view(a, view, f, f + 3, f + 6);
     memcpy(c.out, f, sizeof c.out);
     c.out_ok = true;
