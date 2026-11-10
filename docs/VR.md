@@ -15,7 +15,9 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 4 | HUD apart from the scene, menus on the virtual screen | done |
 | 5 | VR controllers as the game's controller | done |
 | 6 | Comfort: snap turning | done (vignette and others: not yet) |
-| 7+ | Hands and arms, motion combat, performance | not started |
+| 7 | Link's arms follow the hands | not started (needs the game's bone code: [vr/re-notes.md](vr/re-notes.md)) |
+| 8 | Motion combat | first part done: slashes, stabs and the shield by gesture (BetterVR's analysis); the weapon's own hit not yet |
+| 9 | Performance | not started |
 
 Phase 1: the window image (the game with its HUD) is copied every frame to a quad layer, a screen 3 m wide 2.5 m ahead
 at eye height (`SAVAGEWIND_VR_SCREEN_WIDTH`, `SAVAGEWIND_VR_SCREEN_DISTANCE`, metres). The window keeps showing the
@@ -81,6 +83,12 @@ working). `SAVAGEWIND_VR_CONTROLLERS=0` turns them off.
 (Index: the left A / B are X / Y and the left trackpad pressed is the menu; WMR and Vive: the touchpads pressed are A
 and X, the right menu B, and on the Vive the touchpads are the sticks.)
 
+Phase 8, motion combat (`runtime/vr/vr_melee.h`, `vr_input.c`): the right hand's slashes and stabs are told apart from
+the rest of its motion by BetterVR's swing analysis (by Acudofy, ported to C, MIT: `third_party/BetterVR`), and each
+one beginning presses the game's attack (Y); the left hand raised in front of the face holds the guard (ZL, the
+shield up). The game plays its own attack: the weapon does not yet follow the hand or hit where it moves (that needs
+the game's bone and attack-sensor code: [vr/re-notes.md](vr/re-notes.md)). The buttons keep working.
+
 Phase 6, comfort: `SAVAGEWIND_VR_TURN=snap` makes the right stick's sideways push turn the view one step at once
 (`SAVAGEWIND_VR_SNAP_DEGREES`, 45) instead of the game's smooth camera turn; the turn sits on top of the game camera's
 heading, so Link walks the way the view looks. `vr recenter` puts the view back on the game camera.
@@ -115,6 +123,9 @@ The log says what was found (`[vr]` lines). Useful settings, as environment vari
 | `SAVAGEWIND_VR_HUD_WIDTH`, `_DISTANCE` | 1.6, 1.4 | the HUD's size and distance (m) |
 | `SAVAGEWIND_VR_SCREEN_WIDTH`, `_DISTANCE` | 3.0, 2.5 | the virtual screen of menus, events and loading (m) |
 | `SAVAGEWIND_VR_CONTROLLERS` | 1 | `0`: the VR controllers are not read (a gamepad only) |
+| `SAVAGEWIND_VR_MOTION` | 1 | `0`: no motion combat (slashes, stabs and the raised-hand guard) |
+| `SAVAGEWIND_VR_SWING` | normal | `easy`: BetterVR's easier swing profile (slower swings count) |
+| `SAVAGEWIND_VR_SHIELD` | 1 | `0`: raising the left hand does not guard |
 
 Stereo needs the game at about twice the headset's rate (180 fps for 90 Hz): lower Video > Render scale, the draw
 distance or the shadows if the headset's runtime reports dropped frames, or run the headset at 72 Hz.
@@ -133,9 +144,9 @@ headsets (which one, which runtime, what the log says) are what is needed next.
 ## Not done yet
 
 - Real headsets: untested (above).
-- Hands and arms (phase 7), motion combat (phase 8): not started. They need the game's skeleton, its weapon slots and
-  its attack paths found in the 1.9.0 code, which is reverse engineering of its own; BetterVR's code (MIT) is a
-  reference for the Wii U version.
+- Link's arms following the hands (phase 7), the weapon hitting where it moves (phase 8's second part), grabbing and
+  throwing by gesture: they need the game's bone and attack code found in the 1.9.0 code. Where that stands:
+  [vr/re-notes.md](vr/re-notes.md).
 - Comfort beyond snap turning: no vignette, no seated / standing height choice, no turning with the head only.
 - Performance (phase 9): one game frame per eye. The shadows and other passes that do not depend on the eye are drawn
   twice; multiview, a fixed foveation and the runtime's reprojection with motion vectors are not used.
@@ -182,7 +193,8 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `runtime/vr/xr_vulkan.c` | the Vulkan side and the session, the swapchain and the frame loop |
 | `runtime/vr/vr_camera.c` | phases 2 and 3: the eye on the world's view cameras, the headset's frustum, recentring, the eye and pose each frame was drawn with |
 | `runtime/vr/vr_pair.h` | the stereo pair's state machine (header only, unit tested) |
-| `runtime/vr/vr_input.c`, `vr_input_map.h` | the controllers: actions, bindings, the game's buttons and sticks, snap turning |
+| `runtime/vr/vr_input.c`, `vr_input_map.h` | the controllers: actions, bindings, the game's buttons and sticks, snap turning, the hands' poses |
+| `runtime/vr/vr_melee.h` | motion combat: BetterVR's swing and stab analysis, the shield gesture (header only, unit tested) |
 | `runtime/vr/vr_control.c` | the `vr` command (`vr recenter` too) |
 | `runtime/vr/vr_math.h` | quaternions, poses, the tracking space to game world mapping (`vr_anchor`), recentring, the LookAtCamera eye / at / up of a view, projections from `XrFovf`. Its conventions are at the top of the file |
 | `tools/vr/fake_xr/` | `fake_xr`, a scripted OpenXR runtime for tests (below) |
@@ -192,10 +204,10 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 
 | Command | Needs | What |
 |---|---|---|
-| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none), `test_vr_input_map` (each controller input's game button or stick: dead zone, d-pad chord, menu tap and hold, snap turning) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
+| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none), `test_vr_input_map` (each controller input's game button or stick: dead zone, d-pad chord, menu tap and hold, snap turning), `test_vr_melee` (slashes and stabs against slow turns, reaches, twists, returns to guard, tracking loss; the easy profile; the shield gesture) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
-| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `snap` (a push right turns the view 45 deg, one step however long it is held), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
 
 `VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `SAVAGEWIND_VR_LOG_CAMERA=<n>` logs every n-th camera
 update: the eye, the head, the game's camera and the view made of them. `SAVAGEWIND_VR_TRACE=<n>`: the first n of the
@@ -219,7 +231,7 @@ base plus n periods; it never waits, so the game runs at its own frame rate). Wh
 
 | Variable | |
 |---|---|
-| `FAKE_XR_SCRIPT` | head poses and events over time: `<t> head x y z yaw pitch roll`, `<t> unfocus`, `focus`, `exit`, `lose`; the Touch controllers: `<t> button <path> 0\|1`, `<t> value <path> <v>`, `<t> stick <path> <x> <y>` (paths as `/user/hand/right/input/a/click`) |
+| `FAKE_XR_SCRIPT` | head poses and events over time: `<t> head x y z yaw pitch roll`, the hands' tracks `<t> hand left\|right x y z yaw pitch roll` (interpolated, with velocities), `<t> unfocus`, `focus`, `exit`, `lose`; the Touch controllers: `<t> button <path> 0\|1`, `<t> value <path> <v>`, `<t> stick <path> <x> <y>` (paths as `/user/hand/right/input/a/click`) |
 | `FAKE_XR_LOG` | one line per state change, per `xrEndFrame` (layer count and kinds) and per capture (mean colour, lit share, the share of pixels at least half opaque) |
 | `FAKE_XR_CAPTURE` | a folder for PPM captures of every layer's image (and a PGM of its alpha for a layer blended by alpha) |
 | `FAKE_XR_CAPTURE_EVERY` | every n-th ended frame (30 with `FAKE_XR_CAPTURE`) |
