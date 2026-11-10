@@ -973,11 +973,17 @@ $(B)/test_vr_init: tests/vr/test_vr_init.c runtime/vr/vr.c runtime/vr/vr.h tests
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -DVR_TEST_BUILD -o $@ tests/vr/test_vr_init.c runtime/vr/vr.c $(OPENXR_LIB) -lm
 
-test-vr-loader: $(B)/test_fake_xr_loader $(B)/test_vr_init fake-xr
+# (an elevated process on Windows, as GitHub's runners are, has the loader ignore XR_RUNTIME_JSON: there the CI makes
+# fake_xr the registry's active runtime for test-vr-loader-runtime and removes it again for test-vr-loader-none)
+test-vr-loader: test-vr-loader-runtime test-vr-loader-none
+
+test-vr-loader-runtime: $(B)/test_fake_xr_loader $(B)/test_vr_init fake-xr
 	XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_fake_xr_loader
 	SAVAGEWIND_VR= $(B)/test_vr_init off
 	SAVAGEWIND_VR=0 XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_vr_init off
 	SAVAGEWIND_VR=1 XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_vr_init runtime
+
+test-vr-loader-none: $(B)/test_vr_init
 	SAVAGEWIND_VR=1 XR_RUNTIME_JSON=$(B)/vr/no_such_runtime.json $(B)/test_vr_init no-runtime
 
-.PHONY: test-vr test-vr-loader fake-xr
+.PHONY: test-vr test-vr-loader test-vr-loader-runtime test-vr-loader-none fake-xr

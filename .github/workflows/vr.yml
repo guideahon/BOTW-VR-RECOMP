@@ -58,7 +58,17 @@ jobs:
           install: >-
             make mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-openxr-sdk
       - run: make test-vr
-      - run: make test-vr-loader
+      # The runner is elevated, so the loader ignores XR_RUNTIME_JSON: fake_xr becomes the registry's active runtime.
+      - name: Register fake_xr as the active OpenXR runtime
+        shell: pwsh
+        run: |
+          $json = (Resolve-Path (Join-Path $env:GITHUB_WORKSPACE 'build/vr/fake_xr.json')).Path
+          reg add 'HKLM\SOFTWARE\Khronos\OpenXR\1' /v ActiveRuntime /t REG_SZ /d "$json" /f
+      - run: make test-vr-loader-runtime
+      - name: No active OpenXR runtime
+        shell: pwsh
+        run: reg delete 'HKLM\SOFTWARE\Khronos\OpenXR\1' /v ActiveRuntime /f
+      - run: make test-vr-loader-none
 
   # the whole app with VR=1 (no game code: that needs the player's own files)
   windows-build:
