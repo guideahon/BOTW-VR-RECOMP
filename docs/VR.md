@@ -143,17 +143,58 @@ headsets (which one, which runtime, what the log says) are what is needed next.
 
 ## Not done yet
 
-- Real headsets: untested (above).
-- Link's arms following the hands (phase 7), the weapon hitting where it moves (phase 8's second part), grabbing and
-  throwing by gesture: they need the game's bone and attack code found in the 1.9.0 code. Where that stands:
-  [vr/re-notes.md](vr/re-notes.md).
-- Comfort beyond snap turning: no vignette, no seated / standing height choice, no turning with the head only.
-- Performance (phase 9): one game frame per eye. The shadows and other passes that do not depend on the eye are drawn
-  twice; multiview, a fixed foveation and the runtime's reprojection with motion vectors are not used.
-- The settings are environment variables: there is no VR page in the game's Options yet.
-- TAA is replaced by SMAA in stereo (its history would blend the eyes).
-- The window shows the eyes in turn (it flickers between them) while the headset is on.
-- macOS: none of it (no OpenXR runtime there).
+In the order they matter, with what each needs. "Needs the game's code" means functions of the 1.9.0 code still to be
+found (reverse engineering, [vr/re-notes.md](vr/re-notes.md)); "needs a headset" means it can only be judged wearing
+one.
+
+**First: a real headset.** Everything above is tested against `fake_xr` only. Wanted from a first run (a Meta Quest 3
+through Virtual Desktop, VDXR or SteamVR's OpenXR, is the first target): does the session start, are the eyes right
+(not swapped, not crossed), does the world keep its speed, how many dropped frames at which `SAVAGEWIND_VR_HEIGHT` and
+refresh rate, does the HUD sit well, do the Touch controllers map as the table says, do slashes and stabs fire when
+meant and not otherwise. Needs a headset.
+
+**Interaction (phases 7 and 8)**
+
+| What | Needs | State |
+|---|---|---|
+| Link's arms follow the hands (two-bone IK from the shoulders, BetterVR's skeleton.cpp) | the game's code: the arm bones' local matrices after the animation, Link's model unit, the bone names | candidates found, none confirmed (re-notes) |
+| The weapon in the hand, following it | the game's code: the weapon's attachment to Weapon_R | not started |
+| The weapon hits where it moves, scaled by the swing's power | the game's code: the weapon's attack sensor | not started (attacks now are the game's own, by gesture) |
+| Grabbing weapons from the back, dropping, throwing by gesture | the game's code: equip / drop / throw | not started |
+| Bow: the right hand draws, the left aims (BetterVR's bow.cpp) | the game's code: the bow's aim and draw state | not started (ZR and the camera aim it) |
+| Runes and the shield aimed with the hands | the game's code | not started |
+| Two-handed weapons held with both hands | the arms first | not started |
+| Hands shown when Link's are hidden (menus, first person) | nothing from the game (a layer at the grip pose) | not started |
+
+**Comfort (phase 6)**
+
+| What | Needs | State |
+|---|---|---|
+| A vignette while moving or turning | a pass over the eyes' pictures (exec.c, like vr_hud.frag) | not started |
+| Seated or standing height, the floor at its height | nothing from the game | not started |
+| Turning with the head only (no stick turn) | nothing from the game | not started |
+| First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head, the camera at his eyes | not started (the view is the game's third-person camera with the head on it) |
+| Smooth locomotion relative to the hand instead of the head | nothing from the game | not started |
+
+**Picture and performance (phase 9)**
+
+| What | Needs | State |
+|---|---|---|
+| Shadows and other passes that do not depend on the eye drawn once a pair | exec.c: knowing which passes those are | not started (one game frame per eye, all of it twice) |
+| An asymmetric frustum per eye (about 15% fewer pixels) | rt_persp_offset's sign and scale worked out | not started (a symmetric frustum that holds the eye's field) |
+| Multiview (both eyes in one pass) | the Maxwell shader translator and the passes made view-aware | research |
+| Fixed foveation, the runtime's reprojection with motion vectors (XR_FB_space_warp) | exec.c, mvec.c | not started |
+| TAA in stereo (per-eye history) | mvec.c: a history per eye | not started (SMAA in its place) |
+| The desktop window showing one eye, not both in turn (it flickers) | device.c: presenting only the left frames | not started |
+
+**Settings and release (phase 10)**
+
+| What | Needs | State |
+|---|---|---|
+| A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | not started |
+| A release build of this fork (no source build needed) | packaging; the setup screen | not started |
+| Upstream: the generic hooks (projection, present, frame pacing) proposed to Savage Wind | its maintainers' interest | not started |
+| macOS | no OpenXR runtime there | not planned |
 
 ## Building
 

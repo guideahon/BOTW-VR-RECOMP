@@ -9,6 +9,27 @@ Estado de cada fase y cómo correr los tests: [VR.md](VR.md).
 
 ---
 
+## Estado al 2026-11-10
+
+| Fase | Estado |
+|---|---|
+| 0. Base y tooling | hecha: flag `VR=1`, loader OpenXR, `vr_math.h`, fake_xr, CI en Linux y Windows |
+| 1. OpenXR + cine virtual | hecha: sesión sobre el Vulkan del juego, pantalla virtual para menús, eventos y cargas |
+| 2. Head tracking | hecha: la cabeza sobre la cámara del juego, el frustum del headset, recentrar |
+| 3. Estéreo | hecha, con otro método que el del plan: un frame del juego por ojo y el reloj del juego una vez por par (no "un tick, dos renders"); TAA reemplazado por SMAA |
+| 4. HUD, menús, UI | hecha: el HUD separado de la escena, en una capa delante de la vista; pausa y mapa en la pantalla virtual |
+| 5. Controles VR | hecha: Touch, Index, WMR, Vive, simple |
+| 6. Confort | en parte: giro por pasos; falta viñeta, altura, primera persona |
+| 7. Manos y brazos | sin hacer: hace falta encontrar el código de los huesos en 1.9.0 (`docs/vr/re-notes.md`) |
+| 8. Combate con movimiento | en parte: tajos, estocadas y escudo por gesto (análisis de BetterVR) disparan los botones del juego; falta el golpe del arma por su posición, arco, agarrar y lanzar |
+| 9. Rendimiento | sin hacer: medido 106-112 pares/s en una RTX 3090 a 1030x1080 por ojo |
+| 10. Release | sin hacer |
+
+Todo está probado contra fake_xr (unitarios, CI, y el juego real en 10 escenarios); **nada todavía con un visor
+real**. La lista completa de pendientes, con qué necesita cada uno: `docs/VR.md`, "Not done yet".
+
+---
+
 ## 0. Puntos de apoyo que ya existen en Savage Wind
 
 | Qué | Dónde | Para qué sirve en VR |
