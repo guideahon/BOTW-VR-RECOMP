@@ -32,7 +32,7 @@
 #include "vr_internal.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_COUNT };
+enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_COUNT };
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -49,7 +49,7 @@ typedef struct {
 
 static struct {
     XrSession session;
-    XrSpace local;
+    XrSpace local, view;          // the room (LOCAL) and the head (VIEW: the HUD goes with it)
     XrSessionState state;
     bool running;
     swapchain sc[SC_COUNT];
@@ -57,6 +57,9 @@ static struct {
     bool eye_ready[2];
     VkPhysicalDevice phys;
     float screen_w, screen_dist;  // the virtual screen: its width and distance (m)
+    bool hud_on;                  // phase 4: the HUD apart from the scene, in front of the eyes (SAVAGEWIND_VR_HUD)
+    float hud_w, hud_dist;        // ... its width and distance (m)
+    bool hud_ready;               // the HUD's swapchain has an image released
     uint64_t frames, rendered, world_frames, presents;
     XrTime last_display;          // the last frame's predicted display time and the display's period
     XrDuration period;
@@ -66,13 +69,15 @@ static vr_view pres;  // what the frame being presented was drawn as (vr_present
 
 // what the recorder thread does after the frame's submission (end_frame)
 static struct {
-    int release;   // the swapchain whose image to release, -1 none
-    vr_view view;  // ... and what it shows
-    bool active;   // xrBeginFrame done, xrEndFrame not yet
+    bool release[SC_COUNT];  // the swapchains whose image to release
+    vr_view view;            // what the frame shows
+    bool active;             // xrBeginFrame done, xrEndFrame not yet
     XrTime display;
-    float aspect;  // height / width of the window image
-    int kind;      // the headset frame's layer: 0 none, 1 the screen (quad), 2 the eyes (projection)
-} fr = {.release = -1};
+    float aspect;            // height / width of the window image
+    float hud_aspect;        // ... of the HUD's
+    int kind;                // the headset frame's layer: 0 none, 1 the screen (quad), 2 the eyes (projection)
+    bool hud;                // ... and the HUD in front of them
+} fr;
 static pthread_mutex_t end_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t end_done = PTHREAD_COND_INITIALIZER;
 static bool end_pending;
@@ -163,11 +168,21 @@ void vr_vk_session_start(VkInstance vk, VkPhysicalDevice pd, VkDevice dev, uint3
         vr_disable("no LOCAL space");
         return;
     }
+    rci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    if (!vr_xr_ok(xrCreateReferenceSpace(g.session, &rci, &g.view), "xrCreateReferenceSpace (VIEW)")) {
+        vr_disable("no VIEW space");
+        return;
+    }
     // the virtual screen (SAVAGEWIND_VR_SCREEN_WIDTH / _DISTANCE, metres): 3 m wide, 2.5 m ahead, at eye height
     g.screen_w = env_float("SAVAGEWIND_VR_SCREEN_WIDTH", 3.0f, 0.2f, 50.0f);
     g.screen_dist = env_float("SAVAGEWIND_VR_SCREEN_DISTANCE", 2.5f, 0.3f, 50.0f);
-    LOG("[vr] session on queue family %u index %u; virtual screen %.1f m wide at %.1f m\n", qfam, qindex, g.screen_w,
-        g.screen_dist);
+    // the HUD in play (SAVAGEWIND_VR_HUD=0: left in the eyes' pictures; _WIDTH / _DISTANCE): 1.6 m wide, 1.4 m ahead
+    const char *hud = getenv("SAVAGEWIND_VR_HUD");
+    g.hud_on = !(hud && *hud == '0');
+    g.hud_w = env_float("SAVAGEWIND_VR_HUD_WIDTH", 1.6f, 0.1f, 20.0f);
+    g.hud_dist = env_float("SAVAGEWIND_VR_HUD_DISTANCE", 1.4f, 0.2f, 20.0f);
+    LOG("[vr] session on queue family %u index %u; virtual screen %.1f m wide at %.1f m; HUD %s\n", qfam, qindex,
+        g.screen_w, g.screen_dist, g.hud_on ? "apart, in front of the eyes" : "in the eyes' pictures");
 }
 
 // ---- swapchains: the window image's size, in the sRGB twin of its format (its bytes are already gamma-encoded, so
@@ -180,6 +195,7 @@ static void drop_swapchain(int i) {
     xrDestroySwapchain(s->h);
     memset(s, 0, sizeof *s);
     if (i < 2) g.eye_ready[i] = false;
+    if (i == SC_HUD) g.hud_ready = false;
 }
 
 static VkFormat srgb_twin(VkFormat f) {
@@ -219,7 +235,7 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     for (uint32_t k = 0; k < s->n; k++) s->images[k] = imgs[k].image;
     s->extent = ext;
     s->format = src;
-    static const char *const names[] = {"left eye", "right eye", "virtual screen"};
+    static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD"};
     LOG("[vr] %s swapchain %ux%u, %u images\n", names[i], ext.width, ext.height, s->n);
     return true;
 }
@@ -228,8 +244,9 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
 static void end_session(const char *why) {
     for (int i = 0; i < SC_COUNT; i++) drop_swapchain(i);
     if (g.local != XR_NULL_HANDLE) xrDestroySpace(g.local);
+    if (g.view != XR_NULL_HANDLE) xrDestroySpace(g.view);
     if (g.session != XR_NULL_HANDLE) xrDestroySession(g.session);
-    g.local = XR_NULL_HANDLE;
+    g.local = g.view = XR_NULL_HANDLE;
     g.session = XR_NULL_HANDLE;
     g.running = false;
     vr_disable(why);
@@ -303,8 +320,9 @@ static bool begin_headset_frame(void) {
     return fs.shouldRender;
 }
 
-// copy the window image into swapchain i (acquired and waited here, released after the submission)
-static bool copy_into(int i, VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
+// src (in layout src_layout: COLOR_ATTACHMENT_OPTIMAL for the window image, GENERAL for exec.c's images) into
+// swapchain i, made at its size in the sRGB twin of its format: acquired and waited here, released after the submission
+static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkExtent2D ext, VkFormat fmt) {
     swapchain *s = &g.sc[i];
     if (s->h != XR_NULL_HANDLE && (s->extent.width != ext.width || s->extent.height != ext.height || s->format != fmt))
         drop_swapchain(i);
@@ -314,26 +332,34 @@ static bool copy_into(int i, VkCommandBuffer cb, VkImage src, VkExtent2D ext, Vk
     XrSwapchainImageWaitInfo wi = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO, NULL, XR_INFINITE_DURATION};
     if (!vr_xr_ok(xrWaitSwapchainImage(s->h, &wi), "xrWaitSwapchainImage")) return false;
     VkImage dst = s->images[idx];
-    // window image: drawn as a colour attachment, read here, then drawn on again (the menu) or presented
-    barrier(cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+    bool window = src_layout != VK_IMAGE_LAYOUT_GENERAL;
+    VkImageLayout read = window ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+    // the window image: drawn as a colour attachment, read here, then drawn on again (the menu) or presented; exec.c's
+    // images stay in GENERAL (written by its passes, a full barrier after them)
+    if (window)
+        barrier(cb, src, src_layout, read, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
     barrier(cb, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_NONE, 0,
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
     VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ext.width, ext.height, 1}};
-    rec_CmdCopyImage(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+    rec_CmdCopyImage(cb, src, read, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
     // the runtime takes its images back as colour attachments (XR_KHR_vulkan_enable2)
     barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
             VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-    barrier(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            VK_PIPELINE_STAGE_2_COPY_BIT, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-    fr.release = i;
+    if (window)
+        barrier(cb, src, read, src_layout, VK_PIPELINE_STAGE_2_COPY_BIT, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+    fr.release[i] = true;
     g.rendered++;
     return true;
 }
+
+// exec.c (vr_hud_prepare): this frame's 3D scene without the HUD, and the HUD alone (false: not made this frame)
+bool vk_vr_images(VkImage *scene, VkFormat *scene_fmt, VkImage *hud, VkFormat *hud_fmt, VkExtent2D *ext);
+
+bool vr_hud_wanted(void) { return g.hud_on && vr_world_view(); }
 
 void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
     if (g.session == XR_NULL_HANDLE) return;
@@ -341,9 +367,10 @@ void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat f
     poll_events();
     if (!g.running || g.session == XR_NULL_HANDLE) return;
     vr_window_aspect((float)ext.width / (float)ext.height);
-    fr.release = -1;
+    memset(fr.release, 0, sizeof fr.release);
     fr.view = pres;
     fr.aspect = (float)ext.height / (float)ext.width;
+    fr.hud = false;
     {   // (debugging) SAVAGEWIND_VR_TRACE=<n>: the first n frames recorded in play, as what
         static int left = -1;
         if (left < 0) left = getenv("SAVAGEWIND_VR_TRACE") ? atoi(getenv("SAVAGEWIND_VR_TRACE")) : 0;
@@ -352,51 +379,77 @@ void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat f
             LOG("[vr-trace] record eye %d world %d presents %llu\n", pres.eye, pres.world, (unsigned long long)g.presents);
         }
     }
+    // in play, with the HUD apart: the eyes get the scene without it, the HUD its own image (exec.c vr_hud_prepare)
+    VkImage scene = src, hud = VK_NULL_HANDLE;
+    VkFormat scene_fmt = fmt, hud_fmt = fmt;
+    VkExtent2D sext = ext;
+    VkImageLayout sl = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    bool split = pres.world && g.hud_on && vk_vr_images(&scene, &scene_fmt, &hud, &hud_fmt, &sext);
+    if (split) sl = VK_IMAGE_LAYOUT_GENERAL;
+    else scene = src, scene_fmt = fmt, sext = ext;
     if (pres.world && pres.eye == 0) {  // stereo, the left frame: its eye's image only, the headset's frame comes next
-        copy_into(SC_LEFT, cb, src, ext, fmt);
+        put_into(SC_LEFT, cb, scene, sl, sext, scene_fmt);
         g.world_frames++;
         return;
     }
     if (!begin_headset_frame()) return;
-    if (pres.world && pres.eye == 1) {  // stereo, the right frame: its eye's image, and the frame with both
-        if (copy_into(SC_RIGHT, cb, src, ext, fmt)) fr.kind = 2;
+    if (pres.world) {  // the right frame (stereo) or the only one (mono: both eyes see the left swapchain's picture)
+        if (put_into(pres.eye == 1 ? SC_RIGHT : SC_LEFT, cb, scene, sl, sext, scene_fmt)) fr.kind = 2;
+        if (split && put_into(SC_HUD, cb, hud, VK_IMAGE_LAYOUT_GENERAL, sext, hud_fmt)) {
+            fr.hud = true;
+            fr.hud_aspect = (float)sext.height / (float)sext.width;
+        }
         g.world_frames++;
-    } else if (pres.world) {  // mono: one picture for both eyes, in the left eye's swapchain
-        if (copy_into(SC_LEFT, cb, src, ext, fmt)) fr.kind = 2;
-        g.world_frames++;
-    } else if (copy_into(SC_SCREEN, cb, src, ext, fmt)) {
+    } else if (put_into(SC_SCREEN, cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, ext, fmt)) {
         fr.kind = 1;
     }
 }
 
 static void end_frame(void *arg) {
     (void)arg;
-    if (fr.release >= 0 && vr_xr_ok(xrReleaseSwapchainImage(g.sc[fr.release].h, NULL), "xrReleaseSwapchainImage") &&
-        fr.release < 2) {
-        g.eye_view[fr.release] = fr.view;
-        g.eye_ready[fr.release] = true;
+    for (int i = 0; i < SC_COUNT; i++) {
+        if (!fr.release[i]) continue;
+        fr.release[i] = false;
+        if (!vr_xr_ok(xrReleaseSwapchainImage(g.sc[i].h, NULL), "xrReleaseSwapchainImage")) continue;
+        if (i < 2) {
+            g.eye_view[i] = fr.view;
+            g.eye_ready[i] = true;
+        }
+        if (i == SC_HUD) g.hud_ready = true;
     }
     if (fr.active) {
-        XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+        XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD}, hudq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
         XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
         XrCompositionLayerProjectionView views[2];
-        const XrCompositionLayerBaseHeader *layers[1];
+        const XrCompositionLayerBaseHeader *layers[2];
         uint32_t n = 0;
         bool mono = fr.view.world && fr.view.eye < 0;
         if (fr.kind == 2 && (mono ? g.eye_ready[0] : g.eye_ready[0] && g.eye_ready[1])) {
             for (int i = 0; i < 2; i++) {
-                int s = mono ? 0 : i;  // (mono: the left swapchain's picture, at the head's pose, for both)
+                int sc = mono ? 0 : i;  // (mono: the left swapchain's picture, at the head's pose, for both)
                 views[i] = (XrCompositionLayerProjectionView){XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
-                views[i].pose = g.eye_view[s].pose;
-                views[i].fov = g.eye_view[s].fov;
-                views[i].subImage.swapchain = g.sc[s].h;
+                views[i].pose = g.eye_view[sc].pose;
+                views[i].fov = g.eye_view[sc].fov;
+                views[i].subImage.swapchain = g.sc[sc].h;
                 views[i].subImage.imageRect =
-                    (XrRect2Di){{0, 0}, {(int32_t)g.sc[s].extent.width, (int32_t)g.sc[s].extent.height}};
+                    (XrRect2Di){{0, 0}, {(int32_t)g.sc[sc].extent.width, (int32_t)g.sc[sc].extent.height}};
             }
             proj.space = g.local;
             proj.viewCount = 2;
             proj.views = views;
             layers[n++] = (const XrCompositionLayerBaseHeader *)&proj;
+            if (fr.hud && g.hud_ready) {  // the HUD, with the head, a little below the line of sight
+                hudq.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                  XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+                hudq.space = g.view;
+                hudq.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+                hudq.subImage.swapchain = g.sc[SC_HUD].h;
+                hudq.subImage.imageRect =
+                    (XrRect2Di){{0, 0}, {(int32_t)g.sc[SC_HUD].extent.width, (int32_t)g.sc[SC_HUD].extent.height}};
+                hudq.pose = (XrPosef){{0, 0, 0, 1}, {0, -0.05f, -g.hud_dist}};
+                hudq.size = (XrExtent2Df){g.hud_w, g.hud_w * fr.hud_aspect};
+                layers[n++] = (const XrCompositionLayerBaseHeader *)&hudq;
+            }
         } else if (fr.kind == 1) {
             quad.space = g.local;
             quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
@@ -411,7 +464,6 @@ static void end_frame(void *arg) {
         vr_xr_ok(xrEndFrame(g.session, &ei), "xrEndFrame");
         fr.active = false;
     }
-    fr.release = -1;
     pthread_mutex_lock(&end_lock);
     end_pending = false;
     pthread_cond_broadcast(&end_done);
@@ -419,7 +471,9 @@ static void end_frame(void *arg) {
 }
 
 void vr_frame_after_submit(void) {
-    if (!fr.active && fr.release < 0) return;
+    bool any = fr.active;
+    for (int i = 0; i < SC_COUNT; i++) any |= fr.release[i];
+    if (!any) return;
     pthread_mutex_lock(&end_lock);
     end_pending = true;
     pthread_mutex_unlock(&end_lock);

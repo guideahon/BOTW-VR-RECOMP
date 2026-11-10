@@ -382,7 +382,7 @@ static XrResult fxvk_check_layer(session *s, const XrCompositionLayerBaseHeader 
 // ---- captures: the released image of a layer, as a PPM and a line in the log ----
 static bool fxvk_bytes_bgra(VkFormat f) { return f == VK_FORMAT_B8G8R8A8_SRGB || f == VK_FORMAT_B8G8R8A8_UNORM; }
 
-static void fxvk_capture_one(session *s, const XrSwapchainSubImage *si, const char *tag) {
+static void fxvk_capture_one(session *s, const XrSwapchainSubImage *si, const char *tag, bool layer_alpha) {
     instance *in = s->inst;
     fxvk *v = s->vk;
     swapchain *sc = get_swapchain(si->swapchain);
@@ -449,14 +449,16 @@ static void fxvk_capture_one(session *s, const XrSwapchainSubImage *si, const ch
         v->f.MapMemory(v->dev, mem, 0, size, 0, (void **)&px);
         bool bgra = fxvk_bytes_bgra(sc->format);
         double sum[3] = {0, 0, 0};
-        uint64_t lit = 0, n = (uint64_t)w * h;
+        uint64_t lit = 0, opaque = 0, n = (uint64_t)w * h;
         for (uint64_t i = 0; i < n; i++) {
             uint8_t r = px[i * 4 + (bgra ? 2 : 0)], g = px[i * 4 + 1], bl = px[i * 4 + (bgra ? 0 : 2)];
             sum[0] += r; sum[1] += g; sum[2] += bl;
             if (r > 8 || g > 8 || bl > 8) lit++;
+            if (px[i * 4 + 3] >= 128) opaque++;
         }
-        logf_(in, "capture %s %ux%u mean %.1f %.1f %.1f lit %.1f%%\n", tag, w, h, sum[0] / n, sum[1] / n, sum[2] / n,
-              100.0 * lit / n);
+        // (opaque: the share of pixels with alpha at least a half; a layer blended by its alpha shows only those)
+        logf_(in, "capture %s %ux%u mean %.1f %.1f %.1f lit %.1f%% opaque %.1f%%\n", tag, w, h, sum[0] / n, sum[1] / n,
+              sum[2] / n, 100.0 * lit / n, 100.0 * opaque / n);
         if (in->cfg.capture_dir[0]) {
             char path[1100];
             snprintf(path, sizeof path, "%s/%s.ppm", in->cfg.capture_dir, tag);
@@ -476,6 +478,20 @@ static void fxvk_capture_one(session *s, const XrSwapchainSubImage *si, const ch
             }
             free(row);
             if (f) fclose(f);
+            if (layer_alpha) {  // (and its alpha, as a grey PGM next to it)
+                snprintf(path, sizeof path, "%s/%s_alpha.pgm", in->cfg.capture_dir, tag);
+                FILE *fa = fopen(path, "wb");
+                uint8_t *arow = fa ? malloc(w) : NULL;
+                if (fa && arow) {
+                    fprintf(fa, "P5\n%u %u\n255\n", w, h);
+                    for (uint32_t y = 0; y < h; y++) {
+                        for (uint32_t x = 0; x < w; x++) arow[x] = px[((uint64_t)y * w + x) * 4 + 3];
+                        fwrite(arow, 1, w, fa);
+                    }
+                }
+                free(arow);
+                if (fa) fclose(fa);
+            }
         }
         v->f.UnmapMemory(v->dev, mem);
     } else {
@@ -493,12 +509,13 @@ static void fxvk_capture(session *s, const XrFrameEndInfo *ei, uint64_t frame) {
         char tag[96];
         if (l->type == XR_TYPE_COMPOSITION_LAYER_QUAD) {
             snprintf(tag, sizeof tag, "frame%06llu_layer%u_quad", (unsigned long long)frame, i);
-            fxvk_capture_one(s, &((const XrCompositionLayerQuad *)l)->subImage, tag);
+            fxvk_capture_one(s, &((const XrCompositionLayerQuad *)l)->subImage, tag,
+                             (l->layerFlags & XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT) != 0);
         } else if (l->type == XR_TYPE_COMPOSITION_LAYER_PROJECTION) {
             const XrCompositionLayerProjection *p = (const XrCompositionLayerProjection *)l;
             for (uint32_t v = 0; v < p->viewCount; v++) {
                 snprintf(tag, sizeof tag, "frame%06llu_layer%u_view%u", (unsigned long long)frame, i, v);
-                fxvk_capture_one(s, &p->views[v].subImage, tag);
+                fxvk_capture_one(s, &p->views[v].subImage, tag, false);
             }
         }
     }

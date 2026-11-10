@@ -1145,6 +1145,23 @@ static const char *builtin_src(const char *name, int *stage) {
     // RCAS. In linear light the small differences in shadows and leaves counted for little next to the lit parts', so
     // the edge directions and the clamp to the nearest 4 made flat blotches there once the composite's gamma brought
     // them out: rocks and trees looked posterized, the more the smaller the scene (#141).
+    // VR (runtime/nvn/vulkan/exec.c vr_hud_prepare): the HUD alone, for a layer in front of the eyes: the presented
+    // frame (t0) where it differs from its HUD-less copy (t1), transparent where they are the same; a.xy: the
+    // difference at which it starts to show and is whole (the copy's rounding is a level or two).
+    if (!strcmp(name, "vr_hud.frag")) {
+        *stage = STAGE_FRAGMENT;
+        return "#version 450\n"
+               "layout(set = 0, binding = 0) uniform sampler2D t0;\n"
+               "layout(set = 0, binding = 1) uniform sampler2D t1;\n"
+               "layout(push_constant) uniform P { vec4 a; vec4 b; } pc;\n"
+               "layout(location = 0) out vec4 o;\n"
+               "void main() {\n"
+               "  ivec2 p = ivec2(gl_FragCoord.xy);\n"
+               "  vec3 x = texelFetch(t0, p, 0).rgb, y = texelFetch(t1, p, 0).rgb;\n"
+               "  vec3 d = abs(x - y);\n"
+               "  o = vec4(x, smoothstep(pc.a.x, pc.a.y, max(d.r, max(d.g, d.b))));\n"
+               "}\n";
+    }
     if (!strcmp(name, "easu.frag")) {
         *stage = STAGE_FRAGMENT;
         return "#version 450\n"

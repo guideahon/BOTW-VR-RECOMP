@@ -9164,8 +9164,8 @@ static VkPipeline post_pipeline(const char *fs, VkFormat fmt) {
 // Post image `i` at w x h in format f (kept until the size or format changes). 0, 1: SMAA edges / weights, 2: SMAA
 // output, 3, 4: FSR EASU / RCAS of the presented image; 5, 6: FSR EASU / RCAS of the 3D scene, 7: its CAS
 // sharpening (scene_post), 32: its colour grading, 33: the map background before cursor UI, 34: its DLSS output,
-// 35: DLSS's motion vectors (dlss_scene).
-enum { POST_IMAGES = 36 };  // (mvec: 8 the object vectors, 9 the debug view, 10 the motion vectors, 11 / 12 TAA's
+// 35: DLSS's motion vectors (dlss_scene), 36: VR's HUD apart from the 3D scene (vr_hud_prepare).
+enum { POST_IMAGES = 37 };  // (mvec: 8 the object vectors, 9 the debug view, 10 the motion vectors, 11 / 12 TAA's
                             //  history; FSR 3: 13 its output, 14 the depth, 15 the reactive mask; 16-31 TAA: mvec_taa)
 static TexBackend *post_image_ex(int i, uint32_t w, uint32_t h, VkFormat f, VkImageUsageFlags extra);
 static TexBackend *post_image(int i, uint32_t w, uint32_t h, VkFormat f) { return post_image_ex(i, w, h, f, 0); }
@@ -9763,6 +9763,17 @@ static VkFormat srgb_of(VkFormat f) {
     return f == VK_FORMAT_R8G8B8A8_UNORM ? VK_FORMAT_R8G8B8A8_SRGB : f == VK_FORMAT_B8G8R8A8_UNORM ? VK_FORMAT_B8G8R8A8_SRGB : f;
 }
 
+#ifdef SW_VR
+extern bool vr_hud_wanted(void);  // (runtime/vr/xr_vulkan.c: in play, the HUD goes to the headset apart from the scene)
+#define VR_HUDLESS() vr_hud_wanted()
+#else
+#define VR_HUDLESS() false
+#endif
+
+#ifdef SW_VR
+static TexBackend *fg_hudless_img;  // (the HUD-less copy as last made: VR takes it too, vr_hud_prepare)
+#endif
+
 static void fg_copy_hudless(void) {
     fg.copy_pending = false;
     TexBackend *s = fg.out_rt ? vk_tex(fg.out_rt, true) : NULL;
@@ -9780,14 +9791,54 @@ static void fg_copy_hudless(void) {
     rec_CmdBlitImage(cb, s->image, VK_IMAGE_LAYOUT_GENERAL, d->image, VK_IMAGE_LAYOUT_GENERAL, 1, &bl, VK_FILTER_NEAREST);
     vk_full_barrier(cb);
     fg.hudless_ok = true;
+#ifdef SW_VR
+    fg_hudless_img = d;
+#endif
 }
+
+#ifdef SW_VR
+// VR (make VR=1, runtime/vr/xr_vulkan.c): the presented frame b split in two for the headset. The eyes get the
+// HUD-less copy (the 3D scene as composited, before the HUD's first draw: fg_copy_hudless); the HUD gets an image of
+// its own, the presented frame where it differs from the HUD-less one and transparent elsewhere (vr_hud.frag), for a
+// layer in front of the eyes. Both are the presented frame's size, in GENERAL layout, valid until the next present.
+static struct { bool ok; VkImage scene, hud; VkFormat scene_fmt, hud_fmt; VkExtent2D ext; } vr_img;
+
+static void vr_hud_prepare(TexBackend *b) {
+    vr_img.ok = false;
+    TexBackend *d = fg_hudless_img;
+    if (!VR_HUDLESS() || !fg.hudless_ok || !b || !b->image || !d || !d->image || d->width != b->width ||
+        d->height != b->height)
+        return;
+    static const VkComponentMapping id = {0};
+    // both read as the presented frame's format (the copy is made MUTABLE: an sRGB or a UNORM view of the same bytes)
+    VkFormat f = b->format;
+    VkImageView with = vk_image_view(b, VK_IMAGE_VIEW_TYPE_2D, f, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageView without = vk_image_view(d, VK_IMAGE_VIEW_TYPE_2D, f, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    TexBackend *h = post_image(36, b->width, b->height, f);
+    vk_end_pass();
+    VkCommandBuffer cb = vk_cmd();
+    VkImageView in[2] = {with, without};
+    float pc[8] = {2.0f / 255.0f, 10.0f / 255.0f};  // (alpha 0 below a difference of 2 levels, 1 from 10 up)
+    post_pass(cb, "vr_hud.frag", in, 2, h, pc, false);
+    vk_full_barrier(cb);
+    vr_img = (typeof(vr_img)){true, d->image, h->image, d->format, f, {b->width, b->height}};
+}
+
+bool vk_vr_images(VkImage *scene, VkFormat *scene_fmt, VkImage *hud, VkFormat *hud_fmt, VkExtent2D *ext) {
+    if (!vr_img.ok) return false;
+    *scene = vr_img.scene, *scene_fmt = vr_img.scene_fmt;
+    *hud = vr_img.hud, *hud_fmt = vr_img.hud_fmt;
+    *ext = vr_img.ext;
+    return true;
+}
+#endif
 
 static void fg_before_draw(void) {
     if (fg.copy_pending) fg_copy_hudless();
 }
 
 static void fg_draw(Prog *pr, CmdRec *r) {
-    if (!g_fg_want && !dlss_wanted()) return;  // (DLSS's motion vectors are made from the same camera: dlss_scene)
+    if (!g_fg_want && !dlss_wanted() && !VR_HUDLESS()) return;  // (DLSS's motion vectors are made from the same camera: dlss_scene)
     if (st.rt.depth && vk_texture_scale_group(st.rt.depth) == RS_SCENE) {
         Range u = st.ubuf[0][0];
         const float *f = (const float *)(uintptr_t)u.addr;
@@ -9807,7 +9858,7 @@ static void fg_draw(Prog *pr, CmdRec *r) {
             if (i < 4) fg.cand[i].draws++;
         }
     }
-    if (!g_fg_want) return;
+    if (!g_fg_want && !VR_HUDLESS()) return;
     NvnTexture *t = scene_composite(pr, r);
     if (t) {
         fg.out_rt = st.rt.color[0];
@@ -9937,6 +9988,9 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
     bool same = ob && ob->width == b->width && ob->height == b->height && fg.present_format == unorm_of(b->format);
     fg.present_format = unorm_of(b->format);
     if (fg.copy_pending) fg_copy_hudless();  // (nothing drawn after the composite)
+#ifdef SW_VR
+    vr_hud_prepare(b);
+#endif
     uint64_t now = SDL_GetTicksNS();
     float frame_ms = fg.last_ns ? (float)((now - fg.last_ns) / 1e6) : 16.7f;
     fg.last_ns = now;

@@ -349,11 +349,78 @@ def scenario_stereo(args, run_dir):
     check(best < at0, 'the shift explains the difference ({:.1f} < {:.1f})'.format(best, at0))
 
 
+def read_pgm(path):
+    data = open(path, 'rb').read()
+    head = data.split(b'\n', 3)
+    w, h = map(int, head[1].split())
+    return w, h, head[3]
+
+
+def scenario_hud(args, run_dir):
+    """The HUD apart: the eyes' pictures have none of it, a layer in front of them has it alone."""
+    game, proc, log = launch(args, run_dir, ['# a still head'], frame_rate=0)
+    try:
+        perf_routes.wait_world(game, proc, args.boot)
+        time.sleep(args.settle + 6)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    fl = fake_log(run_dir)
+    check('layers 2 projection,quad' in fl, 'in play the headset gets the eyes and the HUD (projection + quad)')
+    import re
+    caps = re.findall(r'capture (frame\d+_layer1_quad) \d+x\d+ .* opaque ([\d.]+)%', fl)
+    check(len(caps) > 0, '{} HUD captures'.format(len(caps)))
+    if not caps:
+        return
+    tag, opaque = caps[-1]
+    check(0.2 < float(opaque) < 20, 'the HUD layer is see-through but for the HUD ({}% opaque)'.format(opaque))
+    hud = os.path.join(run_dir, 'cap', tag + '.ppm')
+    eye = os.path.join(run_dir, 'cap', tag.replace('layer1_quad', 'layer0_view0') + '.ppm')
+    alpha = os.path.join(run_dir, 'cap', tag + '_alpha.pgm')
+    if not all(os.path.exists(p) for p in (hud, eye, alpha)):
+        check(False, 'HUD, eye and alpha captures of the same frame')
+        return
+    w, h, a = read_pgm(alpha)
+    u = open(hud, 'rb').read().split(b'\n', 3)[3]
+    e = open(eye, 'rb').read().split(b'\n', 3)[3]
+    diff, n = 0, 0
+    for i in range(0, w * h, 3):
+        if a[i] == 255:  # (where the HUD is: the eye's picture shows the world there, not the HUD)
+            diff += sum(abs(u[i * 3 + k] - e[i * 3 + k]) for k in range(3)) / 3
+            n += 1
+    check(n > 0 and diff / n > 15, 'the eyes\' pictures have no HUD where the HUD layer has it (mean difference {:.1f} '
+          'over {} pixels)'.format(diff / max(n, 1), n))
+
+
+def scenario_menus(args, run_dir):
+    """The pause menu, open and closed again and again: each time back in play, the headset gets the eyes again."""
+    game, proc, log = launch(args, run_dir, ['# a still head'], frame_rate=0)
+    rounds, back = args.menu_rounds, 0
+    try:
+        perf_routes.wait_world(game, proc, args.boot)
+        time.sleep(args.settle)
+        for i in range(rounds):
+            game.cmd('press', 'plus', ok=False)  # (the pause menu)
+            time.sleep(1.5)
+            paused = vr_state(game).get('world_view') is False
+            game.cmd('press', 'plus', ok=False)
+            time.sleep(1.5)
+            v1 = vr_state(game)
+            time.sleep(0.5)
+            v2 = vr_state(game)
+            if paused and v2.get('world_view') and v2.get('world_frames', 0) > v1.get('world_frames', 0):
+                back += 1
+        alive = proc.poll() is None
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    check(alive, 'the game still runs after {} pause menus'.format(rounds))
+    check(back == rounds, 'every time out of the pause menu the eyes come back ({} of {})'.format(back, rounds))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -363,6 +430,7 @@ def main(argv=None):
     ap.add_argument('--boot-estimate', type=float, default=60,
                     help='fake_xr seconds (frames / 90) at which the lost / exit events come')
     ap.add_argument('--capture-every', type=int, default=240)
+    ap.add_argument('--menu-rounds', type=int, default=20)
     args = ap.parse_args(argv)
     for sc in args.scenario:
         run_dir = os.path.join(args.out, sc)
@@ -378,6 +446,10 @@ def main(argv=None):
             scenario_headtrack(args, run_dir)
         elif sc == 'stereo':
             scenario_stereo(args, run_dir)
+        elif sc == 'hud':
+            scenario_hud(args, run_dir)
+        elif sc == 'menus':
+            scenario_menus(args, run_dir)
         else:
             check(False, 'known scenario ' + sc)
     print('{} failed'.format(len(failures)) if failures else 'all passed')

@@ -12,8 +12,8 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 1 | OpenXR session on the game's Vulkan device; the flat game on a virtual screen in the headset | done |
 | 2 | Head tracking (one view), the game's projection from the headset's field of view | done |
 | 3 | Stereo: a frame per eye, the game's clock once a pair | done |
-| 4 | HUD and menus as layers | next |
-| 5 | VR controllers as the game's controller | |
+| 4 | HUD apart from the scene, menus on the virtual screen | done |
+| 5 | VR controllers as the game's controller | next |
 | 6+ | Comfort, hands and arms, motion combat, performance | |
 
 Phase 1: the window image (the game with its HUD) is copied every frame to a quad layer, a screen 3 m wide 2.5 m ahead
@@ -53,6 +53,15 @@ one eye into the other: in stereo the run uses SMAA in its place. Measured with 
 1030x1080 an eye): 213 game fps with TAA asked for (SMAA used), 224 with SMAA, against 225 flat: about 106 to 112
 stereo pairs a second, each eye at over 90 Hz.
 
+Phase 4: the HUD apart. In play the eyes get the 3D scene without the HUD: the copy frame generation already makes
+right after the scene -> final image composite, before the HUD's first draw (`fg_copy_hudless` in
+`runtime/nvn/vulkan/exec.c`). The HUD gets an image of its own (`vr_hud_prepare`, shader `vr_hud.frag`): the
+presented frame where it differs from that copy, transparent elsewhere. It goes in front of the eyes as a quad layer
+that moves with the head (VIEW space), 1.6 m wide 1.4 m ahead, a little below the line of sight
+(`SAVAGEWIND_VR_HUD_WIDTH`, `SAVAGEWIND_VR_HUD_DISTANCE`; `SAVAGEWIND_VR_HUD=0` leaves it in the eyes' pictures). The
+pause menu, the map, events and loading stay on the virtual screen; out of them play comes back to the eyes. Cost:
+none measurable (220-225 fps with it).
+
 Baseline before any VR rendering: [vr/baseline-flat.md](vr/baseline-flat.md) (RTX 3090, 1080p: 167 to 229 fps, the
 render thread the limit at 4 to 6 ms a frame).
 
@@ -81,6 +90,8 @@ SAVAGEWIND_VR=1 build/savagewind.exe extracted --play
 | `runtime/hle/framepace.c` `rt_vfr_update` | `vr_frame_ratio`: stereo, the pair's game time in its left frame |
 | `runtime/nvn/objects.c` `nvnQueuePresentTexture` | `vr_present_mark`: the frame's eye and pose, queued |
 | `device.c` `backend_present` | `vr_present_begin`: ... taken in the same order |
+| `runtime/nvn/vulkan/exec.c` `fg_draw`, `vk_fg_generate` | the HUD-less copy made in VR too; `vr_hud_prepare` splits the presented frame into scene and HUD |
+| `runtime/nvn/vulkan/shaders.c` | `vr_hud.frag` |
 | `runtime/control_game.c` | the `vr` command |
 
 Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
@@ -103,7 +114,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
-| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `lost` and `exit` (VR stops, the game goes on flat) |
 
 `VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `SAVAGEWIND_VR_LOG_CAMERA=<n>` logs every n-th camera
 update: the eye, the head, the game's camera and the view made of them. `SAVAGEWIND_VR_TRACE=<n>`: the first n of the
@@ -128,8 +139,8 @@ base plus n periods; it never waits, so the game runs at its own frame rate). Wh
 | Variable | |
 |---|---|
 | `FAKE_XR_SCRIPT` | head poses and events over time: `<t> head x y z yaw pitch roll`, `<t> unfocus`, `focus`, `exit`, `lose` |
-| `FAKE_XR_LOG` | one line per state change, per `xrEndFrame` (layer count and kinds) and per capture (mean colour, lit share) |
-| `FAKE_XR_CAPTURE` | a folder for PPM captures of every layer's image |
+| `FAKE_XR_LOG` | one line per state change, per `xrEndFrame` (layer count and kinds) and per capture (mean colour, lit share, the share of pixels at least half opaque) |
+| `FAKE_XR_CAPTURE` | a folder for PPM captures of every layer's image (and a PGM of its alpha for a layer blended by alpha) |
 | `FAKE_XR_CAPTURE_EVERY` | every n-th ended frame (30 with `FAKE_XR_CAPTURE`) |
 | `FAKE_XR_HZ` | display rate (90) |
 | `FAKE_XR_IPD` | eye distance in metres (0.063) |
