@@ -119,6 +119,14 @@ The log says what was found (`[vr]` lines). Useful settings, as environment vari
 Stereo needs the game at about twice the headset's rate (180 fps for 90 Hz): lower Video > Render scale, the draw
 distance or the shadows if the headset's runtime reports dropped frames, or run the headset at 72 Hz.
 
+Meta Quest 3 through Virtual Desktop: Virtual Desktop Streamer registers its own OpenXR runtime (VDXR) as the active
+one; connect the headset in Virtual Desktop first, then start the game from its desktop view. VDXR 1.1.0 offers
+`XR_KHR_vulkan_enable2`, and with the headset not connected the game says so and stays flat (`found no headset
+(xrGetSystem -35)`). The Quest's controllers are read through the Touch bindings. Measured against fake_xr on an RTX 3090
+(Great Plateau, uncapped, an eye about as wide as high): `SAVAGEWIND_VR_HEIGHT` 1080 gives about 110 stereo pairs a
+second, 1440 about 100, 1800 about 90; heavier places run about a quarter slower, so 72 or 80 Hz in Virtual Desktop
+leaves room.
+
 None of this has been tried on a real headset yet: every test so far runs against `fake_xr`. Reports from real
 headsets (which one, which runtime, what the log says) are what is needed next.
 
