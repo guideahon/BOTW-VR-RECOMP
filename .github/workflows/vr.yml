@@ -1,0 +1,85 @@
+# The VR mode's tests (docs/VR.md "Tests"): no game files, no GPU, no headset. On Linux and Windows:
+#   test-vr         the pose / projection math, and fake_xr (the scripted OpenXR runtime) driven directly
+#   test-vr-loader  fake_xr and runtime/vr/vr.c through the system's OpenXR loader
+# and a Windows build of the whole app with VR=1, so the VR code keeps compiling and linking with the runtime.
+name: VR
+
+on:
+  push:
+    branches: [vr, test, main]
+    paths:
+      - 'runtime/vr/**'
+      - 'runtime/main.c'
+      - 'tests/vr/**'
+      - 'tools/vr/**'
+      - 'third_party/openxr/**'
+      - 'Makefile'
+      - '.github/workflows/vr.yml'
+  pull_request:
+    paths:
+      - 'runtime/vr/**'
+      - 'runtime/main.c'
+      - 'tests/vr/**'
+      - 'tools/vr/**'
+      - 'third_party/openxr/**'
+      - 'Makefile'
+      - '.github/workflows/vr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang libopenxr-dev
+      - run: make test-vr
+      - run: make test-vr-loader
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-openxr-sdk
+      - run: make test-vr
+      - run: make test-vr-loader
+
+  # the whole app with VR=1 (no game code: that needs the player's own files)
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-sdl3
+            mingw-w64-ucrt-x86_64-ffmpeg mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-vulkan-loader
+            mingw-w64-ucrt-x86_64-shaderc
+            mingw-w64-ucrt-x86_64-spirv-tools mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-openxr-sdk
+      - name: Build with VR=1
+        run: make VR=1 -j$(nproc) && ls -l build/savagewind.exe
+      - name: The VR code is linked in
+        run: nm build/savagewind.exe | grep -q 'vr_init'

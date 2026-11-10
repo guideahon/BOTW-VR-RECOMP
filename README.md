@@ -1,5 +1,11 @@
 <p align="center"><img src="docs/media/banner.png" alt="Savage Wind" width="640"></p>
 
+> [!NOTE]
+> **Savage Wind VR** is a fork of [Savage Wind Recomp](https://github.com/Revivedx/SavageWindRecomp) that works on a
+> PC-VR mode (OpenXR) on the `vr` branch. It is in its earliest phase: nothing is playable in VR yet. Status, build and
+> tests: [docs/VR.md](docs/VR.md); the plan: [docs/VR-PLAN.md](docs/VR-PLAN.md). Everything else below is upstream's
+> README.
+
 <p align="center">
   <a href="https://github.com/Revivedx/SavageWindRecomp/releases/latest"><b>Download</b></a> ·
   <a href="#get-started">Get started</a> ·

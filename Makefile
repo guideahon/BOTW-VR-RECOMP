@@ -192,8 +192,21 @@ comma    := ,
 SW_SOURCE := $(or $(shell git log -1 --format='commit %h, tree %t' 2>/dev/null),unknown)$(if $(shell git status --porcelain --untracked-files=no -- runtime tools Makefile 2>/dev/null),$(comma) modified)
 $(shell mkdir -p $(B) && [ "$$(cat $(B)/source_id 2>/dev/null)" = '$(SW_SOURCE)' ] || echo '$(SW_SOURCE)' > $(B)/source_id)
 
+# VR=1: the VR mode (runtime/vr/, docs/VR.md), OpenXR through the system's loader (MSYS2
+# mingw-w64-ucrt-x86_64-openxr-sdk, Debian/Ubuntu libopenxr-dev; OPENXR_LIB to point elsewhere). Without VR=1 none of
+# runtime/vr/ is built and the game is the same as without it.
+VR         ?= 0
+OPENXR_LIB ?= -lopenxr_loader
+ifeq ($(VR),1)
+RT_SRC   += $(wildcard runtime/vr/*.c)
+RT_HDRS  += $(wildcard runtime/vr/*.h)
+LDFLAGS  += $(OPENXR_LIB)
+endif
 RT_OBJ   := $(patsubst runtime/%.c,$(B)/rt/%.o,$(RT_SRC))
 RTFLAGS  := -O2 -g -fno-strict-aliasing -Wall -Wno-unused-function -Iruntime -Iruntime/nvn -isystem third_party -isystem third_party/stb $(DEPINC) $(OSFLAGS)
+ifeq ($(VR),1)
+RTFLAGS  += -DSW_VR -isystem third_party/openxr
+endif
 CXXFLAGS := -O2 -g -std=c++17 -I$(IMGUI) -I$(IMGUI)/backends -Iruntime -Iruntime/nvn -isystem third_party -Ithird_party/stb $(DEPINC)
 
 # Optional runtime-only optimization. The generated game library keeps GENFLAGS and its build ID.
@@ -909,3 +922,62 @@ test-quick-drop: test-quick-drop-native $(B)/test_quick_drop_input
 
 .PHONY: test-quick-drop test-quick-drop-native
 endif
+
+# VR tests (docs/VR.md "Tests"): no game files, no GPU, no headset. test_vr_math is the pose / projection math;
+# test_fake_xr_session drives tools/vr/fake_xr (the scripted OpenXR runtime the later tests run the game against)
+# the way the OpenXR loader does. test-vr-loader also goes through a real OpenXR loader (OPENXR_LIB) with
+# XR_RUNTIME_JSON pointing at fake_xr.
+VR_TEST_CFLAGS := -std=gnu11 -O1 -g -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iruntime -isystem third_party/openxr
+ifeq ($(PLATFORM),windows)
+FAKE_XR    := $(B)/vr/fake_xr.dll
+FAKE_XR_LD := -shared -static-libgcc
+VR_DL_LD   :=
+else ifeq ($(PLATFORM),macos)
+FAKE_XR    := $(B)/vr/fake_xr.dylib
+FAKE_XR_LD := -dynamiclib
+VR_DL_LD   :=
+else
+FAKE_XR    := $(B)/vr/fake_xr.so
+FAKE_XR_LD := -shared -fPIC
+VR_DL_LD   := -ldl
+endif
+FAKE_XR_JSON := $(B)/vr/fake_xr.json
+
+$(B)/test_vr_math: tests/vr/test_vr_math.c runtime/vr/vr_math.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
+
+$(FAKE_XR): tools/vr/fake_xr/fake_xr.c runtime/vr/vr_math.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -fvisibility=hidden $(FAKE_XR_LD) -o $@ $< -lm
+
+# the runtime manifest the loader reads (XR_RUNTIME_JSON); library_path is relative to it
+$(FAKE_XR_JSON): $(FAKE_XR)
+	printf '{\n  "file_format_version": "1.0.0",\n  "runtime": {\n    "name": "Savage Wind fake_xr",\n    "library_path": "./%s"\n  }\n}\n' '$(notdir $(FAKE_XR))' > $@
+
+fake-xr: $(FAKE_XR) $(FAKE_XR_JSON)
+
+$(B)/test_fake_xr_session: tools/vr/test_fake_xr_session.c tools/vr/fake_xr/fake_xr.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< $(VR_DL_LD) -lm
+
+$(B)/test_fake_xr_loader: tools/vr/test_fake_xr_loader.c tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< $(OPENXR_LIB) -lm
+
+test-vr: $(B)/test_vr_math $(B)/test_fake_xr_session fake-xr
+	$(B)/test_vr_math
+	$(B)/test_fake_xr_session $(FAKE_XR) $(B)/vr
+
+$(B)/test_vr_init: tests/vr/test_vr_init.c runtime/vr/vr.c runtime/vr/vr.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -DVR_TEST_BUILD -o $@ tests/vr/test_vr_init.c runtime/vr/vr.c $(OPENXR_LIB) -lm
+
+test-vr-loader: $(B)/test_fake_xr_loader $(B)/test_vr_init fake-xr
+	XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_fake_xr_loader
+	SAVAGEWIND_VR= $(B)/test_vr_init off
+	SAVAGEWIND_VR=0 XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_vr_init off
+	SAVAGEWIND_VR=1 XR_RUNTIME_JSON=$(FAKE_XR_JSON) $(B)/test_vr_init runtime
+	SAVAGEWIND_VR=1 XR_RUNTIME_JSON=$(B)/vr/no_such_runtime.json $(B)/test_vr_init no-runtime
+
+.PHONY: test-vr test-vr-loader fake-xr

@@ -379,6 +379,9 @@ int main(int argc, char **argv) {
     int sparse_heap = g_settings.sparse_heap;
     if (sparse_heap < 0 || sparse_heap >= SPARSE_HEAP_COUNT) sparse_heap = SPARSE_HEAP_AUTO;
     LOG("[settings] sparse_heap=%s\n", sparse_heap_modes[sparse_heap]);
+#ifdef SW_VR
+    { extern void vr_init(void); vr_init(); }  // (make VR=1: runtime/vr/vr.h)
+#endif
     if (dump) return dump_romfs(root, dump);
     if (scan) return scan_shaders(root);
 #ifndef __APPLE__
