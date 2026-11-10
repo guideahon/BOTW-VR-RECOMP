@@ -1,5 +1,5 @@
 // What the files of runtime/vr/ share: the OpenXR instance and system vr.c keeps for the whole run, the session
-// xr_vulkan.c runs, and the view vr_camera.c gives the game.
+// xr_vulkan.c runs, and the views vr_camera.c gives the game.
 #pragma once
 #include <stdbool.h>
 #include <openxr/openxr.h>
@@ -19,6 +19,15 @@ XrSession vr_xr_session(void);
 XrSpace vr_xr_local(void);
 XrTime vr_next_display_time(void);
 
-// vr_camera.c: the head pose and frustum the world camera was last given (false: none yet)
-bool vr_camera_view(XrPosef *pose, XrFovf *fov);
+// What a frame was drawn as (vr_camera.c): the head's view in play (world), for one eye (0 left, 1 right) or both
+// (-1), with the pose (LOCAL space) and the frustum the camera was given; else the virtual screen.
+typedef struct {
+    bool world;
+    int eye;
+    XrPosef pose;
+    XrFovf fov;
+} vr_view;
+
+// the frame being presented now (the queue thread), in the order the game presented them
+bool vr_present_take(vr_view *out);
 void vr_window_aspect(float width_over_height);

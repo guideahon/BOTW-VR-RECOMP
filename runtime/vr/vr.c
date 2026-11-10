@@ -76,6 +76,13 @@ static void window_for_headset(void) {
         w, h);
 #ifndef VR_TEST_BUILD
     g_settings.window_w = w, g_settings.window_h = h;
+    // Stereo draws the eyes in turn: TAA's history would blend one eye into the other (its motion vectors find no
+    // camera: runtime/nvn/vulkan/mvec.c). SMAA for this run; mono keeps TAA.
+    const char *st = getenv("SAVAGEWIND_VR_STEREO");
+    if (!(st && *st == '0') && g_settings.antialias == AA_TAA) {
+        g_settings.antialias = AA_SMAA;
+        LOG("[vr] stereo: SMAA in place of TAA for this run (TAA would blend the eyes)\n");
+    }
 #endif
 }
 

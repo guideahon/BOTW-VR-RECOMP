@@ -1222,6 +1222,9 @@ static void present_pace(int interval) {
 
 NVN(nvnQueuePresentTexture) {
     SW_ZONE("nvnQueuePresentTexture");
+#ifdef SW_VR  // (make VR=1: which eye and pose this frame was drawn with goes to its present, in order)
+    { extern void vr_present_mark(void); vr_present_mark(); }
+#endif
     NvnWindow *w = HOST(NvnWindow, A(1));
     int i = (int)A(2);
     static int logged = -1;

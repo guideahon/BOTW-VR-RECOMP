@@ -34,6 +34,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_int(r, "world_frames", (int64_t)vr_world_frames());
     control_field_int(r, "camera_updates", (int64_t)vr_camera_updates());
     control_field_bool(r, "world_view", vr_world_view());
+    control_field_int(r, "stereo_pairs", (int64_t)vr_stereo_pairs());
     control_text(r, "VR %s: %s; session %s, %llu frames (%llu with an image)", vr_enabled() ? "on" : "off",
                  vr_status_text(), state_name(st), (unsigned long long)frames, (unsigned long long)rendered);
 }

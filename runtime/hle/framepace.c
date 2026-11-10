@@ -501,6 +501,9 @@ void rt_vfr_update(uint64_t vfr) {
     if (held) ratio = 1;
     extern bool freecam_active(void);
     if (freecam_active()) ratio = 0.001f;  // (the free camera: the world nearly stops)
+#ifdef SW_VR  // (make VR=1, stereo: a pair of frames, one per eye, takes the game's step once: runtime/vr/vr_camera.c)
+    { extern float vr_frame_ratio(float, bool); ratio = vr_frame_ratio(ratio, paused); }
+#endif
     if (!paused) {
         given += ratio / 30.0;
         if (held || fabs(real - given) > 0.25) real = given;  // (nothing owed for a deliberate slow down)

@@ -38,6 +38,7 @@
 #define vr_vk_session_start(inst, pd, dev, qfam, qindex) ((void)0)
 #define vr_frame_record(cb, img, ext, fmt) ((void)0)
 #define vr_frame_after_submit() ((void)0)
+#define vr_present_begin() ((void)0)
 #endif
 
 #ifdef _WIN32  // (kernel32; windows.h itself clashes with names used here)
@@ -2928,6 +2929,7 @@ int ui_run(void) {
 
 // (game threads present while others submit; the window loop re-presents)
 void backend_present(NvnTexture *t) {
+    vr_present_begin();  // (VR: what this frame was drawn as, in the order the game presented them)
     gpu_lock();
     present_locked(t);
     gpu_unlock();

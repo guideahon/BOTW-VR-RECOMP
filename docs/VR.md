@@ -11,8 +11,8 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 0 | Build flag, OpenXR loader, pose / projection math, the `fake_xr` test runtime, CI | done |
 | 1 | OpenXR session on the game's Vulkan device; the flat game on a virtual screen in the headset | done |
 | 2 | Head tracking (one view), the game's projection from the headset's field of view | done |
-| 3 | Stereo: one game update, two renders | next |
-| 4 | HUD and menus as layers | |
+| 3 | Stereo: a frame per eye, the game's clock once a pair | done |
+| 4 | HUD and menus as layers | next |
 | 5 | VR controllers as the game's controller | |
 | 6+ | Comfort, hands and arms, motion combat, performance | |
 
@@ -41,6 +41,18 @@ is in it. Menus, events and loading go back to the virtual screen. `vr recenter`
 head's pose the game camera's. Measured with fake_xr (RTX 3090, plateau, uncapped): 211 to 218 fps against 219 to 223
 flat with the same settings, the longest frame 6 ms in both.
 
+Phase 3: stereo. In play the game's frames come in pairs, left eye then right eye (`SAVAGEWIND_VR_STEREO=0`: one
+picture for both, phase 2). The game's clock takes both frames' time in the left frame and nearly stops in the right
+one, as it does for the free camera, so both eyes see the same moment and the world keeps its speed. Each eye has its
+own swapchain; the left frame updates the left eye's image, the right frame the right one and makes the headset's frame
+with both (xrWaitFrame paces the pairs: at 90 Hz the game runs at 180 fps). Which eye, pose and frustum a frame was
+drawn with travels with it from the game's present (`nvnQueuePresentTexture`, `vr_present_mark`) to the queue thread's
+(`backend_present`, `vr_present_begin`), in order. The game calls its clock and sets its cameras in either order within
+a frame; the eye is chosen by whichever comes first after the last present (`runtime/vr/vr_pair.h`). TAA would blend
+one eye into the other: in stereo the run uses SMAA in its place. Measured with fake_xr (RTX 3090, plateau, uncapped,
+1030x1080 an eye): 213 game fps with TAA asked for (SMAA used), 224 with SMAA, against 225 flat: about 106 to 112
+stereo pairs a second, each eye at over 90 Hz.
+
 Baseline before any VR rendering: [vr/baseline-flat.md](vr/baseline-flat.md) (RTX 3090, 1080p: 167 to 229 fps, the
 render thread the limit at 4 to 6 ms a frame).
 
@@ -66,6 +78,9 @@ SAVAGEWIND_VR=1 build/savagewind.exe extracted --play
 | `runtime/hle/freecam.c` `rt_lookat` | `vr_camera_lookat`: the head on the view cameras while the free camera is off |
 | `runtime/nvn/output_scale.c` `rt_persp` | `vr_persp`: the world camera's frustum in play |
 | `runtime/window_size.c` | a window in the headset's shape, none of the offered sizes |
+| `runtime/hle/framepace.c` `rt_vfr_update` | `vr_frame_ratio`: stereo, the pair's game time in its left frame |
+| `runtime/nvn/objects.c` `nvnQueuePresentTexture` | `vr_present_mark`: the frame's eye and pose, queued |
+| `device.c` `backend_present` | `vr_present_begin`: ... taken in the same order |
 | `runtime/control_game.c` | the `vr` command |
 
 Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
@@ -74,7 +89,8 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 |---|---|
 | `runtime/vr/vr.h`, `vr.c` | `vr_init`, `vr_enabled`, `vr_status_text`; the OpenXR instance |
 | `runtime/vr/xr_vulkan.c` | the Vulkan side and the session, the swapchain and the frame loop |
-| `runtime/vr/vr_camera.c` | phase 2: the head on the world's view cameras, the headset's frustum, recentring |
+| `runtime/vr/vr_camera.c` | phases 2 and 3: the eye on the world's view cameras, the headset's frustum, recentring, the eye and pose each frame was drawn with |
+| `runtime/vr/vr_pair.h` | the stereo pair's state machine (header only, unit tested) |
 | `runtime/vr/vr_control.c` | the `vr` command (`vr recenter` too) |
 | `runtime/vr/vr_math.h` | quaternions, poses, the tracking space to game world mapping (`vr_anchor`), recentring, the LookAtCamera eye / at / up of a view, projections from `XrFovf`. Its conventions are at the top of the file |
 | `tools/vr/fake_xr/` | `fake_xr`, a scripted OpenXR runtime for tests (below) |
@@ -84,13 +100,14 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 
 | Command | Needs | What |
 |---|---|---|
-| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
+| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
-| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `lost` and `exit` (VR stops, the game goes on flat) |
 
 `VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `SAVAGEWIND_VR_LOG_CAMERA=<n>` logs every n-th camera
-update: the head, the game's camera and the view made of them. fake_xr's captures read each image back and stall the
+update: the eye, the head, the game's camera and the view made of them. `SAVAGEWIND_VR_TRACE=<n>`: the first n of the
+game's clock, camera, projection and present calls in play, and the queue thread's frames, in order. fake_xr's captures read each image back and stall the
 game for about a second each time: keep `FAKE_XR_CAPTURE_EVERY` high when measuring. `.github/workflows/vr.yml` runs the first three on Linux
 and Windows, and builds the whole app with `VR=1` on Windows. The game test never runs in public CI (it needs your own
 game files).

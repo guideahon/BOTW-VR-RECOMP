@@ -89,7 +89,7 @@ def read_png_mean(path):
     return [v / k for v in s]
 
 
-def launch(args, run_dir, script_lines, frame_rate=60):
+def launch(args, run_dir, script_lines, frame_rate=60, extra_env=None):
     os.makedirs(os.path.join(run_dir, 'cap'), exist_ok=True)
     save = os.path.join(run_dir, 'save')
     if not os.path.isdir(save):
@@ -110,6 +110,7 @@ def launch(args, run_dir, script_lines, frame_rate=60):
                SAVAGEWIND_SETTINGS=ini, SAVAGEWIND_CONTROL=str(args.port), SAVAGEWIND_SCRIPT_CLOCK='1',
                SAVAGEWIND_INPUT=perf_routes.CONTINUE, SAVAGEWIND_TEST_WARP=args.place,
                SAVAGEWIND_TEST_WEATHER='0')
+    env.update(extra_env or {})
     msys = r'C:\msys64\ucrt64\bin'  # (Windows: a source build's DLLs; docs/BUILD-windows.md)
     if os.name == 'nt' and os.path.isdir(msys) and msys.lower() not in env.get('PATH', '').lower():
         env['PATH'] = msys + os.pathsep + env.get('PATH', '')
@@ -175,7 +176,7 @@ def scenario_cinema(args, run_dir):
 def scenario_stop(args, run_dir, event, want_status):
     # the event comes well after the world is up: boot + settle seconds of fake_xr time at 90 Hz
     at = args.boot_estimate
-    game, proc, log = launch(args, run_dir, ['{} {}'.format(at, event)])
+    game, proc, log = launch(args, run_dir, ['{} {}'.format(at, event)], frame_rate=0)
     try:
         perf_routes.wait_world(game, proc, args.boot)
         deadline = time.monotonic() + args.boot
@@ -224,7 +225,8 @@ def scenario_headtrack(args, run_dir):
     for k in range(400):  # (a long time: the phases repeat)
         for i, (_, (x, y, z, yaw, pitch, roll)) in enumerate(HEAD_PHASES):
             lines.append('{:.2f} head {} {} {} {} {} {}'.format(k * cycle + i * PHASE_S, x, y, z, yaw, pitch, roll))
-    game, proc, log = launch(args, run_dir, lines, frame_rate=0)
+    # (mono: `camera` reads the drawn view from TAA's matrix, and stereo turns TAA off)
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'SAVAGEWIND_VR_STEREO': '0'})
     try:
         perf_routes.wait_world(game, proc, args.boot)
         time.sleep(args.settle)
@@ -281,11 +283,77 @@ def scenario_headtrack(args, run_dir):
     check('layers 1 projection' in fl, 'the headset gets a projection layer')
 
 
+def read_ppm_gray(path, step=2):
+    """A PPM as rows of grey levels, every step-th pixel both ways."""
+    data = open(path, 'rb').read()
+    head = data.split(b'\n', 3)
+    w, h = map(int, head[1].split())
+    px = head[3]
+    rows = []
+    for y in range(0, h, step):
+        base = y * w * 3
+        rows.append([(px[base + x * 3] * 3 + px[base + x * 3 + 1] * 6 + px[base + x * 3 + 2]) // 10
+                     for x in range(0, w, step)])
+    return rows
+
+
+def best_shift(a, b, max_dx=20, max_dy=4):
+    """(dx, dy, mean difference at it, at 0): where b's middle matches a's best (b moved by dx, dy against a)."""
+    h, w = len(a), len(a[0])
+    y0, y1, x0, x1 = h // 4, 3 * h // 4, w // 4, 3 * w // 4
+    def sad(dx, dy):
+        s, n = 0, 0
+        for y in range(y0, y1, 2):
+            ra, rb = a[y], b[y + dy]
+            for x in range(x0, x1, 2):
+                s += abs(ra[x] - rb[x + dx])
+                n += 1
+        return s / n
+    scores = {(dx, dy): sad(dx, dy) for dy in range(-max_dy, max_dy + 1) for dx in range(-max_dx, max_dx + 1)}
+    (dx, dy), best = min(scores.items(), key=lambda kv: kv[1])
+    return dx, dy, best, scores[(0, 0)]
+
+
+def scenario_stereo(args, run_dir):
+    """Two eyes: the left and right pictures of one headset frame differ by a sideways shift (near things more), never
+    an up-down one; in mono they are the same picture."""
+    # (eyes 25 cm apart: four times a person's, so the shift is plain even for things at a middle distance)
+    game, proc, log = launch(args, run_dir, ['# a still head'], frame_rate=0, extra_env={'FAKE_XR_IPD': '0.25'})
+    try:
+        perf_routes.wait_world(game, proc, args.boot)
+        time.sleep(args.settle)
+        v1 = vr_state(game)
+        time.sleep(4)
+        v2 = vr_state(game)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    pairs = v2.get('stereo_pairs', 0) - v1.get('stereo_pairs', 0)
+    frames = v2.get('frames', 0) - v1.get('frames', 0)
+    check(pairs > 50, '{} stereo pairs in 4 s'.format(pairs))
+    check(frames > 0 and abs(pairs / frames - 1) < 0.1, 'one headset frame a pair ({} frames, {} pairs)'
+          .format(frames, pairs))
+    caps = sorted(f for f in os.listdir(os.path.join(run_dir, 'cap')) if f.endswith('_view0.ppm'))
+    check(len(caps) >= 2, '{} two-eye captures'.format(len(caps)))
+    if not caps:
+        return
+    left = os.path.join(run_dir, 'cap', caps[-1])
+    right = left.replace('_view0.ppm', '_view1.ppm')
+    a, b = read_ppm_gray(left), read_ppm_gray(right)
+    dx, dy, best, at0 = best_shift(a, b)
+    print('    right eye against left: best shift dx {} dy {} (half-size pixels), difference {:.1f} there, {:.1f} '
+          'unshifted'.format(dx, dy, best, at0))
+    check(at0 > 0.5, 'the eyes see different pictures (difference {:.1f})'.format(at0))
+    # the right eye is to the right of the left one, so what both see appears further left in its picture
+    check(dx <= -2, 'the right eye sees things further left: right[x + dx] = left[x] with dx {} < 0'.format(dx))
+    check(dy == 0, 'no up-down shift between the eyes ({})'.format(dy))
+    check(best < at0, 'the shift explains the difference ({:.1f} < {:.1f})'.format(best, at0))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -308,6 +376,8 @@ def main(argv=None):
             scenario_stop(args, run_dir, 'exit', 'ended the session')
         elif sc == 'headtrack':
             scenario_headtrack(args, run_dir)
+        elif sc == 'stereo':
+            scenario_stereo(args, run_dir)
         else:
             check(False, 'known scenario ' + sc)
     print('{} failed'.format(len(failures)) if failures else 'all passed')
