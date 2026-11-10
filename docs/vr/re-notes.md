@@ -30,7 +30,21 @@ or'ed and stored back, a 3-float scale) gave one cluster of model bone accessors
 | `0x7000f9621c` | flag at `x0 + 0x170` (byte) `| 4`; returns `x0 + 0x198 -> + idx << 6` | a bone's local matrix, handed out to be written (marked dirty first): the closest match to BetterVR's hook point |
 | `0x7000f96254` | `x0 + 0x128`, rows of 128 bytes, a 32-byte table at `+0x58`; writes up to five floats to x3 / x4 / x5 | an animation or shape parameter, not a bone matrix |
 
-None is confirmed. The next steps:
+None is confirmed. Counted in play with the function profiler, no patch needed (`SAVAGEWIND_FNPROF=2500:3500`
+`SAVAGEWIND_FNPROF_BT=7000f9621c,7000f961c4,7000f96254`, flat, on the Great Plateau; runtime/fnprof.c):
+
+| Address | Calls in 1000 frames | First caller (guest lr) |
+|---|---|---|
+| `0x7000f9621c` | 324 | `0x700159498c` |
+| `0x7000f961c4` | 18 | `0x70012f828c` |
+| `0x7000f96254` | 2 | `0x70010e57d4` |
+
+So none of them runs for every bone every frame: the arms' animation writes its local matrices another way, and the
+accessor BetterVR uses on the Wii U is something else on the Switch (or is reached only by some actors). The way on:
+`SAVAGEWIND_FNPROF` over a window where Link only stands, then one where he swings a weapon, and the functions whose
+count goes up by about (arm bones x frames) are the candidates; `SAVAGEWIND_FNPROF_BT` then names their callers.
+
+The next steps:
 
 1. Log the callers of `0x7000f9621c` in play (a patch in tools/patches.py that calls the runtime with x0 and w1, the
    way `_lookat_update` calls `rt_lookat`), and find the calls whose model is Link's (the same model unit every frame,
