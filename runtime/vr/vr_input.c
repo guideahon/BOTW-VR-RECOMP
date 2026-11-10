@@ -2,6 +2,10 @@
 // game reads, bindings suggested for the common controllers, and each poll of the game's input (runtime/hle/input.c,
 // where the test script's input is merged too) reads them, turns them into the game's buttons and sticks
 // (vr_input_map.h) and adds them to the gamepad's and keyboard's. A gamepad keeps working beside them.
+//
+// Phase 8, motion combat (SAVAGEWIND_VR_MOTION, on): the hands' poses too. The right hand's slashes and stabs
+// (vr_melee.h, BetterVR's analysis) press attack (Y) as they begin; the left hand raised in front of the face holds
+// the guard (ZL). The buttons keep working.
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,9 +18,11 @@
 #include "vr.h"
 #include "vr_input_map.h"
 #include "vr_internal.h"
+#include "vr_melee.h"
 
 enum {
-    A_MOVE, A_CAMERA, A_A, A_B, A_X, A_Y, A_LCLICK, A_RCLICK, A_MENU, A_LTRIGGER, A_RTRIGGER, A_LGRIP, A_RGRIP, A_COUNT
+    A_MOVE, A_CAMERA, A_A, A_B, A_X, A_Y, A_LCLICK, A_RCLICK, A_MENU, A_LTRIGGER, A_RTRIGGER, A_LGRIP, A_RGRIP, A_HAND,
+    A_COUNT
 };
 static const struct {
     const char *name, *label;
@@ -35,6 +41,7 @@ static const struct {
     {"zr", "ZR", XR_ACTION_TYPE_FLOAT_INPUT},
     {"l", "L (with the right stick: d-pad)", XR_ACTION_TYPE_FLOAT_INPUT},
     {"r", "R", XR_ACTION_TYPE_FLOAT_INPUT},
+    {"hand", "Hand pose (motion combat)", XR_ACTION_TYPE_POSE_INPUT},
 };
 
 // bindings per controller: action, path under /user/hand/
@@ -48,7 +55,8 @@ static const bind touch[] = {
     {A_LCLICK, "left/input/thumbstick/click"}, {A_RCLICK, "right/input/thumbstick/click"},
     {A_MENU, "left/input/menu/click"}, {A_LTRIGGER, "left/input/trigger/value"},
     {A_RTRIGGER, "right/input/trigger/value"}, {A_LGRIP, "left/input/squeeze/value"},
-    {A_RGRIP, "right/input/squeeze/value"}, {-1, NULL},
+    {A_RGRIP, "right/input/squeeze/value"}, {A_HAND, "left/input/grip/pose"}, {A_HAND, "right/input/grip/pose"},
+    {-1, NULL},
 };
 static const bind index_[] = {  // (Valve Index: the left A / B are X / Y; the left trackpad pressed is the menu)
     {A_MOVE, "left/input/thumbstick"}, {A_CAMERA, "right/input/thumbstick"}, {A_A, "right/input/a/click"},
@@ -56,7 +64,8 @@ static const bind index_[] = {  // (Valve Index: the left A / B are X / Y; the l
     {A_LCLICK, "left/input/thumbstick/click"}, {A_RCLICK, "right/input/thumbstick/click"},
     {A_MENU, "left/input/trackpad/force"}, {A_LTRIGGER, "left/input/trigger/value"},
     {A_RTRIGGER, "right/input/trigger/value"}, {A_LGRIP, "left/input/squeeze/value"},
-    {A_RGRIP, "right/input/squeeze/value"}, {-1, NULL},
+    {A_RGRIP, "right/input/squeeze/value"}, {A_HAND, "left/input/grip/pose"}, {A_HAND, "right/input/grip/pose"},
+    {-1, NULL},
 };
 static const bind wmr[] = {  // (Windows Mixed Reality: the touchpads pressed are A / X, the right menu B)
     {A_MOVE, "left/input/thumbstick"}, {A_CAMERA, "right/input/thumbstick"}, {A_A, "right/input/trackpad/click"},
@@ -64,16 +73,19 @@ static const bind wmr[] = {  // (Windows Mixed Reality: the touchpads pressed ar
     {A_LCLICK, "left/input/thumbstick/click"}, {A_RCLICK, "right/input/thumbstick/click"},
     {A_MENU, "left/input/menu/click"}, {A_LTRIGGER, "left/input/trigger/value"},
     {A_RTRIGGER, "right/input/trigger/value"}, {A_LGRIP, "left/input/squeeze/click"},
-    {A_RGRIP, "right/input/squeeze/click"}, {-1, NULL},
+    {A_RGRIP, "right/input/squeeze/click"}, {A_HAND, "left/input/grip/pose"}, {A_HAND, "right/input/grip/pose"},
+    {-1, NULL},
 };
 static const bind vive[] = {  // (HTC Vive wands: the touchpads are the sticks, pressed A / X; the right menu B)
     {A_MOVE, "left/input/trackpad"}, {A_CAMERA, "right/input/trackpad"}, {A_A, "right/input/trackpad/click"},
     {A_B, "right/input/menu/click"}, {A_X, "left/input/trackpad/click"}, {A_MENU, "left/input/menu/click"},
     {A_LTRIGGER, "left/input/trigger/value"}, {A_RTRIGGER, "right/input/trigger/value"},
-    {A_LGRIP, "left/input/squeeze/click"}, {A_RGRIP, "right/input/squeeze/click"}, {-1, NULL},
+    {A_LGRIP, "left/input/squeeze/click"}, {A_RGRIP, "right/input/squeeze/click"}, {A_HAND, "left/input/grip/pose"},
+    {A_HAND, "right/input/grip/pose"}, {-1, NULL},
 };
 static const bind simple[] = {  // (the minimal one every runtime has: select is A, the left menu the menu)
-    {A_A, "right/input/select/click"}, {A_MENU, "left/input/menu/click"}, {-1, NULL},
+    {A_A, "right/input/select/click"}, {A_MENU, "left/input/menu/click"}, {A_HAND, "left/input/grip/pose"},
+    {A_HAND, "right/input/grip/pose"}, {-1, NULL},
 };
 static const struct {
     const char *profile;
@@ -98,6 +110,17 @@ static struct {
     bool active;  // the last sync gave the actions (the session has the focus)
     uint64_t syncs;
     float snap_deg;
+    // motion combat
+    bool motion;           // SAVAGEWIND_VR_MOTION (on)
+    bool shield_gesture;   // SAVAGEWIND_VR_SHIELD (on)
+    XrSpace hand[2];       // the grips' poses, left and right
+    XrPath hand_path[2];
+    vr_melee melee;        // the right hand's slashes and stabs
+    double attack_until;   // attack (Y) is held until this time (s)
+    bool shield;           // the left hand holds the guard (ZL)
+    XrTime last_sample;    // (the hands are sampled once per display time)
+    uint32_t attacks, slashes, stabs;
+    float last_power;
 } in = {.lock = PTHREAD_MUTEX_INITIALIZER};
 
 static XrPath path(XrInstance inst, const char *s) {
@@ -114,9 +137,12 @@ void vr_input_setup(XrSession session) {
     snprintf(si.actionSetName, sizeof si.actionSetName, "gameplay");
     snprintf(si.localizedActionSetName, sizeof si.localizedActionSetName, "Gameplay");
     if (!vr_xr_ok(xrCreateActionSet(inst, &si, &in.set), "xrCreateActionSet")) return;
+    in.hand_path[0] = path(inst, "/user/hand/left");
+    in.hand_path[1] = path(inst, "/user/hand/right");
     for (int i = 0; i < A_COUNT; i++) {
         XrActionCreateInfo ai = {XR_TYPE_ACTION_CREATE_INFO};
         ai.actionType = defs[i].type;
+        if (i == A_HAND) ai.countSubactionPaths = 2, ai.subactionPaths = in.hand_path;  // (a space per hand)
         snprintf(ai.actionName, sizeof ai.actionName, "%s", defs[i].name);
         snprintf(ai.localizedActionName, sizeof ai.localizedActionName, "%s", defs[i].label);
         if (!vr_xr_ok(xrCreateAction(in.set, &ai, &in.a[i]), "xrCreateAction")) return;
@@ -140,6 +166,20 @@ void vr_input_setup(XrSession session) {
     XrSessionActionSetsAttachInfo at = {XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO, NULL, 1, &in.set};
     if (!vr_xr_ok(xrAttachSessionActionSets(session, &at), "xrAttachSessionActionSets")) return;
     in.session = session;
+    for (int h = 0; h < 2; h++) {
+        XrActionSpaceCreateInfo sc = {XR_TYPE_ACTION_SPACE_CREATE_INFO, NULL, in.a[A_HAND], in.hand_path[h],
+                                      {{0, 0, 0, 1}, {0, 0, 0}}};
+        if (!vr_xr_ok(xrCreateActionSpace(session, &sc, &in.hand[h]), "xrCreateActionSpace")) in.hand[h] = XR_NULL_HANDLE;
+    }
+    // motion combat (SAVAGEWIND_VR_MOTION=0: off; SAVAGEWIND_VR_SWING=easy: BetterVR's easier swing profile;
+    // SAVAGEWIND_VR_SHIELD=0: no raised-hand guard)
+    const char *mo = getenv("SAVAGEWIND_VR_MOTION"), *sw = getenv("SAVAGEWIND_VR_SWING"), *sh = getenv("SAVAGEWIND_VR_SHIELD");
+    in.motion = !(mo && *mo == '0') && in.hand[1] != XR_NULL_HANDLE;
+    in.shield_gesture = in.motion && !(sh && *sh == '0') && in.hand[0] != XR_NULL_HANDLE;
+    vr_melee_init(&in.melee, sw && !strcmp(sw, "easy"));
+    if (in.motion)
+        LOG("[vr] motion combat: slashes and stabs of the right hand attack (%s swing profile)%s\n",
+            sw && !strcmp(sw, "easy") ? "easy" : "normal", in.shield_gesture ? "; the left hand raised guards" : "");
     in.ready = true;
     // SAVAGEWIND_VR_TURN=snap: the right stick turns the view a step at once (SAVAGEWIND_VR_SNAP_DEGREES, 45), the
     // comfortable way; default: smooth, the game's own camera turning
@@ -171,6 +211,50 @@ static void get_vec(int i, float *x, float *y) {
     *x = ok ? st.currentState.x : 0, *y = ok ? st.currentState.y : 0;
 }
 
+static vr_pose pose_of(XrPosef p) {
+    vr_pose r = {{p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w},
+                 {p.position.x, p.position.y, p.position.z}};
+    return r;
+}
+
+// the hands, once per display time: the right one's slashes and stabs, the left one raised (in.out gets Y / ZL)
+static void motion(double now) {
+    XrTime t = vr_next_display_time();
+    if (t && t != in.last_sample) {
+        in.last_sample = t;
+        XrSpace local = vr_xr_local(), view = vr_xr_view();
+        XrSpaceLocation head = {XR_TYPE_SPACE_LOCATION};
+        bool head_ok = view && XR_SUCCEEDED(xrLocateSpace(view, local, t, &head)) &&
+                       (head.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT);
+        XrSpaceVelocity vel = {XR_TYPE_SPACE_VELOCITY};
+        XrSpaceLocation right = {XR_TYPE_SPACE_LOCATION, &vel};
+        if (head_ok && XR_SUCCEEDED(xrLocateSpace(in.hand[1], local, t, &right))) {
+            const XrSpaceLocationFlags need = XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+            bool tracked = (right.locationFlags & need) == need &&
+                           (vel.velocityFlags & (XR_SPACE_VELOCITY_LINEAR_VALID_BIT | XR_SPACE_VELOCITY_ANGULAR_VALID_BIT));
+            uint32_t before = in.melee.attacks;
+            vr_vec3 lin = vr_v3(vel.linearVelocity.x, vel.linearVelocity.y, vel.linearVelocity.z);
+            vr_vec3 ang = vr_v3(vel.angularVelocity.x, vel.angularVelocity.y, vel.angularVelocity.z);
+            vr_melee_update(&in.melee, pose_of(right.pose), lin, ang, pose_of(head.pose).p, t / 1e9, tracked);
+            if (in.melee.attacks != before) {  // (an attack begins: the game's attack, held long enough to be seen)
+                in.attack_until = now + 0.12;
+                in.attacks++;
+                if (in.melee.locked == VR_MELEE_STAB) in.stabs++;
+                else in.slashes++;
+                in.last_power = in.melee.power;
+            }
+        }
+        XrSpaceLocation left = {XR_TYPE_SPACE_LOCATION};
+        if (in.shield_gesture && head_ok && XR_SUCCEEDED(xrLocateSpace(in.hand[0], local, t, &left)) &&
+            (left.locationFlags & XR_SPACE_LOCATION_POSITION_TRACKED_BIT))
+            in.shield = vr_shield_raised(in.shield, pose_of(head.pose), pose_of(left.pose).p);
+        else
+            in.shield = false;
+    }
+    if (now < in.attack_until) in.out.buttons |= 1ull << VRB_Y;
+    if (in.shield) in.out.buttons |= 1ull << VRB_ZL;
+}
+
 // the controllers' state now (synced at most every 2 ms: the game polls its input several times a frame)
 static void update(void) {
     uint64_t now = plat_now_ns();
@@ -194,6 +278,7 @@ static void update(void) {
     p.lgrip = get_float(A_LGRIP), p.rgrip = get_float(A_RGRIP);
     vr_pad_map(&in.pad, &p, now / 1e9, &in.out);
     if (in.out.snap) vr_turn(-in.out.snap * in.snap_deg * 3.14159265f / 180);  // (right: clockwise from above)
+    if (in.motion) motion(now / 1e9);
 }
 
 static int32_t clamp_axis(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
@@ -213,6 +298,13 @@ void vr_input_apply(uint64_t *b, int32_t *lx, int32_t *ly, int32_t *rx, int32_t 
 }
 
 // for `vr`: the controllers' state as the game last got it
+void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on) {
+    pthread_mutex_lock(&in.lock);
+    *attacks = in.attacks, *slashes = in.slashes, *stabs = in.stabs, *power = in.last_power;
+    *shield = in.shield, *on = in.motion;
+    pthread_mutex_unlock(&in.lock);
+}
+
 bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs) {
     pthread_mutex_lock(&in.lock);
     *buttons = in.out.buttons;

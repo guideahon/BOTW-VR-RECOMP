@@ -17,6 +17,7 @@ void vr_disable(const char *why);
 bool vr_session_running(void);
 XrSession vr_xr_session(void);
 XrSpace vr_xr_local(void);
+XrSpace vr_xr_view(void);  // the head (VIEW)
 XrTime vr_next_display_time(void);
 
 // What a frame was drawn as (vr_camera.c): the head's view in play (world), for one eye (0 left, 1 right) or both

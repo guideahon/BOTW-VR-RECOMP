@@ -525,11 +525,77 @@ def scenario_snap(args, run_dir):
           'snap turning on')
 
 
+def scenario_motion(args, run_dir):
+    """Motion combat: the right hand's slash and stab each attack once, slow returns to guard do not, the left hand
+    raised in front of the face guards."""
+    cycle, lines = 30.0, []
+    guard, low, raised = '0.25 1.2 -0.35', '-0.25 1.0 -0.1', '-0.1 1.55 -0.35'
+    for k in range(100):
+        t = k * cycle
+        lines += [
+            '{:.2f} hand right {} 0 0 0'.format(t, guard),
+            '{:.2f} hand right {} 0 0 0'.format(t + 10, guard),       # a fast downward cut: 120 deg in 0.2 s
+            '{:.2f} hand right {} 0 -120 0'.format(t + 10.2, guard),
+            '{:.2f} hand right {} 0 -120 0'.format(t + 12, guard),    # back to guard slowly (2 s)
+            '{:.2f} hand right {} 0 0 0'.format(t + 14, guard),
+            '{:.2f} hand right {} 0 0 0'.format(t + 18, guard),       # a thrust: 35 cm forward in 0.15 s
+            '{:.2f} hand right 0.25 1.2 -0.70 0 0 0'.format(t + 18.15),
+            '{:.2f} hand right 0.25 1.2 -0.70 0 0 0'.format(t + 20),  # back slowly (2 s)
+            '{:.2f} hand right {} 0 0 0'.format(t + 22, guard),
+            '{:.2f} hand left {} 0 0 0'.format(t, low),
+            '{:.2f} hand left {} 0 0 0'.format(t + 23.5, low),        # the left hand up in front of the face...
+            '{:.2f} hand left {} 0 0 0'.format(t + 24, raised),
+            '{:.2f} hand left {} 0 0 0'.format(t + 27.5, raised),     # ... and down again
+            '{:.2f} hand left {} 0 0 0'.format(t + 28, low),
+        ]
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'FAKE_XR_CAPTURE_EVERY': '0'})  # (no captures: each one stalls the game)
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):
+            t = now_s()
+            target = (t // cycle) * cycle + offset
+            if target <= t:
+                target += cycle
+            while now_s() < target:
+                time.sleep(0.05)
+
+        wait_until(5)
+        v0 = vr_state(game)
+        wait_until(16)
+        v_slash = vr_state(game)
+        wait_until(23)
+        v_stab = vr_state(game)
+        wait_until(26)
+        v_up = vr_state(game)
+        wait_until(29.5)
+        v_end = vr_state(game)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    def d(a, b, k):
+        return b.get(k, 0) - a.get(k, 0)
+    check(v0.get('motion_combat') is True, 'motion combat on')
+    check(d(v0, v_slash, 'motion_slashes') == 1, 'the cut is one slash ({} slashes, {} stabs)'
+          .format(d(v0, v_slash, 'motion_slashes'), d(v0, v_slash, 'motion_stabs')))
+    check(d(v_slash, v_stab, 'motion_stabs') == 1 and d(v_slash, v_stab, 'motion_slashes') == 0,
+          'the thrust is one stab ({} stabs, {} slashes)'.format(d(v_slash, v_stab, 'motion_stabs'),
+                                                                d(v_slash, v_stab, 'motion_slashes')))
+    check(d(v0, v_end, 'motion_attacks') == 2, 'two attacks in the cycle: the slow returns to guard are none ({})'
+          .format(d(v0, v_end, 'motion_attacks')))
+    check(v_slash.get('motion_last_power', 0) > 0.5, 'a strong cut ({:.2f})'.format(v_slash.get('motion_last_power', 0)))
+    check(v_up.get('motion_shield') is True and v_stab.get('motion_shield') is False and v_end.get('motion_shield') is False,
+          'the shield is up while the left hand is raised, and only then')
+    check(v_up.get('controller_buttons', 0) & (1 << 8), 'the raised hand holds the guard (ZL) in the game\'s input')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'controllers', 'snap', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'controllers', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -563,6 +629,8 @@ def main(argv=None):
             scenario_controllers(args, run_dir)
         elif sc == 'snap':
             scenario_snap(args, run_dir)
+        elif sc == 'motion':
+            scenario_motion(args, run_dir)
         else:
             check(False, 'known scenario ' + sc)
     print('{} failed'.format(len(failures)) if failures else 'all passed')

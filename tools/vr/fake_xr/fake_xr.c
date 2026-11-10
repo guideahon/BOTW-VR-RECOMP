@@ -46,6 +46,7 @@ typedef struct {
     FILE *log;
     script_line *lines;
     int count;
+    struct { double t[1024]; vr_pose p[1024]; int n; } hands[2];  // hand poses over time (interpolated), left / right
     char capture_dir[1024];  // FAKE_XR_CAPTURE: PPMs of the layers' images go here
     int capture_every;       // FAKE_XR_CAPTURE_EVERY: every n-th ended frame (0: none)
 } config;
@@ -90,6 +91,7 @@ struct session {
 typedef struct {
     uint32_t magic;
     session *s;
+    int hand;  // an action space on a hand's pose: 1 left, 2 right; 0 a reference space
     XrReferenceSpaceType type;
     vr_pose pose;  // poseInReferenceSpace
 } space;
@@ -156,6 +158,21 @@ static bool load_script(config *c, const char *path) {
         else if (!strcmp(word, "focus")) l->kind = EV_FOCUS;
         else if (!strcmp(word, "exit")) l->kind = EV_EXIT;
         else if (!strcmp(word, "lose")) l->kind = EV_LOSE;
+        else if (!strcmp(word, "hand")) {  // (a key pose of a hand's track, not an event: interpolated in between)
+            char side[8];
+            float v[6];
+            if (sscanf(buf + used, "%7s %f %f %f %f %f %f", side, &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 7 ||
+                (strcmp(side, "left") && strcmp(side, "right"))) {
+                fprintf(stderr, "fake_xr: %s:%d: hand needs left|right x y z yaw pitch roll\n", path, lineno);
+                continue;
+            }
+            int h = !strcmp(side, "right");
+            if (c->hands[h].n < 1024) {
+                c->hands[h].t[c->hands[h].n] = t;
+                c->hands[h].p[c->hands[h].n++] = euler_pose(v[0], v[1], v[2], v[3], v[4], v[5]);
+            }
+            continue;
+        }
         else if (!strcmp(word, "button") || !strcmp(word, "value") || !strcmp(word, "stick")) {
             float x = 0, y = 0;
             int want = !strcmp(word, "stick") ? 3 : 2;
@@ -670,11 +687,36 @@ static XrResult XRAPI_CALL fx_DestroySpace(XrSpace h) {
     return XR_SUCCESS;
 }
 
-// where a space is in STAGE space (LOCAL is the same in this runtime: the floor at the origin)
-static vr_pose space_in_stage(space *sp) {
-    vr_pose ref = sp->type == XR_REFERENCE_SPACE_TYPE_VIEW ? sp->s->head : vr_pose_identity();
+// a hand at time t (the script's track, interpolated; still where no track says otherwise)
+static vr_pose hand_at(session *s, int h, XrTime t) {
+    config *c = &s->inst->cfg;
+    int n = c->hands[h].n;
+    if (!n) return euler_pose(h ? 0.2f : -0.2f, 1.3f, -0.3f, 0, 0, 0);
+    double ts = s->first_time ? (double)(t - s->first_time) / 1e9 : 0;
+    const double *tt = c->hands[h].t;
+    const vr_pose *pp = c->hands[h].p;
+    if (ts <= tt[0]) return pp[0];
+    if (ts >= tt[n - 1]) return pp[n - 1];
+    int i = 0;
+    while (i + 1 < n && tt[i + 1] <= ts) i++;
+    float k = (float)((ts - tt[i]) / (tt[i + 1] - tt[i]));
+    vr_pose a = pp[i], b = pp[i + 1], r;
+    r.p = vr_v3_add(vr_v3_scale(a.p, 1 - k), vr_v3_scale(b.p, k));
+    vr_quat qb = b.q;  // (nlerp the short way)
+    if (a.q.x * qb.x + a.q.y * qb.y + a.q.z * qb.z + a.q.w * qb.w < 0) qb = (vr_quat){-qb.x, -qb.y, -qb.z, -qb.w};
+    r.q = vr_quat_normalize((vr_quat){a.q.x * (1 - k) + qb.x * k, a.q.y * (1 - k) + qb.y * k,
+                                      a.q.z * (1 - k) + qb.z * k, a.q.w * (1 - k) + qb.w * k});
+    return r;
+}
+
+// where a space is in STAGE space at time t (LOCAL is the same in this runtime: the floor at the origin)
+static vr_pose space_at(space *sp, XrTime t) {
+    vr_pose ref = sp->hand ? hand_at(sp->s, sp->hand - 1, t)
+                : sp->type == XR_REFERENCE_SPACE_TYPE_VIEW ? sp->s->head : vr_pose_identity();
     return vr_pose_mul(ref, sp->pose);
 }
+
+static vr_pose space_in_stage(space *sp) { return space_at(sp, sp->s->last_predicted ? sp->s->last_predicted : 1); }
 
 static XrPosef to_xr(vr_pose p) {
     XrPosef r = {{p.q.x, p.q.y, p.q.z, p.q.w}, {p.p.x, p.p.y, p.p.z}};
@@ -686,9 +728,26 @@ static XrResult XRAPI_CALL fx_LocateSpace(XrSpace h, XrSpace base, XrTime t, XrS
     if (!sp || !bs) return XR_ERROR_HANDLE_INVALID;
     if (!loc || loc->type != XR_TYPE_SPACE_LOCATION) return XR_ERROR_VALIDATION_FAILURE;
     if (t <= 0) return XR_ERROR_TIME_INVALID;
-    loc->pose = to_xr(vr_pose_mul(vr_pose_inverse(space_in_stage(bs)), space_in_stage(sp)));
+    vr_pose now = vr_pose_mul(vr_pose_inverse(space_at(bs, t)), space_at(sp, t));
+    loc->pose = to_xr(now);
     loc->locationFlags = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT |
                          XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT | XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+    for (XrBaseOutStructure *n = (XrBaseOutStructure *)loc->next; n; n = n->next) {
+        if (n->type != XR_TYPE_SPACE_VELOCITY) continue;
+        // the motion over the last 5 ms, in the base space (as a runtime gives it)
+        const XrTime dt = 5000000;
+        vr_pose before = vr_pose_mul(vr_pose_inverse(space_at(bs, t - dt)), space_at(sp, t - dt));
+        XrSpaceVelocity *v = (XrSpaceVelocity *)n;
+        vr_vec3 lin = vr_v3_scale(vr_v3_sub(now.p, before.p), 1e9f / dt);
+        vr_quat dq = vr_quat_normalize(vr_quat_mul(now.q, vr_quat_conj(before.q)));
+        if (dq.w < 0) dq = (vr_quat){-dq.x, -dq.y, -dq.z, -dq.w};
+        float s2 = sqrtf(dq.x * dq.x + dq.y * dq.y + dq.z * dq.z);
+        float angle = 2 * atan2f(s2, dq.w);
+        vr_vec3 ang = s2 > 1e-7f ? vr_v3_scale(vr_v3(dq.x, dq.y, dq.z), angle / s2 * 1e9f / dt) : vr_v3(0, 0, 0);
+        v->linearVelocity = (XrVector3f){lin.x, lin.y, lin.z};
+        v->angularVelocity = (XrVector3f){ang.x, ang.y, ang.z};
+        v->velocityFlags = XR_SPACE_VELOCITY_LINEAR_VALID_BIT | XR_SPACE_VELOCITY_ANGULAR_VALID_BIT;
+    }
     return XR_SUCCESS;
 }
 
@@ -747,7 +806,8 @@ static const proc procs[] = {
     P(EnumerateSwapchainImages), P(AcquireSwapchainImage), P(WaitSwapchainImage), P(ReleaseSwapchainImage),
     P(StringToPath), P(PathToString), P(CreateActionSet), P(DestroyActionSet), P(CreateAction), P(DestroyAction),
     P(SuggestInteractionProfileBindings), P(AttachSessionActionSets), P(SyncActions), P(GetActionStateBoolean),
-    P(GetActionStateFloat), P(GetActionStateVector2f), P(GetCurrentInteractionProfile),
+    P(GetActionStateFloat), P(GetActionStateVector2f), P(GetCurrentInteractionProfile), P(GetActionStatePose),
+    P(CreateActionSpace),
 };
 #undef P
 

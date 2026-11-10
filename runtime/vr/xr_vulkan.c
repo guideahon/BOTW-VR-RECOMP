@@ -484,6 +484,7 @@ void vr_frame_after_submit(void) {
 bool vr_session_running(void) { return g.running && g.session != XR_NULL_HANDLE; }
 XrSession vr_xr_session(void) { return g.session; }
 XrSpace vr_xr_local(void) { return g.local; }
+XrSpace vr_xr_view(void) { return g.view; }
 
 // when the frame the game makes now should be shown: two periods after the last one begun (one being drawn, one shown)
 XrTime vr_next_display_time(void) { return g.last_display ? g.last_display + 2 * g.period : 0; }

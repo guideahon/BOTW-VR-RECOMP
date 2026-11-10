@@ -984,10 +984,15 @@ $(B)/test_vr_input_map: tests/vr/test_vr_input_map.c runtime/vr/vr_input_map.h t
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
 
-test-vr: $(B)/test_vr_math $(B)/test_vr_pair $(B)/test_vr_input_map $(B)/test_fake_xr_session fake-xr
+$(B)/test_vr_melee: tests/vr/test_vr_melee.c runtime/vr/vr_melee.h runtime/vr/vr_math.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
+
+test-vr: $(B)/test_vr_math $(B)/test_vr_pair $(B)/test_vr_input_map $(B)/test_vr_melee $(B)/test_fake_xr_session fake-xr
 	$(B)/test_vr_math
 	$(B)/test_vr_pair
 	$(B)/test_vr_input_map
+	$(B)/test_vr_melee
 	$(B)/test_fake_xr_session $(FAKE_XR) $(B)/vr
 
 $(B)/test_vr_init: tests/vr/test_vr_init.c runtime/vr/vr.c runtime/vr/vr.h tests/vr/vr_test.h

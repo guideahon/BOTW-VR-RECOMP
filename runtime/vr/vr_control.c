@@ -13,6 +13,7 @@ static const char *state_name(int st) {
 
 uint64_t vr_world_frames(void);  // runtime/vr/xr_vulkan.c
 bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs);  // runtime/vr/vr_input.c
+void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on);
 
 static void cmd_vr(int argc, char **argv, ControlReply *r) {
     if (argc == 2 && !strcmp(argv[1], "recenter")) {
@@ -45,6 +46,16 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_num(r, "controller_rx", sticks[2] / 32767.0);
     control_field_num(r, "controller_ry", sticks[3] / 32767.0);
     control_field_int(r, "controller_syncs", (int64_t)syncs);
+    uint32_t attacks = 0, slashes = 0, stabs = 0;
+    float power = 0;
+    bool shield = false, motion = false;
+    vr_motion_state(&attacks, &slashes, &stabs, &power, &shield, &motion);
+    control_field_bool(r, "motion_combat", motion);
+    control_field_int(r, "motion_attacks", attacks);
+    control_field_int(r, "motion_slashes", slashes);
+    control_field_int(r, "motion_stabs", stabs);
+    control_field_num(r, "motion_last_power", power);
+    control_field_bool(r, "motion_shield", shield);
     control_text(r, "VR %s: %s; session %s, %llu frames (%llu with an image)", vr_enabled() ? "on" : "off",
                  vr_status_text(), state_name(st), (unsigned long long)frames, (unsigned long long)rendered);
 }

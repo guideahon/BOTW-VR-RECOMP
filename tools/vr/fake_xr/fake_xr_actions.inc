@@ -306,6 +306,43 @@ static XrResult XRAPI_CALL fx_GetCurrentInteractionProfile(XrSession h, XrPath u
     return XR_SUCCESS;
 }
 
+static XrResult XRAPI_CALL fx_GetActionStatePose(XrSession h, const XrActionStateGetInfo *gi, XrActionStatePose *st) {
+    action *a;
+    XrResult r = get_state(h, gi, XR_ACTION_TYPE_POSE_INPUT, &a);
+    if (XR_FAILED(r)) return r;
+    if (!st || st->type != XR_TYPE_ACTION_STATE_POSE) return XR_ERROR_VALIDATION_FAILURE;
+    int in[8];
+    st->isActive = ctl.synced_focus && action_inputs(a, gi->subactionPath, in, 8) > 0;
+    return XR_SUCCESS;
+}
+
+// a pose action's space: the hand its subaction path names (or its first binding's hand)
+static XrResult XRAPI_CALL fx_CreateActionSpace(XrSession h, const XrActionSpaceCreateInfo *ci, XrSpace *out) {
+    session *s = get_session(h);
+    if (!s) return XR_ERROR_HANDLE_INVALID;
+    if (!ci || !out || ci->type != XR_TYPE_ACTION_SPACE_CREATE_INFO) return XR_ERROR_VALIDATION_FAILURE;
+    action *a = get_action(ci->action);
+    if (!a) return XR_ERROR_HANDLE_INVALID;
+    if (a->type != XR_ACTION_TYPE_POSE_INPUT) return XR_ERROR_ACTION_TYPE_MISMATCH;
+    const char *sub = ci->subactionPath ? path_name(ci->subactionPath) : NULL;
+    int hand = 0;
+    if (sub && !strcmp(sub, "/user/hand/left")) hand = 1;
+    else if (sub && !strcmp(sub, "/user/hand/right")) hand = 2;
+    else if (sub) return XR_ERROR_PATH_UNSUPPORTED;
+    for (int i = 0; i < ctl.n && !hand; i++)
+        if (ctl.b[i].a == a) hand = strstr(path_name(ctl.b[i].binding), "/left/") ? 1 : 2;
+    if (!hand) hand = 2;
+    space *sp = calloc(1, sizeof *sp);
+    sp->magic = MAGIC_SPACE;
+    sp->s = s;
+    sp->hand = hand;
+    const XrPosef *p = &ci->poseInActionSpace;
+    sp->pose = (vr_pose){{p->orientation.x, p->orientation.y, p->orientation.z, p->orientation.w},
+                         {p->position.x, p->position.y, p->position.z}};
+    *out = (XrSpace)(uintptr_t)sp;
+    return XR_SUCCESS;
+}
+
 // the script's controller lines (run_script): the raw state the next xrSyncActions takes
 static void fxa_script(const char *kind, const char *path, float x, float y) {
     int k = touch_input(path);
