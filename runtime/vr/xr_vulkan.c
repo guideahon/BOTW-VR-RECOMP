@@ -43,7 +43,9 @@ static struct {
     VkImage images[MAX_IMAGES];
     VkPhysicalDevice phys;
     float screen_w, screen_dist;  // the virtual screen: its width and distance (m)
-    uint64_t frames, rendered;
+    uint64_t frames, rendered, world_frames;
+    XrTime last_display;          // the last frame's predicted display time and the display's period
+    XrDuration period;
 } g;
 
 // the frame between vr_frame_record and its end on the recorder thread
@@ -52,6 +54,9 @@ static struct {
     bool render;   // an image was acquired and copied into
     XrTime display;
     float aspect;  // height / width of what was copied
+    bool world;    // a projection layer of the head's view (vr_camera.c), else the virtual screen
+    XrPosef pose;
+    XrFovf fov;
 } fr;
 static pthread_mutex_t end_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t end_done = PTHREAD_COND_INITIALIZER;
@@ -272,6 +277,8 @@ void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat f
     fr.active = true;
     fr.render = false;
     fr.display = fs.predictedDisplayTime;
+    g.last_display = fs.predictedDisplayTime;
+    g.period = fs.predictedDisplayPeriod;
     g.frames++;
     if (!fs.shouldRender) return;
     if (g.swapchain != XR_NULL_HANDLE && (g.sc_extent.width != ext.width || g.sc_extent.height != ext.height ||
@@ -301,15 +308,36 @@ void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat f
             VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
     fr.render = true;
     fr.aspect = (float)ext.height / (float)ext.width;
+    vr_window_aspect((float)ext.width / (float)ext.height);
+    // in play: the image is the head's view; shown with the pose and frustum the camera was given
+    fr.world = vr_world_view() && vr_camera_view(&fr.pose, &fr.fov);
+    if (fr.world) g.world_frames++;
     g.rendered++;
 }
 
 static void end_frame(void *arg) {
     (void)arg;
     XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+    XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    XrCompositionLayerProjectionView views[2];
     const XrCompositionLayerBaseHeader *layers[1] = {(const XrCompositionLayerBaseHeader *)&quad};
     uint32_t n = 0;
-    if (fr.render && vr_xr_ok(xrReleaseSwapchainImage(g.swapchain, NULL), "xrReleaseSwapchainImage")) {
+    bool released = fr.render && vr_xr_ok(xrReleaseSwapchainImage(g.swapchain, NULL), "xrReleaseSwapchainImage");
+    if (released && fr.world) {
+        // phase 2: one picture for both eyes, at the head's pose and with the frustum it was drawn with
+        for (int i = 0; i < 2; i++) {
+            views[i] = (XrCompositionLayerProjectionView){XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+            views[i].pose = fr.pose;
+            views[i].fov = fr.fov;
+            views[i].subImage.swapchain = g.swapchain;
+            views[i].subImage.imageRect = (XrRect2Di){{0, 0}, {(int32_t)g.sc_extent.width, (int32_t)g.sc_extent.height}};
+        }
+        proj.space = g.local;
+        proj.viewCount = 2;
+        proj.views = views;
+        layers[0] = (const XrCompositionLayerBaseHeader *)&proj;
+        n = 1;
+    } else if (released) {
         quad.space = g.local;
         quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
         quad.subImage.swapchain = g.swapchain;
@@ -334,6 +362,15 @@ void vr_frame_after_submit(void) {
     pthread_mutex_unlock(&end_lock);
     rec_custom(end_frame, NULL);
 }
+
+bool vr_session_running(void) { return g.running && g.session != XR_NULL_HANDLE; }
+XrSession vr_xr_session(void) { return g.session; }
+XrSpace vr_xr_local(void) { return g.local; }
+
+// when the frame the game makes now should be shown: two periods after the last one begun (one being drawn, one shown)
+XrTime vr_next_display_time(void) { return g.last_display ? g.last_display + 2 * g.period : 0; }
+
+uint64_t vr_world_frames(void) { return g.world_frames; }
 
 void vr_stats(uint64_t *frames, uint64_t *rendered, int *state) {
     *frames = g.frames;

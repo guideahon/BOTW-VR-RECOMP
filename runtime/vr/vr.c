@@ -11,6 +11,7 @@
 #define LOG(...) fprintf(stderr, __VA_ARGS__)
 #else
 #include "../rt.h"
+#include "../settings.h"
 #endif
 #include "vr.h"
 #include "vr_internal.h"
@@ -57,6 +58,25 @@ static bool runtime_has(const char *ext) {
         for (uint32_t i = 0; i < n; i++) has |= !strcmp(p[i].extensionName, ext);
     free(p);
     return has;
+}
+
+// The window in the shape of the headset's eye images (the world is drawn in the headset's field, in the window's shape:
+// runtime/vr/vr_camera.c), SAVAGEWIND_VR_HEIGHT lines high (1080). For this run only: savagewind.ini keeps its own.
+static void window_for_headset(void) {
+    XrViewConfigurationView v[2] = {{XR_TYPE_VIEW_CONFIGURATION_VIEW}, {XR_TYPE_VIEW_CONFIGURATION_VIEW}};
+    uint32_t n = 0;
+    if (XR_FAILED(xrEnumerateViewConfigurationViews(g_inst, g_system, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 2, &n,
+                                                    v)) || n != 2 || !v[0].recommendedImageRectHeight)
+        return;
+    const char *e = getenv("SAVAGEWIND_VR_HEIGHT");
+    int h = e && *e ? atoi(e) : 1080;
+    if (h < 360 || h > 4096) h = 1080;
+    int w = (int)((double)h * v[0].recommendedImageRectWidth / v[0].recommendedImageRectHeight + 0.5) & ~1;
+    LOG("[vr] headset eye images %ux%u: window %dx%d\n", v[0].recommendedImageRectWidth, v[0].recommendedImageRectHeight,
+        w, h);
+#ifndef VR_TEST_BUILD
+    g_settings.window_w = w, g_settings.window_h = h;
+#endif
 }
 
 static void stay_flat(const char *fmt, const char *detail) {
@@ -109,4 +129,5 @@ void vr_init(void) {
     snprintf(status, sizeof status, "runtime %s, headset %s", runtime, sp.systemName);
     enabled = true;
     LOG("[vr] OpenXR %s\n", status);
+    window_for_headset();
 }

@@ -260,6 +260,9 @@ void rt_persp(uint64_t proj, uint32_t *tan_fovy, uint32_t *aspect) {
     if (fov != 1 && nf[1] > 10001) t = tanf(fminf(atanf(t) * fov, 1.4f));  // (under 160 degrees)
     a *= shape;
     if (shape < 1) t /= shape;  // (a taller window: the horizontal view kept, more above and below)
+#ifdef SW_VR
+    if (world) { extern bool vr_persp(float *, float *); vr_persp(&t, &a); }  // (make VR=1: the headset's frustum)
+#endif
     memcpy(tan_fovy, &t, 4), memcpy(aspect, &a, 4);
     if (world) output_world_proj_set(t, a, nf[0], nf[1]);
     if (world && wide_fix && (*tan_fovy != set_t || *aspect != set_a)) {  // (the world's camera: written back)

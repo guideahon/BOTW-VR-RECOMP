@@ -52,6 +52,9 @@ void rt_lookat(uint64_t cam) {
         memcpy(seen_eye, f, sizeof seen_eye);
         memcpy(seen_at, f + 3, sizeof seen_at);
         seen = true;
+#ifdef SW_VR
+        { extern void vr_camera_lookat(float *); vr_camera_lookat(f); }  // (make VR=1: the head, runtime/vr/vr_camera.c)
+#endif
         return;
     }
     float cp = cosf(pitch);

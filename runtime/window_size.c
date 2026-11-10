@@ -142,6 +142,9 @@ static WinSize resolve(WinSize want, bool fullscreen) {
 
 WinSize winsize_effective(bool fullscreen) {
     if (g_settings.window_w <= 0 || g_settings.window_h <= 0) return winsize_default(fullscreen);
+#ifdef SW_VR  // (make VR=1: a window in the headset's shape, set by runtime/vr/vr.c, is none of the offered sizes)
+    { extern bool vr_enabled(void); if (vr_enabled() && !fullscreen) return (WinSize){g_settings.window_w, g_settings.window_h}; }
+#endif
     return resolve((WinSize){g_settings.window_w, g_settings.window_h}, fullscreen);
 }
 

@@ -461,14 +461,21 @@ static void fxvk_capture_one(session *s, const XrSwapchainSubImage *si, const ch
             char path[1100];
             snprintf(path, sizeof path, "%s/%s.ppm", in->cfg.capture_dir, tag);
             FILE *f = fopen(path, "wb");
-            if (f) {
+            uint8_t *row = f ? malloc((size_t)w * 3) : NULL;
+            if (f && row) {  // (a row at a time: one write per pixel took over a second on Windows)
                 fprintf(f, "P6\n%u %u\n255\n", w, h);
-                for (uint64_t i = 0; i < n; i++) {
-                    uint8_t rgb[3] = {px[i * 4 + (bgra ? 2 : 0)], px[i * 4 + 1], px[i * 4 + (bgra ? 0 : 2)]};
-                    fwrite(rgb, 1, 3, f);
+                for (uint32_t y = 0; y < h; y++) {
+                    const uint8_t *s = px + (uint64_t)y * w * 4;
+                    for (uint32_t x = 0; x < w; x++) {
+                        row[x * 3] = s[x * 4 + (bgra ? 2 : 0)];
+                        row[x * 3 + 1] = s[x * 4 + 1];
+                        row[x * 3 + 2] = s[x * 4 + (bgra ? 0 : 2)];
+                    }
+                    fwrite(row, 1, (size_t)w * 3, f);
                 }
-                fclose(f);
             }
+            free(row);
+            if (f) fclose(f);
         }
         v->f.UnmapMemory(v->dev, mem);
     } else {

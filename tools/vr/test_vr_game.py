@@ -89,7 +89,7 @@ def read_png_mean(path):
     return [v / k for v in s]
 
 
-def launch(args, run_dir, script_lines):
+def launch(args, run_dir, script_lines, frame_rate=60):
     os.makedirs(os.path.join(run_dir, 'cap'), exist_ok=True)
     save = os.path.join(run_dir, 'save')
     if not os.path.isdir(save):
@@ -97,8 +97,8 @@ def launch(args, run_dir, script_lines):
         shutil.copytree(args.save, save)
     ini = os.path.join(run_dir, 'settings.ini')
     with open(ini, 'w') as f:
-        f.write('window_size = 1280x720\nframe_rate = 60\nvsync = off\nperf_overlay = off\nframe_generation = 0\n'
-                'fullscreen = 0\n')
+        f.write('window_size = 1280x720\nframe_rate = {}\nvsync = off\nperf_overlay = off\nframe_generation = 0\n'
+                'fullscreen = 0\nantialias = taa\n'.format(frame_rate))  # (TAA: `camera` reads the drawn view)
     script = os.path.join(run_dir, 'fake_xr_script.txt')
     with open(script, 'w') as f:
         f.write('\n'.join(script_lines) + '\n')
@@ -152,7 +152,11 @@ def scenario_cinema(args, run_dir):
     fl = fake_log(run_dir)
     caps = sorted(f for f in os.listdir(os.path.join(run_dir, 'cap')) if f.endswith('.ppm'))
     check(len(caps) >= 3, '{} headset captures'.format(len(caps)))
-    check('swapchain 1280x720' in fl, 'swapchain at the window size')
+    import re
+    glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+    m = re.search(r'\[vr\] headset eye images \d+x\d+: window (\d+)x(\d+)', glog)
+    check(m is not None and 'swapchain {}x{}'.format(*m.groups()) in fl,
+          "swapchain at the window size, in the headset's shape ({})".format(m.groups() if m else None))
     check(' frame discarded' not in fl, 'no frame discarded')
     if caps:
         last = os.path.join(run_dir, 'cap', caps[-1])
@@ -195,11 +199,93 @@ def scenario_stop(args, run_dir, event, want_status):
         check('state XR_SESSION_STATE_EXITING' in fl, 'the session reached EXITING')
 
 
+HEAD_PHASES = [  # (fake_xr seconds per phase; the head in STAGE space, metres and degrees)
+    ('neutral', (0.0, 1.7, 0.0, 0.0, 0.0, 0.0)),
+    ('yaw30', (0.0, 1.7, 0.0, 30.0, 0.0, 0.0)),
+    ('pitch20', (0.0, 1.7, 0.0, 0.0, 20.0, 0.0)),
+    ('right50cm', (0.5, 1.7, 0.0, 0.0, 0.0, 0.0)),
+]
+PHASE_S = 12.0
+
+
+def camera(game):
+    d = game.cmd('camera', ok=False)
+    return d if 'yaw' in d else None
+
+
+def angle_diff(a, b):
+    return (a - b + 180.0) % 360.0 - 180.0
+
+
+def scenario_headtrack(args, run_dir):
+    """The head moves the camera: turn, look up, step right; each read from the game's own `camera`."""
+    lines = []
+    cycle = PHASE_S * len(HEAD_PHASES)
+    for k in range(400):  # (a long time: the phases repeat)
+        for i, (_, (x, y, z, yaw, pitch, roll)) in enumerate(HEAD_PHASES):
+            lines.append('{:.2f} head {} {} {} {} {} {}'.format(k * cycle + i * PHASE_S, x, y, z, yaw, pitch, roll))
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0)
+    try:
+        perf_routes.wait_world(game, proc, args.boot)
+        time.sleep(args.settle)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_phase(name):  # the middle of the next phase of that name
+            i = [p[0] for p in HEAD_PHASES].index(name)
+            t = now_s()
+            start = (t // cycle) * cycle + i * PHASE_S
+            if start + PHASE_S * 0.4 < t:
+                start += cycle
+            while now_s() < start + PHASE_S * 0.5:
+                time.sleep(0.2)
+
+        v = vr_state(game)
+        check(v.get('world_view') is True, 'in play the headset gets the world view')
+        wait_phase('neutral')
+        base = camera(game)
+        wait_phase('yaw30')
+        turned = camera(game)
+        wait_phase('pitch20')
+        up = camera(game)
+        wait_phase('right50cm')
+        moved = camera(game)
+        wait_phase('neutral')
+        back = camera(game)
+        v = vr_state(game)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    if not all((base, turned, up, moved, back)):
+        check(False, 'the camera could be read in every phase')
+        return
+    print('    camera yaw/pitch: neutral {:.1f}/{:.1f}  yaw30 {:.1f}/{:.1f}  pitch20 {:.1f}/{:.1f}  back {:.1f}/{:.1f}'
+          .format(base['yaw'], base['pitch'], turned['yaw'], turned['pitch'], up['yaw'], up['pitch'], back['yaw'],
+                  back['pitch']))
+    check(abs(angle_diff(turned['yaw'], base['yaw']) - 30) < 2, 'turning the head 30 deg left turns the view 30 deg '
+          '({:.1f})'.format(angle_diff(turned['yaw'], base['yaw'])))
+    check(abs(up['pitch'] - 20) < 2, 'looking 20 deg up: the view\'s pitch is the head\'s ({:.1f})'.format(up['pitch']))
+    check(abs(base['pitch']) < 2, 'a level head: a level view ({:.1f}; the game\'s own pitch is left out)'
+          .format(base['pitch']))
+    import math
+    yaw = math.radians(base['yaw'])
+    right = (-math.cos(yaw), 0.0, math.sin(yaw))  # (the view's right: forward x up, forward (sin yaw, 0, cos yaw))
+    d = [moved[k] - base[k] for k in ('x', 'y', 'z')]
+    along = sum(a * b for a, b in zip(d, right))
+    check(abs(along - 0.5) < 0.1, 'a 50 cm step right moves the eye 50 cm right ({:.2f} m; moved {:.2f} {:.2f} {:.2f})'
+          .format(along, *d))
+    check(abs(angle_diff(back['yaw'], base['yaw'])) < 2, 'back to neutral, the view comes back (no drift: {:.1f})'
+          .format(angle_diff(back['yaw'], base['yaw'])))
+    check(v.get('world_frames', 0) > 100, '{} frames sent as the head\'s view'.format(v.get('world_frames')))
+    fl = fake_log(run_dir)
+    check('layers 1 projection' in fl, 'the headset gets a projection layer')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -220,6 +306,8 @@ def main(argv=None):
             scenario_stop(args, run_dir, 'lose', 'lost')
         elif sc == 'exit':
             scenario_stop(args, run_dir, 'exit', 'ended the session')
+        elif sc == 'headtrack':
+            scenario_headtrack(args, run_dir)
         else:
             check(False, 'known scenario ' + sc)
     print('{} failed'.format(len(failures)) if failures else 'all passed')

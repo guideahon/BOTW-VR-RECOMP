@@ -17,6 +17,14 @@ const char *vr_status_text(void);
 // Frames begun / frames with an image for the headset, and the session's XrSessionState (0 before one)
 void vr_stats(uint64_t *frames, uint64_t *rendered, int *state);
 
+// Phase 2 (runtime/vr/vr_camera.c). In play the headset moves the world camera and the game draws its field of view;
+// elsewhere (menus, events, loading) the game is shown on the virtual screen.
+bool vr_world_view(void);           // this frame is drawn for the headset (in play, session running)
+void vr_camera_lookat(float *f);    // runtime/hle/freecam.c rt_lookat: a view camera's eye[3] at[3] up[3]
+bool vr_persp(float *tan_fovy, float *aspect);  // runtime/nvn/output_scale.c rt_persp: the world camera's frustum
+void vr_recenter(void);             // the head's current pose becomes the game camera's (next camera update)
+uint64_t vr_camera_updates(void);   // camera updates the head was applied to
+
 #ifdef VK_VERSION_1_0
 // runtime/nvn/vulkan/device.c (runtime/vr/xr_vulkan.c): each falls back to the plain Vulkan call when VR is off
 VkResult vr_vk_create_instance(const VkInstanceCreateInfo *ci, VkInstance *out);
