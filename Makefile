@@ -947,7 +947,7 @@ $(B)/test_vr_math: tests/vr/test_vr_math.c runtime/vr/vr_math.h tests/vr/vr_test
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
 
-$(FAKE_XR): tools/vr/fake_xr/fake_xr.c runtime/vr/vr_math.h
+$(FAKE_XR): tools/vr/fake_xr/fake_xr.c tools/vr/fake_xr/fake_xr_vk.inc tools/vr/fake_xr/fake_xr.h runtime/vr/vr_math.h
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -fvisibility=hidden $(FAKE_XR_LD) -o $@ $< -lm
 
@@ -964,6 +964,17 @@ $(B)/test_fake_xr_session: tools/vr/test_fake_xr_session.c tools/vr/fake_xr/fake
 $(B)/test_fake_xr_loader: tools/vr/test_fake_xr_loader.c tests/vr/vr_test.h
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< $(OPENXR_LIB) -lm
+
+# test-vr-vulkan: fake_xr's swapchains with a real Vulkan driver (a GPU, or Mesa's lavapipe in CI); it says
+# "skipped" when there is no Vulkan driver at all
+VR_VULKAN_LIB ?= $(if $(filter windows,$(PLATFORM)),-lvulkan-1,-lvulkan)
+$(B)/test_fake_xr_vulkan: tools/vr/test_fake_xr_vulkan.c tools/vr/fake_xr/fake_xr.h tests/vr/vr_test.h
+	@mkdir -p $(dir $@)
+	$(CC) $(VR_TEST_CFLAGS) -o $@ $< $(VR_VULKAN_LIB) $(VR_DL_LD) -lm
+
+test-vr-vulkan: $(B)/test_fake_xr_vulkan fake-xr
+	@mkdir -p $(B)/vr/vulkan
+	$(B)/test_fake_xr_vulkan $(FAKE_XR) $(B)/vr/vulkan
 
 test-vr: $(B)/test_vr_math $(B)/test_fake_xr_session fake-xr
 	$(B)/test_vr_math
@@ -986,4 +997,4 @@ test-vr-loader-runtime: $(B)/test_fake_xr_loader $(B)/test_vr_init fake-xr
 test-vr-loader-none: $(B)/test_vr_init
 	SAVAGEWIND_VR=1 XR_RUNTIME_JSON=$(B)/vr/no_such_runtime.json $(B)/test_vr_init no-runtime
 
-.PHONY: test-vr test-vr-loader test-vr-loader-runtime test-vr-loader-none fake-xr
+.PHONY: test-vr test-vr-vulkan test-vr-loader test-vr-loader-runtime test-vr-loader-none fake-xr

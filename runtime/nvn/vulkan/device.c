@@ -29,6 +29,16 @@
 #include "../output_scale.h"
 #include "../renderer.h"
 #include "dlss.h"
+#ifdef SW_VR  // (make VR=1: the instance, the GPU and the device through OpenXR, the window image to the headset)
+#include "../../vr/vr.h"
+#else
+#define vr_vk_create_instance(ci, out) vkCreateInstance((ci), NULL, (out))
+#define vr_vk_physical_device(inst) ((void)(inst), (VkPhysicalDevice)VK_NULL_HANDLE)
+#define vr_vk_create_device(pd, ci, out) vkCreateDevice((pd), (ci), NULL, (out))
+#define vr_vk_session_start(inst, pd, dev, qfam, qindex) ((void)0)
+#define vr_frame_record(cb, img, ext, fmt) ((void)0)
+#define vr_frame_after_submit() ((void)0)
+#endif
 
 #ifdef _WIN32  // (kernel32; windows.h itself clashes with names used here)
 __declspec(dllimport) int __stdcall MoveFileExA(const char *from, const char *to, unsigned long flags);
@@ -121,13 +131,13 @@ static void create_instance(void) {
     VkInstanceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app,
                                .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext,
                                .enabledLayerCount = validate ? 1 : 0, .ppEnabledLayerNames = layers};
-    VkResult r = vkCreateInstance(&ci, NULL, &g_vk.inst);
+    VkResult r = vr_vk_create_instance(&ci, &g_vk.inst);
     if (r != VK_SUCCESS && validate) {
         LOG("[vk] validation layer unavailable (%d); continuing without\n", r);
         ci.enabledLayerCount = 0;
         ci.enabledExtensionCount--;
         validate = false;
-        r = vkCreateInstance(&ci, NULL, &g_vk.inst);
+        r = vr_vk_create_instance(&ci, &g_vk.inst);
     }
     if (r != VK_SUCCESS) FATAL("vkCreateInstance: %d (is a Vulkan 1.3 driver installed?)\n", r);
     if (validate || ar) {
@@ -162,6 +172,7 @@ static void pick_device(void) {
     if (override && *override && want < 0 && strcmp(override, "auto"))
         LOG("[vk] invalid SAVAGEWIND_GPU '%s'; using automatic selection\n", override);
     int best = -1, best_score = -1;
+    VkPhysicalDevice headset = vr_vk_physical_device(g_vk.inst);  // (VR: the GPU the headset is on, before any other)
     for (uint32_t i = 0; i < n; i++) {
         VkPhysicalDeviceProperties p;
         vkGetPhysicalDeviceProperties(pd[i], &p);
@@ -185,6 +196,7 @@ static void pick_device(void) {
         if (!usable) continue;
         int score = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 3 : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
         if ((int)i == want) score = 100;
+        if (headset && pd[i] == headset) score = 200;
         if (score > best_score) { best_score = score; best = (int)i; }
     }
     if (best < 0) FATAL("no Vulkan 1.3 device with a graphics+compute+present queue\n");
@@ -994,12 +1006,13 @@ static void create_device(void) {
     }
     VkDeviceCreateInfo di = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, .pNext = &f, .queueCreateInfoCount = 1,
                              .pQueueCreateInfos = &qi, .enabledExtensionCount = n_ext, .ppEnabledExtensionNames = ext};
-    VK_CHECK(vkCreateDevice(g_vk.phys, &di, NULL, &g_vk.dev));
+    VK_CHECK(vr_vk_create_device(g_vk.phys, &di, &g_vk.dev));
     free(ep);  // (read up to here: extended dynamic state and the FSR 4 checks above, #488)
     fsr_api_probe(g_vk.dev, g_vk.phys);  // (logs what AMD's FSR DLLs offer this device; a no-op without them)
     vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 0, &g_vk.queue);
     g_vk.present_queue = g_vk.queue;
     if (qi.queueCount == 2) vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 1, &g_vk.present_queue);
+    vr_vk_session_start(g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, 0);  // (VR: the session shares the game's queue)
     if (plat_guest_sparse_heap_enabled()) {
         sparse_host_import_probe();
     }
@@ -2136,6 +2149,7 @@ void vk_frame_end(const char *shot_path) {
     rec_CmdEndRendering(cb);
     VkSpan shot = {0};
     if (shot_path) save_window_image(cb, &shot);
+    if (!g_hdr) vr_frame_record(cb, g_vk.sc_images[cur_frame.image], g_vk.sc_extent, g_vk.sc_format);
     if (g_hdr) hdr_write(cb, cur_frame.image);
     else image_barrier(cb, g_vk.sc_images[cur_frame.image], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     uint32_t img = cur_frame.image;
@@ -2143,6 +2157,7 @@ void vk_frame_end(const char *shot_path) {
     uint64_t seq = vk_pending_seq();
     uint64_t ts = SDL_GetTicksNS();
     { SW_ZONE("present/submit"); vk_submit_extra(cur_frame.acquired, done_sem[img], VK_NULL_HANDLE); }
+    vr_frame_after_submit();  // (VR: hand the copied image back and end the OpenXR frame, after this submission)
     g_present_split[3] += SDL_GetTicksNS() - ts;
     ts = SDL_GetTicksNS();
     bool presented_ok;

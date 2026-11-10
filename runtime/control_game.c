@@ -448,6 +448,9 @@ void control_game_init(void) {
         {"report", "", "Build an issue report and copy it", cmd_report, CONTROL_PLAYER},
     };
     control_register(player, (int)(sizeof player / sizeof *player));
+#ifdef SW_VR
+    { extern void vr_control_init(void); vr_control_init(); }  // (make VR=1: `vr`, runtime/vr/vr_control.c)
+#endif
     control_settings_init();  // (get for everyone, set only in developer mode)
     if (!control_enabled()) return;
     static const ControlCmd dev[] = {

@@ -11,7 +11,10 @@
 #include <string.h>
 
 #define XR_NO_PROTOTYPES
+#define XR_USE_GRAPHICS_API_VULKAN
+#include <vulkan/vulkan.h>
 #include <openxr/openxr.h>
+#include <openxr/openxr_platform.h>
 #include <openxr/openxr_loader_negotiation.h>
 #include <openxr/openxr_reflection.h>
 
@@ -40,13 +43,20 @@ typedef struct {
     FILE *log;
     script_line *lines;
     int count;
+    char capture_dir[1024];  // FAKE_XR_CAPTURE: PPMs of the layers' images go here
+    int capture_every;       // FAKE_XR_CAPTURE_EVERY: every n-th ended frame (0: none)
 } config;
 
 // ---- handles ----
 typedef struct session session;
 typedef struct {
     uint32_t magic;
-    bool headless;
+    bool headless, vulkan;  // the extensions the app enabled
+    bool vk_requirements;   // xrGetVulkanGraphicsRequirements2KHR was called
+    VkInstance vk_inst;     // what xrCreateVulkanInstanceKHR / ...Device2KHR / ...DeviceKHR made or chose
+    PFN_vkGetInstanceProcAddr vk_gipa;
+    VkPhysicalDevice vk_phys;
+    VkDevice vk_dev;
     config cfg;
     session *session;
 } instance;
@@ -70,6 +80,7 @@ struct session {
     bool begun;
     int script_at;          // the next script line to apply
     vr_pose head;           // VIEW in STAGE space
+    struct fxvk *vk;        // the graphics binding (fake_xr_vk.inc), NULL headless
 };
 
 typedef struct {
@@ -191,7 +202,7 @@ static space *get_space(XrSpace h) {
     } while (0)
 
 // ---- instance ----
-static const char *const extensions[] = {XR_MND_HEADLESS_EXTENSION_NAME};
+static const char *const extensions[] = {XR_MND_HEADLESS_EXTENSION_NAME, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME};
 #define EXTENSION_COUNT (sizeof extensions / sizeof *extensions)
 
 static XrResult XRAPI_CALL fx_EnumerateInstanceExtensionProperties(const char *layer, uint32_t cap, uint32_t *count,
@@ -215,31 +226,38 @@ static XrResult XRAPI_CALL fx_CreateInstance(const XrInstanceCreateInfo *ci, XrI
     if (XR_VERSION_MAJOR(ci->applicationInfo.apiVersion) != 1) return XR_ERROR_API_VERSION_UNSUPPORTED;
     if (!ci->applicationInfo.applicationName[0]) return XR_ERROR_NAME_INVALID;
     if (ci->enabledApiLayerCount) return XR_ERROR_API_LAYER_NOT_PRESENT;
-    bool headless = false;
+    bool headless = false, vulkan = false;
     for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) {
         bool known = false;
         for (uint32_t k = 0; k < EXTENSION_COUNT; k++)
             if (!strcmp(ci->enabledExtensionNames[i], extensions[k])) known = true;
         if (!known) return XR_ERROR_EXTENSION_NOT_PRESENT;
         if (!strcmp(ci->enabledExtensionNames[i], XR_MND_HEADLESS_EXTENSION_NAME)) headless = true;
+        if (!strcmp(ci->enabledExtensionNames[i], XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME)) vulkan = true;
     }
     instance *in = calloc(1, sizeof *in);
     in->magic = MAGIC_INSTANCE;
     in->headless = headless;
+    in->vulkan = vulkan;
     in->cfg.ipd = FAKE_XR_DEFAULT_IPD;
     in->cfg.hz = FAKE_XR_DEFAULT_HZ;
     const char *v;
     if ((v = getenv("FAKE_XR_IPD")) && atof(v) >= 0) in->cfg.ipd = (float)atof(v);
     if ((v = getenv("FAKE_XR_HZ")) && atoi(v) > 0) in->cfg.hz = atoi(v);
     if ((v = getenv("FAKE_XR_LOG")) && *v) in->cfg.log = fopen(v, "w");
+    if ((v = getenv("FAKE_XR_CAPTURE")) && *v) {
+        snprintf(in->cfg.capture_dir, sizeof in->cfg.capture_dir, "%s", v);
+        in->cfg.capture_every = 30;
+    }
+    if ((v = getenv("FAKE_XR_CAPTURE_EVERY")) && *v) in->cfg.capture_every = atoi(v);
     if ((v = getenv("FAKE_XR_SCRIPT")) && *v && !load_script(&in->cfg, v)) {
         fprintf(stderr, "fake_xr: can't read FAKE_XR_SCRIPT %s\n", v);
         if (in->cfg.log) fclose(in->cfg.log);
         free(in);
         return XR_ERROR_INITIALIZATION_FAILED;
     }
-    logf_(in, "instance app=%s hz=%d ipd=%.4f script_lines=%d headless=%d\n", ci->applicationInfo.applicationName,
-          in->cfg.hz, in->cfg.ipd, in->cfg.count, headless);
+    logf_(in, "instance app=%s hz=%d ipd=%.4f script_lines=%d headless=%d vulkan=%d\n",
+          ci->applicationInfo.applicationName, in->cfg.hz, in->cfg.ipd, in->cfg.count, headless, vulkan);
     g_stats.instances++;
     *out = (XrInstance)(uintptr_t)in;
     return XR_SUCCESS;
@@ -366,6 +384,12 @@ static XrResult XRAPI_CALL fx_EnumerateEnvironmentBlendModes(XrInstance h, XrSys
     return XR_SUCCESS;
 }
 
+// ---- the graphics part (fake_xr_vk.inc) ----
+static XrResult fxvk_session_create(session *s, const XrGraphicsBindingVulkanKHR *b);
+static void fxvk_session_destroy(session *s);
+static XrResult fxvk_check_layer(session *s, const XrCompositionLayerBaseHeader *l);
+static void fxvk_capture(session *s, const XrFrameEndInfo *ei, uint64_t frame);
+
 // ---- session ----
 static XrResult XRAPI_CALL fx_CreateSession(XrInstance h, const XrSessionCreateInfo *ci, XrSession *out) {
     instance *in = get_instance(h);
@@ -373,11 +397,22 @@ static XrResult XRAPI_CALL fx_CreateSession(XrInstance h, const XrSessionCreateI
     if (!ci || !out || ci->type != XR_TYPE_SESSION_CREATE_INFO) return XR_ERROR_VALIDATION_FAILURE;
     if (ci->systemId != FAKE_XR_SYSTEM_ID) return XR_ERROR_SYSTEM_INVALID;
     if (in->session) return XR_ERROR_LIMIT_REACHED;  // one session per instance, as most runtimes
-    if (ci->next) return XR_ERROR_GRAPHICS_DEVICE_INVALID;  // a graphics binding: phase 1
-    if (!in->headless) return XR_ERROR_GRAPHICS_DEVICE_INVALID;  // no binding is only valid with XR_MND_headless
+    const XrGraphicsBindingVulkanKHR *binding = NULL;
+    for (const XrBaseInStructure *n = ci->next; n; n = n->next) {
+        if (n->type == XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR && in->vulkan) binding = (const XrGraphicsBindingVulkanKHR *)n;
+        else return XR_ERROR_GRAPHICS_DEVICE_INVALID;  // a binding of an API this runtime has no extension enabled for
+    }
+    if (!binding && !in->headless) return XR_ERROR_GRAPHICS_DEVICE_INVALID;  // no binding: only with XR_MND_headless
     session *s = calloc(1, sizeof *s);
     s->magic = MAGIC_SESSION;
     s->inst = in;
+    if (binding) {
+        XrResult r = fxvk_session_create(s, binding);
+        if (XR_FAILED(r)) {
+            free(s);
+            return r;
+        }
+    }
     s->state = s->queued = XR_SESSION_STATE_UNKNOWN;
     s->head = euler_pose(0, FAKE_XR_HEAD_HEIGHT, 0, 0, 0, 0);
     in->session = s;
@@ -393,6 +428,7 @@ static XrResult XRAPI_CALL fx_DestroySession(XrSession h) {
     session *s = get_session(h);
     if (!s) return XR_ERROR_HANDLE_INVALID;
     logf_(s->inst, "session destroyed\n");
+    fxvk_session_destroy(s);
     s->inst->session = NULL;
     s->magic = 0;
     free(s);
@@ -553,11 +589,15 @@ static XrResult XRAPI_CALL fx_EndFrame(XrSession h, const XrFrameEndInfo *ei) {
             ((const XrCompositionLayerProjection *)l)->viewCount != 2)
             return XR_ERROR_VALIDATION_FAILURE;
         if (!get_space(l->space)) return XR_ERROR_HANDLE_INVALID;
+        if (!s->vk) return XR_ERROR_LAYER_INVALID;  // (headless: nothing to show)
+        XrResult lr = fxvk_check_layer(s, l);
+        if (XR_FAILED(lr)) return lr;
         size_t n = strlen(kinds);
         snprintf(kinds + n, sizeof kinds - n, "%s%s", n ? "," : "", layer_kind(l->type));
     }
     s->begun = false;
     g_stats.frames_ended++;
+    fxvk_capture(s, ei, g_stats.frames_ended);
     g_stats.last_layer_count = ei->layerCount;
     logf_(s->inst, "frame %llu display_time %lld layers %u %s\n", (unsigned long long)s->frame,
           (long long)ei->displayTime, ei->layerCount, kinds);
@@ -662,6 +702,8 @@ static XrResult XRAPI_CALL fx_LocateViews(XrSession h, const XrViewLocateInfo *l
     return XR_SUCCESS;
 }
 
+#include "fake_xr_vk.inc"
+
 // ---- the loader's entry points ----
 typedef struct {
     const char *name;
@@ -676,6 +718,9 @@ static const proc procs[] = {
     P(EnumerateEnvironmentBlendModes), P(CreateSession), P(DestroySession), P(PollEvent), P(BeginSession),
     P(RequestExitSession), P(EndSession), P(WaitFrame), P(BeginFrame), P(EndFrame), P(EnumerateReferenceSpaces),
     P(CreateReferenceSpace), P(DestroySpace), P(LocateSpace), P(LocateViews),
+    P(GetVulkanGraphicsRequirements2KHR), P(CreateVulkanInstanceKHR), P(GetVulkanGraphicsDevice2KHR),
+    P(CreateVulkanDeviceKHR), P(EnumerateSwapchainFormats), P(CreateSwapchain), P(DestroySwapchain),
+    P(EnumerateSwapchainImages), P(AcquireSwapchainImage), P(WaitSwapchainImage), P(ReleaseSwapchainImage),
 };
 #undef P
 

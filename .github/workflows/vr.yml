@@ -39,8 +39,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang libopenxr-dev
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang libopenxr-dev libvulkan-dev mesa-vulkan-drivers
       - run: make test-vr
+      # fake_xr's swapchains on Mesa's lavapipe (a Vulkan driver on the CPU)
+      - run: make test-vr-vulkan
       - run: make test-vr-loader
 
   windows:
@@ -57,7 +59,10 @@ jobs:
           update: true
           install: >-
             make mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-openxr-sdk
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-vulkan-loader
       - run: make test-vr
+      # (no GPU on the runner: it builds, and says skipped)
+      - run: make test-vr-vulkan
       # The runner is elevated, so the loader ignores XR_RUNTIME_JSON: fake_xr becomes the registry's active runtime.
       - name: Register fake_xr as the active OpenXR runtime
         shell: pwsh

@@ -9,19 +9,29 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | Phase | What | State |
 |---|---|---|
 | 0 | Build flag, OpenXR loader, pose / projection math, the `fake_xr` test runtime, CI | done |
-| 1 | OpenXR session on the game's Vulkan device; the flat game on a virtual screen | next |
-| 2 | Head tracking (one view), the game's projection from the headset's field of view | |
+| 1 | OpenXR session on the game's Vulkan device; the flat game on a virtual screen in the headset | done |
+| 2 | Head tracking (one view), the game's projection from the headset's field of view | next |
 | 3 | Stereo: one game update, two renders | |
 | 4 | HUD and menus as layers | |
 | 5 | VR controllers as the game's controller | |
 | 6+ | Comfort, hands and arms, motion combat, performance | |
 
-Phase 0 only checks that an OpenXR runtime answers and says so in the log; the game is still drawn flat:
+Phase 1: the window image (the game with its HUD) is copied every frame to a quad layer, a screen 3 m wide 2.5 m ahead
+at eye height (`SAVAGEWIND_VR_SCREEN_WIDTH`, `SAVAGEWIND_VR_SCREEN_DISTANCE`, metres). The window keeps showing the
+game. If the runtime is missing, has no headset, or ends or loses the session, the game goes on flat and says why:
 
 ```
-[vr] OpenXR runtime <name> <version> (phase 0: the game is still drawn flat)
-[vr] VR asked for, but no OpenXR runtime answered (xrCreateInstance: -51): staying flat
+[vr] OpenXR runtime <name> <version>, headset <name>
+[vr] session on queue family 0 index 0; virtual screen 3.0 m wide at 2.5 m
+[vr] virtual screen swapchain 1920x1080, 3 images
+[vr] VR stopped (the session was lost): the game goes on flat
 ```
+
+The `vr` control command (player safe, also in the in-game console) says what it is doing: on or off, why, the session
+state and how many frames went to the headset.
+
+Baseline before any VR rendering: [vr/baseline-flat.md](vr/baseline-flat.md) (RTX 3090, 1080p: 167 to 229 fps, the
+render thread the limit at 4 to 6 ms a frame).
 
 ## Building
 
@@ -35,53 +45,62 @@ SAVAGEWIND_VR=1 build/savagewind.exe extracted --play
 
 `OPENXR_LIB` points at another loader (`make VR=1 OPENXR_LIB="-L/path -lopenxr_loader"`).
 
-## Code
+## How it hooks in
+
+| Where | What |
+|---|---|
+| `runtime/main.c` | `vr_init` after the settings: the OpenXR instance (with `XR_KHR_vulkan_enable2`) and the headset |
+| `runtime/nvn/vulkan/device.c` `create_instance` / `pick_device` / `create_device` | through `vr_vk_*`: the runtime makes the Vulkan instance and device and names the GPU; then the session on the game's queue |
+| `device.c` `vk_frame_end` | `vr_frame_record` copies the window image into the headset's swapchain image; `vr_frame_after_submit` releases it and ends the OpenXR frame through `rec_custom`, after the submission, in order with every other use of the queue |
+| `runtime/control_game.c` | the `vr` command |
+
+Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 
 | File | What |
 |---|---|
-| `runtime/vr/vr.h`, `vr.c` | `vr_init` (from `main`, after the settings), `vr_enabled`, `vr_status_text` |
-| `runtime/vr/vr_math.h` | Quaternions, poses, the tracking space to game world mapping (`vr_anchor`), recentring, the LookAtCamera eye / at / up of a view, projections from `XrFovf`. Its conventions are at the top of the file |
+| `runtime/vr/vr.h`, `vr.c` | `vr_init`, `vr_enabled`, `vr_status_text`; the OpenXR instance |
+| `runtime/vr/xr_vulkan.c` | the Vulkan side and the session, the swapchain and the frame loop |
+| `runtime/vr/vr_control.c` | the `vr` command |
+| `runtime/vr/vr_math.h` | quaternions, poses, the tracking space to game world mapping (`vr_anchor`), recentring, the LookAtCamera eye / at / up of a view, projections from `XrFovf`. Its conventions are at the top of the file |
 | `tools/vr/fake_xr/` | `fake_xr`, a scripted OpenXR runtime for tests (below) |
-| `tests/vr/`, `tools/vr/test_*.c` | The tests |
+| `tests/vr/`, `tools/vr/test_*` | the tests |
 
 ## Tests
 
-None of them need game files, a GPU or a headset.
+| Command | Needs | What |
+|---|---|---|
+| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
+| `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
+| `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the headset image lit and within a few levels of the window's own screenshot), `lost` and `exit` (VR stops, the game goes on flat) |
 
-```
-make test-vr          # test_vr_math, test_fake_xr_session
-make test-vr-loader   # through the system's OpenXR loader: test_fake_xr_loader, test_vr_init (4 runs)
-```
-
-`VR_TEST_VERBOSE=1` prints each part of a test as it starts.
-
-- `test_vr_math`: the math against values worked out by hand from the conventions, not from the code (axes, yaw and
-  pitch both ways, recentring, every frustum edge of an asymmetric field in each clip-space convention).
-- `test_fake_xr_session`: drives `fake_xr` the way the loader and an app do, without the loader: negotiation, the
-  session lifecycle and its errors (`SESSION_NOT_READY`, `NOT_STOPPING`, `CALL_ORDER_INVALID`, `FRAME_DISCARDED`,
-  `TIME_INVALID` ...), frame timing, scripted head poses, focus changes, an exit the runtime asks for, a lost session.
-- `test_fake_xr_loader`: a whole session through the real loader with `XR_RUNTIME_JSON` at `fake_xr`'s manifest.
-- `test_vr_init`: `runtime/vr/vr.c` stays off without `SAVAGEWIND_VR`, finds `fake_xr`, and stays flat with a status
-  that says why when there is no runtime.
-
-`.github/workflows/vr.yml` runs both targets on Linux and Windows, and builds the whole app with `VR=1` on Windows.
+`VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `.github/workflows/vr.yml` runs the first three on Linux
+and Windows, and builds the whole app with `VR=1` on Windows. The game test never runs in public CI (it needs your own
+game files).
 
 On Windows outside MSYS2, a `libstdc++-6.dll` of another MinGW earlier on `PATH` (Git for Windows has one) keeps a
-loader built with a newer GCC from starting (exit code 127): put the compiler's own `bin` first.
+loader built with a newer GCC from starting (exit code 127): put the compiler's own `bin` first. GitHub's Windows runners
+are elevated, and the loader ignores `XR_RUNTIME_JSON` in an elevated process: the CI registers fake_xr in the registry
+instead.
 
 ### fake_xr
 
 A small OpenXR runtime (`build/vr/fake_xr.dll` / `.so` and `build/vr/fake_xr.json`, `make fake-xr`). Any OpenXR app,
 the game included, uses it with `XR_RUNTIME_JSON=build/vr/fake_xr.json`. It follows the session lifecycle strictly, so
 an app that gets it wrong fails here as on a real runtime, and its time is deterministic (frame n is shown at a fixed
-base plus n periods). What it reads (`tools/vr/fake_xr/fake_xr.h`):
+base plus n periods; it never waits, so the game runs at its own frame rate). What it reads
+(`tools/vr/fake_xr/fake_xr.h`):
 
 | Variable | |
 |---|---|
 | `FAKE_XR_SCRIPT` | head poses and events over time: `<t> head x y z yaw pitch roll`, `<t> unfocus`, `focus`, `exit`, `lose` |
-| `FAKE_XR_LOG` | one line per state change and per `xrEndFrame` (layer count and kinds) |
+| `FAKE_XR_LOG` | one line per state change, per `xrEndFrame` (layer count and kinds) and per capture (mean colour, lit share) |
+| `FAKE_XR_CAPTURE` | a folder for PPM captures of every layer's image |
+| `FAKE_XR_CAPTURE_EVERY` | every n-th ended frame (30 with `FAKE_XR_CAPTURE`) |
 | `FAKE_XR_HZ` | display rate (90) |
 | `FAKE_XR_IPD` | eye distance in metres (0.063) |
+| `FAKE_XR_GPU` | the GPU it names for the headset (default: the first discrete one) |
 
-Phase 0 has no graphics in it (sessions need `XR_MND_headless`); phase 1 adds `XR_KHR_vulkan_enable2`, swapchains and a
-picture of each eye for the tests that run the game.
+It has `XR_MND_headless` and `XR_KHR_vulkan_enable2`. With Vulkan it checks what a real runtime would: the
+requirements call before the session, the session on the device it named, swapchain images acquired, waited and
+released in order, layers that name a released image and a rectangle inside it.
