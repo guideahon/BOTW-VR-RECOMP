@@ -33,6 +33,12 @@ game. If the runtime is missing, has no headset, or ends or loses the session, t
 The `vr` control command (player safe, also in the in-game console) says what it is doing: on or off, why, the session
 state and how many frames went to the headset.
 
+First person (`SAVAGEWIND_VR_VIEW=first`, the default, as in BetterVR): in play the neutral head is put in Link's head
+(his real position, 1.55 m up and 0.18 m ahead), looking the game camera's way; the head's turn and movement go on from
+there, the right stick still turns the heading and the left stick walks Link the way the view looks (the game walks him
+relative to the view it draws). Link's own model is not hidden yet: looking down shows his body, and some poses (climbing,
+gliding) put his head or hair in front of the eye. `third` keeps the view on the game's camera, as below.
+
 Phase 2: in play (not paused, no event, no title, map or loading screen) the head moves the game's camera
 (`runtime/vr/vr_camera.c`, from `rt_lookat` in `runtime/hle/freecam.c`): the game's camera keeps its place and heading
 (it still follows Link and turns with the stick), the head adds its turn and its movement since the last recentring and
@@ -70,6 +76,24 @@ OpenXR action set with bindings for Oculus / Meta Touch, Valve Index, Windows Mi
 controller; each poll of the game's input reads them and adds them to the gamepad's and keyboard's (a gamepad keeps
 working). `SAVAGEWIND_VR_CONTROLLERS=0` turns them off.
 
+BetterVR's controls (the default; `runtime/vr/vr_gestures.h`, ported from BetterVR's controls.cpp):
+
+| VR controller | Game | VR controller | Game |
+|---|---|---|---|
+| left stick | move; click: crouch, held: scope | right stick | camera (snap or smooth); click: inventory, held: map |
+| left trigger | lock on / shield (ZL) | right trigger | use what is in hand: attack, draw the bow, use the rune |
+| left Y | the rune (L); held: the runes' menu | right B | jump (X) |
+| left X held | the map | right A | grab / interact (A); held: run (B) |
+| grips | grab / interact (A), or a body slot's item | menu | the inventory |
+
+Body slots (a grip pressed and let go over them; held 0.5 s: the quick menu, open while held, the choice taken out on
+letting go): the right shoulder, the melee weapon (again: put it away; held: the weapons); the left shoulder, the bow
+(held: the shields with a weapon out, else the bows); the left hip, the rune (held: the runes). Both grips at the mouth:
+whistle. The right trigger held at the right shoulder with a weapon out throws it when let go. A fast left-hand thrust
+while guarding: parry. Each slot reached and each gesture vibrates the controller; each swing that attacks too.
+`SAVAGEWIND_VR_LEFT_HANDED=1` swaps the hands' parts (not the sticks). `SAVAGEWIND_VR_CONTROLS=classic` keeps the
+earlier mapping:
+
 | VR controller | Game | VR controller | Game |
 |---|---|---|---|
 | left stick | move | right stick | camera |
@@ -79,6 +103,10 @@ working). `SAVAGEWIND_VR_CONTROLLERS=0` turns them off.
 | left trigger | ZL (shield, lock on) | right trigger | ZR (bow) |
 | menu: a tap | + (inventory) | menu: held 0.6 s | - (map) |
 | left grip + right stick | d-pad (weapons, shields, bows, runes) | | |
+
+What Link has in hand is not read from the game yet (BetterVR reads it from his bones): the gestures track it from what
+they and the buttons do, so a weapon taken out another way (a menu, a pick-up) can make the next shoulder grab put it
+away instead of taking one out; a second grab sets it right.
 
 (Index: the left A / B are X / Y and the left trackpad pressed is the menu; WMR and Vive: the touchpads pressed are A
 and X, the right menu B, and on the Vive the touchpads are the sticks.)
@@ -115,7 +143,12 @@ The log says what was found (`[vr]` lines). Useful settings, as environment vari
 
 | Variable | Default | |
 |---|---|---|
+| `SAVAGEWIND_VR_VIEW` | first | `first`: the eye in Link's head, as in BetterVR; `third`: on the game's camera behind him |
+| `SAVAGEWIND_VR_EYE_HEIGHT`, `_EYE_FORWARD` | 1.55, 0.18 | first person: the eye above Link's feet and ahead of his head (m) |
 | `SAVAGEWIND_VR_TURN` | smooth | `snap`: the right stick turns the view in steps |
+| `SAVAGEWIND_VR_TURN_SPEED` | 1 | smooth turning's speed (BetterVR's slow 0.6, fast 1.5) |
+| `SAVAGEWIND_VR_CONTROLS` | bettervr | `classic`: the earlier mapping, without body gestures |
+| `SAVAGEWIND_VR_LEFT_HANDED` | 0 | `1`: the hands' parts swapped |
 | `SAVAGEWIND_VR_SNAP_DEGREES` | 45 | the step |
 | `SAVAGEWIND_VR_HEIGHT` | 1080 | the eye images' height (the width follows the headset's shape); with Video > Render scale above 100% the game draws them sharper |
 | `SAVAGEWIND_VR_STEREO` | 1 | `0`: one picture for both eyes (lighter, no depth) |
@@ -160,7 +193,9 @@ meant and not otherwise. Needs a headset.
 | Link's arms follow the hands (two-bone IK from the shoulders, BetterVR's skeleton.cpp) | the game's code: the arm bones' local matrices after the animation, Link's model unit, the bone names | candidates found, none confirmed (re-notes) |
 | The weapon in the hand, following it | the game's code: the weapon's attachment to Weapon_R | not started |
 | The weapon hits where it moves, scaled by the swing's power | the game's code: the weapon's attack sensor | not started (attacks now are the game's own, by gesture) |
-| Grabbing weapons from the back, dropping, throwing by gesture | the game's code: equip / drop / throw | not started |
+| Grabbing weapons from the back, throwing, whistling, parrying by gesture | nothing more | done (vr_gestures.h; what is in hand tracked, not read) |
+| What is in Link's hands, read from the game | the game's code: the equipment attached to Weapon_R / Weapon_L | not started |
+| Dropping by gesture (left hand at the right hip), magnesis by hand motion | what is in hand, read | not started |
 | Bow: the right hand draws, the left aims (BetterVR's bow.cpp) | the game's code: the bow's aim and draw state | not started (ZR and the camera aim it) |
 | Runes and the shield aimed with the hands | the game's code | not started |
 | Two-handed weapons held with both hands | the arms first | not started |
@@ -173,7 +208,9 @@ meant and not otherwise. Needs a headset.
 | A vignette while moving or turning | a pass over the eyes' pictures (exec.c, like vr_hud.frag) | not started |
 | Seated or standing height, the floor at its height | nothing from the game | not started |
 | Turning with the head only (no stick turn) | nothing from the game | not started |
-| First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head, the camera at his eyes | not started (the view is the game's third-person camera with the head on it) |
+| First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head | done but his head (the eye at his position, 1.55 m up; `SAVAGEWIND_VR_VIEW`) |
+| Hiding Link's head and hat in first person | the game's code: the model's opacity or the head bone | not started |
+| Cutscenes in first person or third (BetterVR's event modes) | the game's code: the event camera | not started (events on the virtual screen) |
 | Smooth locomotion relative to the hand instead of the head | nothing from the game | not started |
 
 **Picture and performance (phase 9)**
@@ -191,7 +228,8 @@ meant and not otherwise. Needs a headset.
 
 | What | Needs | State |
 |---|---|---|
-| A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | not started |
+| A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | not started (the installer writes them into its launcher) |
+| An installer | nothing more | done: `Install BOTW VR.bat` (tools/vr/installer.py: your folders, the tools, the build, the options, a shortcut) |
 | A release build of this fork (no source build needed) | packaging; the setup screen | not started |
 | Upstream: the generic hooks (projection, present, frame pacing) proposed to Savage Wind | its maintainers' interest | not started |
 | macOS | no OpenXR runtime there | not planned |
@@ -245,10 +283,10 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 
 | Command | Needs | What |
 |---|---|---|
-| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none), `test_vr_input_map` (each controller input's game button or stick: dead zone, d-pad chord, menu tap and hold, snap turning), `test_vr_melee` (slashes and stabs against slow turns, reaches, twists, returns to guard, tracking loss; the easy profile; the shield gesture) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
+| `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none), `test_vr_input_map` (each controller input's game button or stick: dead zone, d-pad chord, menu tap and hold, snap turning), `test_vr_melee` (slashes and stabs against slow turns, reaches, twists, returns to guard, tracking loss; the easy profile; the shield gesture), `test_vr_gestures` (BetterVR's body slots with the head turned or pitched, equip and put away, quick menus held, grab, whistle, throw, the trigger's use, run, the rune's menu, stick clicks, parry) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
-| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head; with the head turned 90 deg the left stick walks the view's way), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
 
 `VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `SAVAGEWIND_VR_LOG_CAMERA=<n>` logs every n-th camera
 update: the eye, the head, the game's camera and the view made of them. `SAVAGEWIND_VR_TRACE=<n>`: the first n of the

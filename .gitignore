@@ -45,3 +45,9 @@ docs/RAMAS.md
 /amiibo/
 /amiibo_data/
 /vk_pipelines.seed
+
+# (a run from the repository root: the game log and screenshots of the launcher or installer)
+/savagewind.log
+/savagewind.prev.log
+/screenshots/
+/Play BOTW VR.bat

@@ -482,6 +482,121 @@ def scenario_controllers(args, run_dir):
     check(dist(pos1, pos2) > 1, 'the left stick walked Link ({:.2f} m)'.format(dist(pos1, pos2)))
 
 
+def scenario_firstperson(args, run_dir):
+    """First person (the default view): the eye in Link's head; with the head turned 90 deg, the left stick pushed
+    back (2 s: the place may have a cliff ahead) walks Link away from where the view looks."""
+    L = '/user/hand/left/input/thumbstick'
+    cycle, lines = 60.0, []
+    for k in range(60):
+        t = k * cycle
+        lines += ['{} head 0 1.7 0 0 0 0'.format(t), '{} stick {} 0 0'.format(t, L),
+                  '{} head 0 1.7 0 90 0 0'.format(t + 30), '{} stick {} 0 -1'.format(t + 40, L),
+                  '{} stick {} 0 0'.format(t + 42, L)]
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'SAVAGEWIND_VR_STEREO': '0'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):
+            t = now_s()
+            target = (t // cycle) * cycle + offset
+            if target <= t:
+                target += cycle
+            while now_s() < target:
+                time.sleep(0.1)
+
+        wait_until(20)
+        cam0, pos0 = camera(game), game.cmd('pos', ok=False)
+        wait_until(38)
+        cam1, pos1 = camera(game), game.cmd('pos', ok=False)
+        wait_until(48)
+        pos2 = game.cmd('pos', ok=False)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    import math
+    if not (cam0 and cam1 and 'x' in pos0 and 'x' in pos1 and 'x' in pos2):
+        check(False, 'the camera and Link could be read')
+        return
+    d = math.sqrt((cam0['x'] - pos0['x']) ** 2 + (cam0['z'] - pos0['z']) ** 2)
+    h = cam0['y'] - pos0['y']
+    print('    eye from Link: {:.2f} m across, {:.2f} m up; view yaw {:.1f} -> {:.1f}'.format(d, h, cam0['yaw'], cam1['yaw']))
+    check(d < 0.5 and 1.0 < h < 2.2, 'the eye is in Link\'s head ({:.2f} m from him, {:.2f} m up)'.format(d, h))
+    walk = (pos2['x'] - pos1['x'], pos2['z'] - pos1['z'])
+    n = math.hypot(*walk)
+    check(n > 0.5, 'the left stick walked Link ({:.2f} m)'.format(n))
+    if n > 0.5:
+        yaw = math.radians(cam1['yaw'])
+        fwd = (math.sin(yaw), math.cos(yaw))
+        cos_a = (walk[0] * fwd[0] + walk[1] * fwd[1]) / n
+        check(cos_a < -0.8, 'with the head turned 90 deg, back walks him away from the view (cos {:.2f})'.format(cos_a))
+
+
+def scenario_gestures(args, run_dir):
+    """BetterVR's body gestures in play (third person, to see Link): the right hand's grip pressed and let go over the
+    right shoulder takes the weapon out, again puts it away; each pulses the controller; both grips at the mouth
+    whistle. Read from the gestures' trace, fake_xr's haptics and two pictures."""
+    G = '/user/hand/right/input/squeeze/value'
+    GL = '/user/hand/left/input/squeeze/value'
+    rest_r, rest_l, shoulder = '0.25 1.1 -0.35', '-0.25 1.1 -0.35', '0.15 1.65 0.12'
+    cycle, lines = 40.0, []
+    for k in range(40):
+        t = k * cycle
+        lines += ['{:.2f} hand right {} 0 0 0'.format(t, rest_r), '{:.2f} hand left {} 0 0 0'.format(t, rest_l),
+                  '{:.2f} value {} 0'.format(t, G), '{:.2f} value {} 0'.format(t, GL),
+                  '{:.2f} hand right {} 0 0 0'.format(t + 4, rest_r), '{:.2f} hand right {} 0 0 0'.format(t + 4.5, shoulder),
+                  '{:.2f} value {} 1'.format(t + 5, G), '{:.2f} value {} 0'.format(t + 5.2, G),        # out
+                  '{:.2f} hand right {} 0 0 0'.format(t + 6, shoulder), '{:.2f} hand right {} 0 0 0'.format(t + 6.5, rest_r),
+                  '{:.2f} hand right {} 0 0 0'.format(t + 14, rest_r), '{:.2f} hand right {} 0 0 0'.format(t + 14.5, shoulder),
+                  '{:.2f} value {} 1'.format(t + 15, G), '{:.2f} value {} 0'.format(t + 15.2, G),      # away
+                  '{:.2f} hand right {} 0 0 0'.format(t + 16, shoulder), '{:.2f} hand right {} 0 0 0'.format(t + 16.5, rest_r),
+                  '{:.2f} hand right {} 0 0 0'.format(t + 24, rest_r), '{:.2f} hand left {} 0 0 0'.format(t + 24, rest_l),
+                  '{:.2f} hand right 0.02 1.62 -0.1 0 0 0'.format(t + 24.5), '{:.2f} hand left -0.03 1.62 -0.1 0 0 0'.format(t + 24.5),
+                  '{:.2f} value {} 1'.format(t + 25, G), '{:.2f} value {} 1'.format(t + 25, GL),       # whistle
+                  '{:.2f} value {} 0'.format(t + 26, G), '{:.2f} value {} 0'.format(t + 26, GL),
+                  '{:.2f} hand right 0.02 1.62 -0.1 0 0 0'.format(t + 26.5), '{:.2f} hand left -0.03 1.62 -0.1 0 0 0'.format(t + 26.5),
+                  '{:.2f} hand right {} 0 0 0'.format(t + 27, rest_r), '{:.2f} hand left {} 0 0 0'.format(t + 27, rest_l)]
+    lines.sort(key=lambda l: float(l.split()[0]))
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={
+        'SAVAGEWIND_VR_STEREO': '0', 'SAVAGEWIND_VR_VIEW': 'third', 'SAVAGEWIND_VR_TRACE_GESTURES': '1',
+        'SAVAGEWIND_VR_MOTION': '1', 'FAKE_XR_CAPTURE_EVERY': '0'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):
+            t = now_s()
+            target = (t // cycle) * cycle + offset
+            if target <= t:
+                target += cycle
+            while now_s() < target:
+                time.sleep(0.1)
+
+        wait_until(3)
+        game.cmd('shot', 'build/vr/gest_before.png', ok=False)
+        wait_until(11)
+        game.cmd('shot', 'build/vr/gest_out.png', ok=False)
+        wait_until(21)
+        game.cmd('shot', 'build/vr/gest_away.png', ok=False)
+        wait_until(30)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    for f in ('gest_before', 'gest_out', 'gest_away'):
+        src = os.path.join('build', 'vr', f + '.png')
+        if os.path.exists(src):
+            os.replace(src, os.path.join(run_dir, f + '.png'))
+    glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+    fl = fake_log(run_dir)
+    check('[vr] controls: BetterVR' in glog, 'BetterVR\'s control scheme is on')
+    check('gesture: in hand 0 -> 1' in glog, 'the right shoulder grip took the melee weapon out')
+    check('gesture: in hand 1 -> 0' in glog, 'again: put it away')
+    check('haptic /user/hand/right' in fl, 'the right controller vibrated ({} pulses)'.format(fl.count('haptic /user/hand/right')))
+    print('    pictures: {}'.format(os.path.join(run_dir, 'gest_*.png')))
+
+
 def scenario_snap(args, run_dir):
     """Snap turning: a push of the right stick turns the view one step, at once, and only one."""
     R = '/user/hand/right/input/thumbstick'
@@ -595,7 +710,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'stereo', 'hud', 'menus', 'controllers', 'snap', 'motion', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -627,6 +742,10 @@ def main(argv=None):
             scenario_menus(args, run_dir)
         elif sc == 'controllers':
             scenario_controllers(args, run_dir)
+        elif sc == 'firstperson':
+            scenario_firstperson(args, run_dir)
+        elif sc == 'gestures':
+            scenario_gestures(args, run_dir)
         elif sc == 'snap':
             scenario_snap(args, run_dir)
         elif sc == 'motion':

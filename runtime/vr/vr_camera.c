@@ -24,6 +24,7 @@
 #include "../rt.h"
 #include "../framepace.h"
 #include "../game_sites.h"
+#include "../control_cells.h"
 
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <vulkan/vulkan.h>
@@ -55,7 +56,33 @@ static struct {
     vr_view q[QUEUE];      // frames presented by the game, not yet by the queue thread
     unsigned q_head, q_count;
     uint64_t updates;
-} c = {.stereo = -1, .window_aspect = 1};
+    int first;             // -1 not read yet: SAVAGEWIND_VR_VIEW (first, the default, or third)
+    float eye_height, forward;  // first person: the eye above Link's feet, and ahead of his head's centre (m)
+    bool fp_now;           // the last camera was set in first person
+} c = {.stereo = -1, .window_aspect = 1, .first = -1};
+
+static float env_f(const char *name, float def, float lo, float hi) {
+    const char *e = getenv(name);
+    float v = e ? (float)atof(e) : def;
+    return v >= lo && v <= hi ? v : def;
+}
+
+// SAVAGEWIND_VR_VIEW=first (the default): the eye is in Link's head, as in BetterVR; third: on the game's own camera
+// behind him. SAVAGEWIND_VR_EYE_HEIGHT (1.55 m above his feet) and SAVAGEWIND_VR_EYE_FORWARD (0.18 m ahead, out of his
+// head's model) place it.
+static bool first_person(void) {
+    if (c.first < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_VIEW");
+        c.first = !(e && !strcmp(e, "third"));
+        c.eye_height = env_f("SAVAGEWIND_VR_EYE_HEIGHT", 1.55f, 0.3f, 3.0f);
+        c.forward = env_f("SAVAGEWIND_VR_EYE_FORWARD", 0.18f, 0.0f, 1.0f);
+        if (c.first) LOG("[vr] first person: the eye in Link's head (%.2f m up, %.2f m ahead; SAVAGEWIND_VR_VIEW=third: "
+                         "the game's camera)\n", c.eye_height, c.forward);
+        else LOG("[vr] third person: the view on the game's camera (SAVAGEWIND_VR_VIEW=third)\n");
+    }
+    return c.first;
+}
+
 
 static int trace_left = -1;
 static void trace(const char *what, int eye, int world) {
@@ -177,6 +204,14 @@ void vr_camera_lookat(float *f) {
     const float *gf = c.game;
     vr_vec3 geye = vr_v3(gf[0], gf[1], gf[2]);
     float yaw = vr_game_yaw_of(vr_v3(gf[3] - gf[0], gf[4] - gf[1], gf[5] - gf[2]));
+    // first person: the neutral head goes to Link's eyes, a little ahead of his head, facing the game camera's way
+    double lp[3];
+    c.fp_now = false;
+    if (first_person() && control_cell_get(&control_cell_player_pos, lp)) {
+        geye = vr_v3((float)lp[0] + sinf(yaw + c.turn) * c.forward, (float)lp[1] + c.eye_height,
+                     (float)lp[2] + cosf(yaw + c.turn) * c.forward);
+        c.fp_now = true;
+    }
     // the anchor that puts the neutral head at the game's eye, looking the game's way; the eye's pose from there
     vr_anchor a = vr_anchor_recenter(c.neutral, geye, yaw + c.turn, 1.0f);
     vr_lookat_from_view(a, view, f, f + 3, f + 6);

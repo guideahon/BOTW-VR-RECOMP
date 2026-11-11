@@ -9,6 +9,9 @@ set PATH=C:\msys64\ucrt64\bin;%PATH%
 
 set SAVAGEWIND_VR=1
 
+rem View: first = first person (in Link's head, as in BetterVR); third = the game's camera behind him.
+set SAVAGEWIND_VR_VIEW=first
+
 rem Height of each eye's image in pixels (the width follows the headset's shape).
 rem   1080 = light (~110 fps per eye on an RTX 3090)   1440 = sharper (~100)   1800 = very sharp (~90)
 set SAVAGEWIND_VR_HEIGHT=1440

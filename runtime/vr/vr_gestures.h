@@ -1,0 +1,214 @@
+// BetterVR's body gestures and control scheme, for runtime/vr/vr_input.c. Header only and free of the rest of the
+// runtime: tests/vr/test_vr_gestures.c checks it. Ported in C from BotW-BetterVR (Crementif and contributors, MIT:
+// src/hooking/controls.cpp calculateHandGesture, openDpadMenuBodySlots, processLeftHandInGameInput,
+// processRightHandInGameInput; third_party/BetterVR).
+//
+// Body slots, around the head (tracking space, metres): over a shoulder (behind the head, within 0.35 m of it, on
+// that side), at the left or right waist (0.45 m below the head and at or behind it), at the mouth (within 0.2 m, in
+// front). A grip pressed and let go over a slot (a short press, as BetterVR):
+//   right shoulder   the melee weapon (Y; again: put away, B)      held 0.5 s: the weapons quick menu (d-pad right)
+//   left shoulder    the bow (ZR; again: B)                         held: shields (d-pad left) with a melee weapon out,
+//                                                                    else the bows (d-pad right after drawing the bow)
+//   left waist       the Sheikah Slate rune (L; again: B)           held: the runes (d-pad up)
+//   both at mouth    whistle (d-pad down)
+// A quick menu stays open while the grip is held; let go, the item chosen is taken out (as BetterVR does).
+// Elsewhere the grip is grab / interact (A).
+//
+// BetterVR's buttons (scheme VR_SCHEME_BETTERVR; vr_input_map.h has the earlier one):
+//   right trigger   use what is in hand: the melee weapon attacks (Y), the bow draws (ZR), a rune is used (R); over
+//                   the right shoulder with a weapon out, held: throw (R, let go to throw)
+//   right A         grab / interact (A); held 0.4 s: run (B)          right B   jump (X)
+//   right stick     camera; its click: a tap the inventory (+), held the map (-)
+//   left trigger    lock on / shield (ZL)                              left Y    a tap the rune (L), held its menu
+//   left stick      move; its click: a tap crouch (L stick), held the scope (R stick)
+//   left X          (BetterVR's own menu there; here: held, the game's map)
+//   left hand swung at the face while guarding (ZL held): parry (A)
+//
+// What the game has in hand is not read from the game yet (BetterVR reads it from Link's bones): it is tracked here
+// from the gestures and buttons that change it, and a put-away (B, run) clears it.
+#pragma once
+#include <math.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "vr_input_map.h"
+
+typedef struct { float x, y, z; } vr_g3;
+
+enum { VR_HELD_NONE, VR_HELD_MELEE, VR_HELD_BOW, VR_HELD_RUNE };
+enum { VR_SLOT_NONE, VR_SLOT_RSHOULDER, VR_SLOT_LSHOULDER, VR_SLOT_LWAIST, VR_SLOT_RWAIST, VR_SLOT_MOUTH };
+
+#define VR_G_SHOULDER_R 0.35f
+#define VR_G_MOUTH_R 0.2f
+#define VR_G_WAIST_Y 0.45f
+#define VR_G_WAIST_BEHIND (-0.05f)
+#define VR_G_LONG 0.5            // a grip held this long (s) over a slot: its quick menu
+#define VR_G_RUN_HOLD 0.4        // right A held this long: run
+#define VR_G_STICK_HOLD 0.5      // a stick click held this long: its second action
+#define VR_G_TAP 0.12            // a tap's button is held this long for the game to see it
+#define VR_G_PARRY_ACCEL 35.0f   // m/s^2: the left hand's speed rising this fast while guarding is a parry
+
+static inline vr_g3 vr_g3v(float x, float y, float z) { vr_g3 r = {x, y, z}; return r; }
+static inline vr_g3 vr_g3sub(vr_g3 a, vr_g3 b) { return vr_g3v(a.x - b.x, a.y - b.y, a.z - b.z); }
+static inline float vr_g3dot(vr_g3 a, vr_g3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+// which body slot the hand is over. head: position; fwd, right: the head's forward and right (unit, any pitch)
+static inline int vr_gesture_slot(vr_g3 head, vr_g3 fwd, vr_g3 right, vr_g3 hand) {
+    vr_g3 f = vr_g3v(fwd.x, 0, fwd.z);
+    float fl = sqrtf(f.x * f.x + f.z * f.z);
+    f = fl > 1e-4f ? vr_g3v(f.x / fl, 0, f.z / fl) : vr_g3v(0, 0, -1);
+    vr_g3 d = vr_g3sub(hand, head);
+    float dist2 = vr_g3dot(d, d);
+    float ahead = vr_g3dot(f, d);
+    bool left = vr_g3dot(right, d) < 0;
+    if (ahead < 0 && dist2 < VR_G_SHOULDER_R * VR_G_SHOULDER_R) return left ? VR_SLOT_LSHOULDER : VR_SLOT_RSHOULDER;
+    if (ahead + VR_G_WAIST_BEHIND < 0 && hand.y < head.y - VR_G_WAIST_Y) return left ? VR_SLOT_LWAIST : VR_SLOT_RWAIST;
+    if (ahead >= 0 && dist2 < VR_G_MOUTH_R * VR_G_MOUTH_R) return VR_SLOT_MOUTH;
+    return VR_SLOT_NONE;
+}
+
+typedef struct {
+    vr_g3 head, fwd, right;     // the head (tracking space)
+    vr_g3 hand[2];              // left, right hand positions
+    float hand_speed[2];        // their speeds (m/s)
+    bool grip[2], trigger[2];   // pressed
+    bool a, b, x, y;            // right A, B; left X, Y
+    bool lclick, rclick;
+    double now;                 // s
+} vr_gesture_in;
+
+typedef struct {
+    int held;                   // what is in hand (VR_HELD_*), as tracked here
+    bool grip_was[2];
+    double grip_down[2];
+    int grip_slot[2];           // the slot the grip was pressed over
+    bool menu_open[2];          // a quick menu is held open by this hand's grip
+    int menu_button[2];         // ... with this d-pad button (VRB_*)
+    int menu_take;              // let go of a quick menu: what to take out (VR_HELD_*)
+    double tap_until[16];       // a tap's button is held until then
+    bool a_was, y_was, lclick_was, rclick_was, x_was;
+    double a_down, y_down, lclick_down, rclick_down;
+    bool y_menu, lclick_long, rclick_long;
+    bool throwing;              // the right trigger is holding R for a throw
+    float prev_speed0;
+    double prev_now;
+    int haptic[2];              // set when a slot is entered or a gesture fires: the caller pulses that hand
+    int slot_now[2];
+} vr_gesture_state;
+
+static inline void vr_g_tap(vr_gesture_state *s, int button, double now) { s->tap_until[button] = now + VR_G_TAP; }
+
+// one frame: the game's buttons (VRB_* bits) the gestures and BetterVR's scheme give
+static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in) {
+    uint64_t b = 0;
+    double now = in->now;
+    int slot[2];
+    for (int h = 0; h < 2; h++) {
+        slot[h] = vr_gesture_slot(in->head, in->fwd, in->right, in->hand[h]);
+        s->haptic[h] = slot[h] != VR_SLOT_NONE && slot[h] != s->slot_now[h];
+        s->slot_now[h] = slot[h];
+    }
+    bool whistle = in->grip[0] && in->grip[1] && slot[0] == VR_SLOT_MOUTH && slot[1] == VR_SLOT_MOUTH;
+    if (whistle) b |= 1ull << VRB_DOWN;
+    // the grips: a slot's item (press), its quick menu (held), else grab
+    for (int h = 0; h < 2; h++) {
+        bool g = in->grip[h];
+        bool slotted = s->grip_slot[h] == VR_SLOT_RSHOULDER || s->grip_slot[h] == VR_SLOT_LSHOULDER ||
+                       s->grip_slot[h] == VR_SLOT_LWAIST;
+        if (g && !s->grip_was[h]) {
+            s->grip_down[h] = now;
+            s->grip_slot[h] = slot[h];
+            slotted = slot[h] == VR_SLOT_RSHOULDER || slot[h] == VR_SLOT_LSHOULDER || slot[h] == VR_SLOT_LWAIST;
+            if (!whistle && !slotted && slot[h] != VR_SLOT_MOUTH) vr_g_tap(s, VRB_A, now);   // grab / interact
+        }
+        // a short press over a slot (let go before the quick menu): its item out, or put away when it is out
+        if (!g && s->grip_was[h] && slotted && !s->menu_open[h] && now - s->grip_down[h] < VR_G_LONG) {
+            int sl = s->grip_slot[h];
+            int want = sl == VR_SLOT_RSHOULDER ? VR_HELD_MELEE : sl == VR_SLOT_LSHOULDER ? VR_HELD_BOW : VR_HELD_RUNE;
+            if (s->held == want) {
+                vr_g_tap(s, VRB_B, now);
+                s->held = VR_HELD_NONE;
+            } else {
+                vr_g_tap(s, want == VR_HELD_MELEE ? VRB_Y : want == VR_HELD_BOW ? VRB_ZR : VRB_L, now);
+                s->held = want;
+            }
+            s->haptic[h] = 2;
+        }
+        // held over its slot: the quick menu, open while the grip stays down
+        int sl = s->grip_slot[h];
+        if (g && !s->menu_open[h] && now - s->grip_down[h] >= VR_G_LONG &&
+            (sl == VR_SLOT_RSHOULDER || sl == VR_SLOT_LSHOULDER || sl == VR_SLOT_LWAIST)) {
+            s->menu_open[h] = true;
+            if (sl == VR_SLOT_RSHOULDER) s->menu_button[h] = VRB_RIGHT, s->menu_take = VR_HELD_MELEE;
+            else if (sl == VR_SLOT_LWAIST) s->menu_button[h] = VRB_UP, s->menu_take = VR_HELD_RUNE;
+            else if (s->held == VR_HELD_MELEE) s->menu_button[h] = VRB_LEFT, s->menu_take = VR_HELD_MELEE;  // (shields)
+            else s->menu_button[h] = VRB_RIGHT, s->menu_take = VR_HELD_BOW;   // (bows: the bow is out from the press)
+            s->haptic[h] = 2;
+        }
+        if (s->menu_open[h]) {
+            if (g) b |= 1ull << s->menu_button[h];
+            else if (s->grip_was[h]) {   // let go: what was chosen comes out (it was put away by the press's toggle, or is new)
+                s->menu_open[h] = false;
+                int take = s->menu_take;
+                vr_g_tap(s, take == VR_HELD_MELEE ? VRB_Y : take == VR_HELD_BOW ? VRB_ZR : VRB_L, now);
+                s->held = take;
+            }
+        }
+        s->grip_was[h] = g;
+    }
+    // right trigger: use what is in hand; over the right shoulder with a weapon out: throw (R held, let go to throw)
+    bool rt = in->trigger[1];
+    if (rt && (s->throwing || (slot[1] == VR_SLOT_RSHOULDER && s->held == VR_HELD_MELEE))) {
+        s->throwing = true;
+        b |= 1ull << VRB_R;
+    } else {
+        if (s->throwing) s->held = VR_HELD_NONE;   // (thrown)
+        s->throwing = false;
+        if (rt) {
+            if (s->held == VR_HELD_BOW) b |= 1ull << VRB_ZR;
+            else if (s->held == VR_HELD_RUNE) b |= 1ull << VRB_R;
+            else {
+                b |= 1ull << VRB_Y;
+                s->held = VR_HELD_MELEE;   // (attacking takes the weapon out)
+            }
+        }
+    }
+    // left trigger: lock on / shield
+    if (in->trigger[0]) b |= 1ull << VRB_ZL;
+    // parry: the left hand thrust at speed while guarding
+    double dt = now - s->prev_now;
+    if (dt > 1e-4 && dt < 0.2 && in->trigger[0] && (in->hand_speed[0] - s->prev_speed0) / (float)dt > VR_G_PARRY_ACCEL)
+        vr_g_tap(s, VRB_A, now), s->haptic[0] = 2;
+    s->prev_speed0 = in->hand_speed[0];
+    s->prev_now = now;
+    // right A: grab (tap) / run (held: B, which also puts the weapon away)
+    if (in->a && !s->a_was) s->a_down = now;
+    if (in->a && now - s->a_down >= VR_G_RUN_HOLD) b |= 1ull << VRB_B, s->held = VR_HELD_NONE;
+    if (!in->a && s->a_was && now - s->a_down < VR_G_RUN_HOLD) vr_g_tap(s, VRB_A, now);
+    s->a_was = in->a;
+    // right B: jump
+    if (in->b) b |= 1ull << VRB_X;
+    // left Y: a tap the rune, held its quick menu (d-pad up while held)
+    if (in->y && !s->y_was) s->y_down = now, s->y_menu = false;
+    if (in->y && now - s->y_down >= VR_G_LONG) s->y_menu = true, b |= 1ull << VRB_UP;
+    if (!in->y && s->y_was) {
+        if (!s->y_menu) vr_g_tap(s, VRB_L, now);
+        s->held = VR_HELD_RUNE;
+    }
+    s->y_was = in->y;
+    // left X held: the map
+    if (in->x) b |= 1ull << VRB_MINUS;
+    // left stick click: a tap crouch, held the scope; right stick click: a tap the inventory, held the map
+    if (in->lclick && !s->lclick_was) s->lclick_down = now, s->lclick_long = false;
+    if (in->lclick && now - s->lclick_down >= VR_G_STICK_HOLD) s->lclick_long = true, b |= 1ull << VRB_RSTICK;
+    if (!in->lclick && s->lclick_was && !s->lclick_long) vr_g_tap(s, VRB_LSTICK, now);
+    s->lclick_was = in->lclick;
+    if (in->rclick && !s->rclick_was) s->rclick_down = now, s->rclick_long = false;
+    if (in->rclick && now - s->rclick_down >= VR_G_STICK_HOLD) s->rclick_long = true, b |= 1ull << VRB_MINUS;
+    if (!in->rclick && s->rclick_was && !s->rclick_long) vr_g_tap(s, VRB_PLUS, now);
+    s->rclick_was = in->rclick;
+    for (int k = 0; k < 16; k++)
+        if (now < s->tap_until[k]) b |= 1ull << k;
+    if (b & (1ull << VRB_B)) s->held = VR_HELD_NONE;
+    return b;
+}

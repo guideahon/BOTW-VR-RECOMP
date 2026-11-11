@@ -807,7 +807,7 @@ static const proc procs[] = {
     P(StringToPath), P(PathToString), P(CreateActionSet), P(DestroyActionSet), P(CreateAction), P(DestroyAction),
     P(SuggestInteractionProfileBindings), P(AttachSessionActionSets), P(SyncActions), P(GetActionStateBoolean),
     P(GetActionStateFloat), P(GetActionStateVector2f), P(GetCurrentInteractionProfile), P(GetActionStatePose),
-    P(CreateActionSpace),
+    P(CreateActionSpace), P(ApplyHapticFeedback), P(StopHapticFeedback),
 };
 #undef P
 
