@@ -870,6 +870,20 @@ def _skel_calc(gen, a):
             f'  /* {a:#x}: mov x0, x20 (a model\'s skeleton, before its world matrices) */')
 
 
+# An arrow leaving the bow: the shoot step of its AI (main+0x931364) has just made the way it flies, s8 s13 s9, from
+# where the arrow is (s15 s12 s11, its actor's position) to the shooter's aim point, and next scales it by the first
+# speed; the aim point itself, at x29 - 0x50 (sp + 0xa90: x29 is a local of the lifted function), goes to the arrow too as its TargetPos (docs/vr/re-notes.md). The
+# runtime may turn both (rt_arrow_aim, runtime/hle/arrow.c; the VR mode aims the bow by
+# hand), then the displaced mov x0, x20.
+def _arrow_aim(gen, a):
+    assert _word(gen, a) == 0xaa1403e0, hex(_word(gen, a))  # mov x0, x20
+    return ('{ extern void rt_arrow_aim(float *, const float *, float *); '
+            'float d[3] = { rt_vf32(c, 8), rt_vf32(c, 13), rt_vf32(c, 9) }, o[3] = { rt_vf32(c, 15), rt_vf32(c, 12), rt_vf32(c, 11) }; '
+            'rt_arrow_aim(d, o, (float *)(uintptr_t)(c->sp + 0xa90)); union { float f; uint32_t u; } k; '
+            'k.f = d[0]; c->v[8] = k.u; k.f = d[1]; c->v[13] = k.u; k.f = d[2]; c->v[9] = k.u; c->x[0] = c->x[20]; }'
+            f'  /* {a:#x}: mov x0, x20 (an arrow leaving the bow: its direction made) */')
+
+
 # The wait for the ground. Every game update asks (at 1.9.0 FUN_71010b7a40, called from the code that raises pause reason
 # 9, bit 9 of the flags at pause_state + 0 / 0x7001e1611c) whether the map sections around Link (his position +-200 on
 # x and z) are still loading. While they are, reason 9 pauses the world, and the world's own update is what loads
@@ -893,6 +907,7 @@ PATCHES = {
     'quick_sort_menu': _quick_sort_menu,
     'lookat_update': _lookat_update,
     'skel_calc': _skel_calc,
+    'arrow_aim': _arrow_aim,
     'pc_map_focus': _pc_map_focus(False),
     'pc_map_focus_target': _pc_map_focus(True),
     'pc_map_focus_now': _pc_map_focus(True),

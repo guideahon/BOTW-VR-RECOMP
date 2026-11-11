@@ -54,8 +54,11 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 - [ ] Grip sobre el hombro izquierdo: el arco aparece en la mano izquierda y la sigue.
 - [ ] Gatillo derecho mantenido con el arco afuera: tensa; la flecha aparece en la mano derecha. Al soltar, dispara.
-- [ ] **Hoy la flecha sale hacia donde mirás con la cabeza**, no hacia donde apunta el arco (eso falta, ver abajo).
-      Apuntá con la mirada.
+- [ ] **La flecha sale hacia donde apunta el arco**: en la línea que va de la mano que tensa (derecha) a la mano del
+      arco (izquierda), aunque mires a otro lado. Probá apuntar con el arco a un costado sin girar la cabeza.
+- [ ] Con las manos juntas (sin tensar lejos), la flecha sale hacia donde apunta el control del arco.
+- [ ] Si preferís apuntar con la mirada: `SAVAGEWIND_VR_BOW_AIM=head`.
+- [ ] Todavía no se dibuja el arco de trayectoria (BetterVR lo dibuja); avisame si lo extrañás.
 
 ## 5. Combate
 
@@ -83,7 +86,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 | Qué | Por qué falta |
 |---|---|
 | Que el arma pegue donde la movés (su hitbox siguiendo la mano) | hay que encontrar en el juego el "sensor de ataque" del arma |
-| Arco apuntado con las manos (la flecha sale hacia donde apunta el arco) | probado desviar la cámara lógica: el juego apunta con la misma matriz que se dibuja; falta encontrar el disparo de la flecha (notas en docs/vr/re-notes.md) |
+| Arco de trayectoria dibujado al tensar | el apuntado con las manos ya está; falta dibujar la curva |
 | Soltar el arma con un gesto (mano izquierda en la cadera derecha) | el juego no tiene botón para eso; hay que encontrar su función |
 | Agarrar armas de dos manos con ambas manos | depende del punto anterior y de los brazos |
 | Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |

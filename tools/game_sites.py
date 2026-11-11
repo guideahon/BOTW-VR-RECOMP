@@ -293,6 +293,9 @@ SITES = [
     # _skel_calc: main+0xf978e8 hands x0 + 0xe0, its nn::g3d ModelObj, to the world calculation; the VR mode changes
     # Link's local bones there: his head hidden in first person; docs/vr/re-notes.md)
     Site('skel_calc', 'code', '39436008 91038014 aa0003f3 aa1403e0 12000501 94000000/fc000000', 3),
+    # an arrow leaving the bow: the shoot step of its AI, the way it flies (s8, s13, s9) just made from where it is to
+    # the shooter's aim point, before its first speed (tools/patches.py _arrow_aim; the VR mode aims the bow by hand)
+    Site('arrow_aim', 'code', '1e200908 1e2009ad 1e200929 aa1403e0 1e2a094e', 3),
     # Native quick-selector sorting (runtime/quick_inventory_sort.c), optional as a complete group.
     Site('quick_sort_enter', 'code', 'fc1d0fe8 a900fbfd f9000ff5 a9024ff4 910023fd b978e014 aa0003f3 7100069f', 0),
     Site('quick_sort_menu', 'code', 'a9be7bfd a9014ff4 910003fd 52871b08 aa0003f3 8b080014 f95bd400 b4000000/ff00001f', 0),
@@ -371,6 +374,7 @@ OPTIONAL_GROUPS = [
     OPT_TWO_SITES,
     ('lookat_update',),  # (the free camera: without it Home does nothing)
     ('skel_calc',),  # (VR: Link's bones; without it his head stays in first person)
+    ('arrow_aim',),  # (VR: the bow aimed by hand; without it arrows follow the head)
     ('gyro_scene_actor',),
     ('surf_contact', 'surf_boost_remove', 'surf_jump_request'),
     ('stale_actor_helper', 'stale_actor_target'),
@@ -454,6 +458,7 @@ KNOWN = {
         'opt_two_pane_calc': 0x70000276a0,
         'lookat_update': 0x7000eb2d5c,
         'skel_calc': 0x7000f97900,
+        'arrow_aim': 0x7000931590,
         'yaz0_stream': 0x700131d674,
         'yaz0_stream_ret': 0x700131d7e8,
         'opt_create_rows': 0x7000e2f0a8,

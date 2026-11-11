@@ -157,6 +157,7 @@ The log says what was found (`[vr]` lines). Useful settings, as environment vari
 | `SAVAGEWIND_VR_LEFT_HANDED` | 0 | `1`: the hands' parts swapped |
 | `SAVAGEWIND_VR_WALK` | head | `controller`: the left stick walks the way the left controller points |
 | `SAVAGEWIND_VR_RUMBLE`, `_RUMBLE_GAIN` | 1, 1 | the game's rumble on the controllers (`0`: off); its strength |
+| `SAVAGEWIND_VR_BOW_AIM` | hand | first person: arrows fly along the line from the string hand to the bow hand; `head`: where the view looks (the game's aim) |
 | `SAVAGEWIND_VR_ARMS`, `SAVAGEWIND_VR_HIDE_HEAD` | on in first person | `0`: Link's arms not moved / his head shown |
 | `SAVAGEWIND_VR_SNAP_DEGREES` | 45 | the step |
 | `SAVAGEWIND_VR_HEIGHT` | 1080 | the eye images' height (the width follows the headset's shape); with Video > Render scale above 100% the game draws them sharper |
@@ -208,7 +209,7 @@ meant and not otherwise. Needs a headset.
 | Dropping by gesture (left hand at the right hip) | the game's code: the weapon drop (no button does it) | not started |
 | The game's rumble on the controllers (BetterVR's patch_CTRL_Rumble) | nothing more | done (runtime/hle/vibration.c to vr_input.c) |
 | Walking the way the controller points (BetterVR's walking direction) | nothing more | done (`SAVAGEWIND_VR_WALK=controller`) |
-| Bow: the right hand draws, the left aims (BetterVR's bow.cpp) | the game's code: the bow's aim and draw state | not started (ZR and the camera aim it) |
+| Bow: the right hand draws, the left aims (BetterVR's bow.cpp) | the game's code: the arrow's launch | done: the arrow flies along the line from the string hand to the bow hand (main+0x931590, `SAVAGEWIND_VR_BOW_AIM=head` keeps the head's aim); no aiming arc drawn yet |
 | Runes and the shield aimed with the hands | the game's code | not started |
 | Two-handed weapons held with both hands | the arms first | not started |
 | Hands shown when Link's are hidden (menus, first person) | nothing from the game (a layer at the grip pose) | not started |
@@ -299,6 +300,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
 | `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_bow.py --save <scratch save>` | as above | the bow aimed by hand: the bow taken out, the hands held 60 deg right of the head, a draw and a shot; the arrow flies within 8 deg of the hands' line and away from the head's |
 
 `VR_TEST_VERBOSE=1` prints each part of a C test as it starts. `SAVAGEWIND_VR_LOG_CAMERA=<n>` logs every n-th camera
 update: the eye, the head, the game's camera and the view made of them. `SAVAGEWIND_VR_TRACE=<n>`: the first n of the

@@ -26,12 +26,14 @@
 // SAVAGEWIND_VR_LOG_BONES=1: Link's bone names and indices to the log, once; SAVAGEWIND_VR_LOG_ARMS=<n>: every n-th
 // frame, each wrist's distance to its target.
 #include <math.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "../rt.h"
+#include "../control_cells.h"
 #include "vr.h"
 #include "vr_ik.h"
 
@@ -332,3 +334,43 @@ void vr_skel_calc(uint64_t model) {
     else if (arms) apply_arms(world, s);   // (sleeves and gloves follow the arms)
 }
 
+
+// ---- the bow aimed by hand (BetterVR's arrow launch override) ----
+// An arrow leaving the bow (rt_arrow_aim, main+0x931590): its AI has just made the way it flies, from where the arrow
+// is to the shooter's aim point (the camera's line for the player). In first person, for an arrow at Link (his shots),
+// that way becomes the line from the string hand through the bow hand, and the aim point moves onto it. SAVAGEWIND_VR_BOW_AIM=head keeps the game's.
+static uint64_t arrows_aimed;
+uint64_t vr_arrows_aimed(void) { return arrows_aimed; }
+
+void vr_arrow_aim(float *dir, const float *origin, float *target) {
+    static int mode = -1, log = -1;
+    if (mode < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_BOW_AIM");
+        mode = !(e && !strcmp(e, "head"));
+        log = getenv("SAVAGEWIND_VR_LOG_ARROWS") != NULL;
+    }
+    double lp[3];
+    if (!mode || !vr_first_person_now() || !control_cell_get(&control_cell_player_pos, lp)) return;
+    vr_vec3 o = vr_v3(origin[0], origin[1], origin[2]);
+    float near = vr_v3_len(vr_v3_sub(o, vr_v3((float)lp[0], (float)lp[1] + 1.2f, (float)lp[2])));
+    if (log)
+        fprintf(stderr, "[vr-arrow] shot from %.2f %.2f %.2f (%.2f m from Link) dir %.3f %.3f %.3f\n", o.x, o.y, o.z, near,
+                dir[0], dir[1], dir[2]);
+    if (!(near < 3.0f)) return;   // someone else's arrow
+    int bow = vr_skel_held(1) == VR_SKEL_BOW ? 1 : 0;   // the bow hand (left unless the bow is in the right)
+    vr_pose hb, hs, wb, ws;
+    if (!vr_hand_pose(bow, &hb) || !vr_hand_pose(1 - bow, &hs) || !vr_tracking_to_world(&hb, &wb) ||
+        !vr_tracking_to_world(&hs, &ws))
+        return;
+    vr_vec3 d = vr_v3_sub(wb.p, ws.p);
+    if (vr_v3_len(d) < 0.08f) d = vr_quat_rotate(wb.q, vr_v3(0, 0, -1));   // hands together: where the bow points
+    d = vr_v3_normalize(d);
+    dir[0] = d.x, dir[1] = d.y, dir[2] = d.z;
+    // the aim point the arrow then flies at: as far away as the game's, on the new line
+    float far = vr_v3_len(vr_v3_sub(vr_v3(target[0], target[1], target[2]), o));
+    if (!(far > 5.0f && far < 2000.0f)) far = 100.0f;
+    vr_vec3 t = vr_v3_add(o, vr_v3_scale(d, far));
+    target[0] = t.x, target[1] = t.y, target[2] = t.z;
+    arrows_aimed++;
+    if (log) fprintf(stderr, "[vr-arrow] aimed by hand: %.3f %.3f %.3f\n", d.x, d.y, d.z);
+}

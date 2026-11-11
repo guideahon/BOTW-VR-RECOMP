@@ -137,3 +137,24 @@ __attribute__((constructor)) static void fnprof_early(void) {
     const char *e = getenv("SAVAGEWIND_FNPROF");
     if (e && e[0] == '0' && e[1] == ':') g_fnprof = 1;
 }
+
+// (reverse engineering, the `vr fnprof` control command) a window opened and closed at run time: counts reset at
+// start, written to path at stop (addr count, most called first)
+void fnprof_live_start(void) {
+    for (int i = 0; i < NSLOT; i++) slots[i].addr = 0, slots[i].count = 0;
+    g_fnprof = 1;
+}
+
+int fnprof_live_stop(const char *path) {
+    g_fnprof = 0;
+    uint64_t (*rows)[2] = malloc(sizeof(uint64_t[2]) * NSLOT);
+    int n = 0;
+    for (int i = 0; i < NSLOT; i++)
+        if (slots[i].addr) { rows[n][0] = slots[i].addr; rows[n][1] = slots[i].count; n++; }
+    qsort(rows, n, sizeof rows[0], cmp);
+    FILE *f = fopen(path, "w");
+    for (int i = 0; f && i < n; i++) fprintf(f, "%llx %llu\n", (unsigned long long)rows[i][0], (unsigned long long)rows[i][1]);
+    if (f) fclose(f);
+    free(rows);
+    return n;
+}

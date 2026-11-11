@@ -15,9 +15,18 @@ static const char *state_name(int st) {
 uint64_t vr_world_frames(void);  // runtime/vr/xr_vulkan.c
 bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs);  // runtime/vr/vr_input.c
 uint64_t vr_rumble_pulses(void);  // runtime/vr/vr_input.c
+uint64_t vr_arrows_aimed(void);   // runtime/vr/vr_skel.c
 void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on);
 
 static void cmd_vr(int argc, char **argv, ControlReply *r) {
+    if (argc >= 3 && !strcmp(argv[1], "fnprof")) {   // (reverse engineering) vr fnprof start | stop <file>
+        extern void fnprof_live_start(void);
+        extern int fnprof_live_stop(const char *path);
+        if (!strcmp(argv[2], "start")) { fnprof_live_start(); control_text(r, "fnprof on"); return; }
+        if (argc == 4 && !strcmp(argv[2], "stop")) { control_text(r, "%d functions", fnprof_live_stop(argv[3])); return; }
+        control_fail(r, "Usage: vr fnprof start | stop <file>");
+        return;
+    }
     if (argc == 4 && !strcmp(argv[1], "rumble")) {   // (a test: the game's rumble path, as vibration.c feeds it)
         extern void vr_rumble(int hand, float amplitude);
         vr_rumble(argv[2][0] == 'r', (float)atof(argv[3]));
@@ -65,6 +74,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_num(r, "motion_last_power", power);
     control_field_bool(r, "motion_shield", shield);
     control_field_int(r, "rumble_pulses", (int64_t)vr_rumble_pulses());
+    control_field_int(r, "arrows_aimed", (int64_t)vr_arrows_aimed());
     control_text(r, "VR %s: %s; session %s, %llu frames (%llu with an image)", vr_enabled() ? "on" : "off",
                  vr_status_text(), state_name(st), (unsigned long long)frames, (unsigned long long)rendered);
 }

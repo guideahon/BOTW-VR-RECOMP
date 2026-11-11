@@ -52,7 +52,31 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
-## The bow aimed by the hands (2026-11-11): not yet
+## The bow aimed by the hands (2026-11-11): done
+
+**Found.** BetterVR (src/hooking/bow.cpp) overrides two things at the shot: the arrow's launch transform and the
+"FirstSpeed" / "TargetPos" parameters the bow passes to the arrow's AI. On 1.9.0 the strings are in main .rodata
+("FirstSpeed" 0x163804c, "TargetPos" 0x165aa4b, "HomingTargetPos" 0x16325aa, "IsShootByPlayer" 0x161b425) and an
+adrp/add xref scan gives the code that adds them to an `InlineParamPack` (`addVec3` main+0x10775f8, `addFloat`
+0x1077580, `addBool` 0x107768c). The player's shot is **main+0x931364** (it runs once a shot; x19 its AI, [x19 + 8] the
+arrow actor):
+
+- It takes where the arrow is (the arrow actor's matrix translation: actor + 0x3a4 / 0x3b4 / 0x3c4) and the shooter's
+  aim point (a Vec3 from main+0x7b36b4, copied to x29 - 0x50), makes the unit direction s8 s13 s9 (0x931554 ..
+  0x93158c), then FirstSpeed = direction x speed (sp + 0x60) and TargetPos = the aim point, into the pack.
+- Only changing the direction (FirstSpeed) does nothing: the arrow flies at its TargetPos. Both are changed:
+  `tools/patches.py _arrow_aim` at 0x931590 (`mov x0, x20`, right after the direction) hands the direction, the origin
+  and the aim point (at sp + 0xa90: x29 is a cached local in the lifted function, `c->x[29]` is stale there) to
+  `rt_arrow_aim` (runtime/hle/arrow.c) -> `vr_arrow_aim` (runtime/vr/vr_skel.c), which, in first person and for an arrow
+  within 3 m of Link, puts the direction on the line from the string hand to the bow hand and the aim point on that
+  line as far away as it was.
+- main+0x92ce7c is a similar shoot step (the arrow's own +0xc30 start, +0xc3c target, +0xc79 player flag) that does
+  not run for the player's bow shots.
+- Checked by tools/vr/test_vr_bow.py: the head looking at 33.8 deg, the hands 60 deg to the right (-26.2 deg), the
+  arrow flew at -28 deg (before: 33.4 deg).
+
+History of the search:
+
 
 BetterVR (Wii U) overrides the arrow's launch transform where AI_Arrow::handleStateShoot sets the arrow's rigid body
 (patch_CTRL_EntityController.asm 0x02706270 -> hook_OverrideArrowShotTransform, src/hooking/bow.cpp), and its
@@ -79,10 +103,6 @@ BetterVR (Wii U) overrides the arrow's launch transform where AI_Arrow::handleSt
   0x684e5c, 0x68717c, 0x687bb0, 0xbcb250, 0xbde780, 0x138c1dc, 0x138fdbc, 0x1390898), then where it sets the arrow's
   matrix or velocity. A frame-exact window (SAVAGEWIND_FNPROF=<from>:<to> around the release, the arrow seen leaving in
   SAVAGEWIND_VR_LOG_MODELS=Weapon_Arrow) separates the launch from the flight.
-- Next: the shot itself. "IsShootByPlayer" (main .rodata 0x161b425) is read by 16 functions (tools: an adrp/add xref
-  scan); the one of the player's arrow AI, then where it sets the arrow's transform or velocity (a `mem watch` on a
-  flying arrow's rigid body, the arrow found with SAVAGEWIND_VR_LOG_MODELS=Weapon_Arrow), is the place to override
-  the direction with the bow's, as BetterVR does.
 
 ## What is found in 1.9.0 so far
 
