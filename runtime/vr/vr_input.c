@@ -491,6 +491,9 @@ void vr_input_apply(uint64_t *b, int32_t *lx, int32_t *ly, int32_t *rx, int32_t 
     if (vr_roomscale_stick(&rsx, &rsy) && abs(o.lx) < 3000 && abs(o.ly) < 3000 && abs(*lx) < 3000 && abs(*ly) < 3000)
         o.lx = (int32_t)(rsx * 32767), o.ly = (int32_t)(rsy * 32767);
     *lx = clamp_axis(*lx + o.lx), *ly = clamp_axis(*ly + o.ly);
+    // Head-only turning disables the horizontal camera stick from every input source in first-person play.
+    // Vertical input remains available for aiming and Magnesis; menus and third person keep their normal controls.
+    if (vr_opt(VR_OPT_TURN) == 2 && vr_opt(VR_OPT_VIEW) == 0 && vr_world_view()) *rx = 0, o.rx = 0;
     *rx = clamp_axis(*rx + o.rx), *ry = clamp_axis(*ry + o.ry);
 }
 

@@ -334,7 +334,7 @@ const char *bind_label(const Item &it, int) {
 // is a number whose 0 is its default (settings.h VR_OPTIONS): a toggle on by default stores 1 for off.
 const char *const k_vr_view[] = {"First person", "Third person"};
 const char *const k_vr_events[] = {"Automatic (as BetterVR)", "First person", "Cutscene camera", "Flat screen"};
-const char *const k_vr_turn[] = {"Smooth", "Snap"};
+const char *const k_vr_turn[] = {"Smooth", "Snap", "Head only"};
 const char *const k_vr_walk[] = {"Where you look", "Where the left hand points"};
 constexpr int k_vr_snap[] = {30, 45, 60, 90};
 constexpr int k_vr_speed[] = {60, 80, 100, 125, 150};
@@ -343,7 +343,7 @@ constexpr int k_vr_rumble[] = {25, 50, 75, 100, 125, 150};
 Item vr_choice(const char *title, const char *desc, int opt, const char *const *names, int n) {
     Item it = choice(P_VR, title, desc, nullptr, nullptr, nullptr, nullptr, 0);
     it.arg = opt;
-    it.count = [](const Item &i) { return i.arg == VR_OPT_EVENTS ? 4 : 2; };
+    it.count = [](const Item &i) { return i.arg == VR_OPT_EVENTS ? 4 : i.arg == VR_OPT_TURN ? 3 : 2; };
     it.get = [](const Item &i) { return g_settings.vr[i.arg]; };
     it.set = [](const Item &i, int x) { g_settings.vr[i.arg] = x; };
     (void)names, (void)n;
@@ -372,8 +372,8 @@ void build_vr_items(std::vector<Item> &v) {
                         "scene's camera. Flat screen: on a big screen in front of you.", VR_OPT_EVENTS, k_vr_events, 4);
     ev.label = [](const Item &, int x) { return tr(k_vr_events[x]); };
     v.push_back(ev);
-    Item turn = vr_choice("Turning", "Smooth: the right stick turns the view smoothly. Snap: in steps, more comfortable "
-                          "for many.", VR_OPT_TURN, k_vr_turn, 2);
+    Item turn = vr_choice("Turning", "Smooth: continuous stick turning. Snap: one step per push. Head only: turn "
+                          "your head; the stick does not turn the view in first person.", VR_OPT_TURN, k_vr_turn, 3);
     turn.label = [](const Item &, int x) { return tr(k_vr_turn[x]); };
     v.push_back(turn);
     Item snap = choice(P_VR, "Snap angle", "How far one snap turns.", [](const Item &) { return N(k_vr_snap); },

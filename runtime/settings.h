@@ -76,7 +76,7 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
 #define VR_OPTIONS(X) \
     X(VR_OPT_VIEW, "vr_view", 0)                 /* 0 first person, 1 third (the game's camera) */ \
     X(VR_OPT_EVENTS, "vr_events", 0)             /* cutscenes: 0 auto (BetterVR's table), 1 first, 2 the event's camera, 3 the flat screen */ \
-    X(VR_OPT_TURN, "vr_snap_turn", 0)            /* 0 smooth, 1 snap */ \
+    X(VR_OPT_TURN, "vr_snap_turn", 0)            /* 0 smooth, 1 snap, 2 head only */ \
     X(VR_OPT_SNAP_DEGREES, "vr_snap_degrees", 0) /* the snap step (0: 45) */ \
     X(VR_OPT_TURN_SPEED, "vr_turn_speed", 0)     /* smooth turning, percent (0: 100) */ \
     X(VR_OPT_WALK, "vr_walk_by_controller", 0)   /* 0 the way the head looks, 1 the left controller's */ \

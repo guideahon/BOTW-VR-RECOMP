@@ -12,7 +12,7 @@ static int from_env(int id, const char *e) {
     switch (id) {
     case VR_OPT_VIEW: return !strcmp(e, "third");
     case VR_OPT_EVENTS: return !strcmp(e, "first") ? 1 : !strcmp(e, "third") ? 2 : !strcmp(e, "screen") ? 3 : 0;
-    case VR_OPT_TURN: return !strcmp(e, "snap");
+    case VR_OPT_TURN: return !strcmp(e, "snap") ? 1 : !strcmp(e, "head") ? 2 : 0;
     case VR_OPT_SNAP_DEGREES: return atoi(e) >= 5 && atoi(e) <= 180 ? atoi(e) : 0;
     case VR_OPT_TURN_SPEED: return atof(e) >= 0.2 && atof(e) <= 3 ? (int)(atof(e) * 100 + 0.5) : 0;
     case VR_OPT_WALK: return !strcmp(e, "controller");

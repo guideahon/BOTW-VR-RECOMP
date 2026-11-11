@@ -128,7 +128,8 @@ the game's bone and attack-sensor code: [vr/re-notes.md](vr/re-notes.md)). The b
 
 Phase 6, comfort: `SAVAGEWIND_VR_TURN=snap` makes the right stick's sideways push turn the view one step at once
 (`SAVAGEWIND_VR_SNAP_DEGREES`, 45) instead of the game's smooth camera turn; the turn sits on top of the game camera's
-heading, so Link walks the way the view looks. `vr recenter` puts the view back on the game camera.
+heading, so Link walks the way the view looks. `SAVAGEWIND_VR_TURN=head` disables horizontal stick turning in first
+person while keeping vertical input for aiming and Magnesis. `vr recenter` puts the view back on the game camera.
 
 Baseline before any VR rendering: [vr/baseline-flat.md](vr/baseline-flat.md) (RTX 3090, 1080p: 167 to 229 fps, the
 render thread the limit at 4 to 6 ms a frame).
@@ -162,7 +163,7 @@ All the settings, as environment variables:
 |---|---|---|
 | `SAVAGEWIND_VR_VIEW` | first | `first`: the eye in Link's head, as in BetterVR; `third`: on the game's camera behind him |
 | `SAVAGEWIND_VR_EYE_HEIGHT`, `_EYE_FORWARD` | 1.55, 0.18 | first person: the eye above Link's feet and ahead of his head (m) |
-| `SAVAGEWIND_VR_TURN` | smooth | `snap`: the right stick turns the view in steps |
+| `SAVAGEWIND_VR_TURN` | smooth | `snap`: the right stick turns the view in steps; `head`: horizontal turning only by moving your head in first person |
 | `SAVAGEWIND_VR_TURN_SPEED` | 1 | smooth turning's speed (BetterVR's slow 0.6, fast 1.5) |
 | `SAVAGEWIND_VR_CONTROLS` | bettervr | `classic`: the earlier mapping, without body gestures |
 | `SAVAGEWIND_VR_LEFT_HANDED` | 0 | `1`: the hands' parts swapped |
@@ -239,7 +240,7 @@ meant and not otherwise. Needs a headset.
 |---|---|---|
 | A vignette while moving or turning | a pass over the eyes' pictures (exec.c, like vr_hud.frag) | not started |
 | Seated or standing height, the floor at its height | nothing from the game | not started |
-| Turning with the head only (no stick turn) | nothing from the game | not started |
+| Turning with the head only (no stick turn) | nothing from the game | done: `SAVAGEWIND_VR_TURN=head` / Options > VR > Turning > Head only; vertical stick input remains available |
 | First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head | done but his head (the eye at his position, 1.55 m up; `SAVAGEWIND_VR_VIEW`) |
 | Hiding Link's head and hat in first person | nothing more | done (his head bones and head armor squeezed into his chest) |
 | Roomscale: walking in the room walks Link (BetterVR's) | his walking | done the simple way: the walk stick is pushed toward the head (the game walks him, with its collisions) and the neutral head follows him so the eye stays put; BetterVR moves his body itself with its own casts against the world (not ported); option Roomscale |
@@ -321,6 +322,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
 | `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
 | `python tools/vr/test_vr_roomscale.py --save <scratch save>` | as above | roomscale: the head steps 50 cm right; Link walks about as far (0.52 m), the eye stays where the head put it and ends above him again; with `vr_roomscale` off he stays and the eye moves alone |
+| `python tools/vr/test_vr_head_turn.py --save <scratch save>` | as above | head-only turning: a right-stick push leaves the view's yaw unchanged; turning the tracked head 30 degrees turns the view by 30 degrees |
 | `python tools/vr/test_vr_options.py --save <scratch save>` | as above | the VR options apply at once with no variables set: `set vr_view` 1 / 0 leaves first person and comes back, `vr_rumble` off stops a rumble reaching the controller, `vr_snap_turn` makes one push of the stick turn one 45 deg step (their persistence: `make test-pc-controls`, test_pc_settings) |
 | `python tools/vr/test_vr_events.py [--modes auto first screen]` | your game files, a `VR=1` build, a GPU | events: a new game from an empty save (its opening, Demo169_0): `auto` gives the headset the eyes in 3D on the event's camera; `first` the same while Link is not in the world yet (first person only with him there); `screen` only the virtual screen |
 | `python tools/vr/test_vr_two_hands.py --save <scratch save>` | as above | both hands on the large sword: a first run reads the sword's line (SAVAGEWIND_VR_TRACE_TWO_HANDS), a second puts the left hand on it: a grip far from it does not take hold, one on it does, and after the left hand moves the drawn model's blade points at it (0 deg) |

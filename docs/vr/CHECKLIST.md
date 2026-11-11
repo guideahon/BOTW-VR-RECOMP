@@ -98,7 +98,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 ## 4e. Opciones de RV en el menú del juego (nuevo)
 
 - [ ] Menú de pausa > Sistema > Opciones: hay una sección **RV** (también desde las Opciones de la pantalla de título).
-- [ ] Adentro: Vista, Cinemáticas, Giro (suave / por pasos), Ángulo del paso, Velocidad de giro, Dirección al caminar,
+- [ ] Adentro: Vista, Cinemáticas, Giro (suave / por pasos / solo cabeza), Ángulo del paso, Velocidad de giro, Dirección al caminar,
       Zurdo, Vibración y su fuerza, Combate con movimiento, Tajos fáciles, Los tajos hacen el ataque de Link, Pegar con
       el movimiento, Golpe donde está tu mano, Levantar la mano izquierda para cubrirse, Agarre a dos manos, Gesto de
       soltar, Apuntar el arco con las manos, Trayectoria del arco. Los textos en español.
@@ -147,6 +147,8 @@ Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como e
 ## 7. Comodidad y movimiento
 
 - [ ] Giro suave y por pasos (`SAVAGEWIND_VR_TURN=snap`, `SAVAGEWIND_VR_SNAP_DEGREES`) funcionan y no marean.
+- [ ] Giro "Solo cabeza" (`SAVAGEWIND_VR_TURN=head`): en primera persona, el stick derecho no gira la vista de lado;
+      al girar tu cabeza sí gira. La dirección vertical del stick sigue disponible para apuntar y Magnesis.
 - [ ] `SAVAGEWIND_VR_TURN_SPEED` cambia la velocidad del giro suave.
 - [ ] Caminar hacia donde mirás (por defecto) o hacia donde apunta el control izquierdo (`SAVAGEWIND_VR_WALK=controller`).
 - [ ] Modo zurdo (`SAVAGEWIND_VR_LEFT_HANDED=1`): los papeles de las manos se invierten.
