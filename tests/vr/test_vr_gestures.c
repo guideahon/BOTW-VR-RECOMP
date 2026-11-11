@@ -114,6 +114,41 @@ int main(void) {
     b = run(&q, in, 3.4, 3.5);
     CHECK(b & BIT(VRB_L));
 
+    VR_TEST("drop: a grip held at the right waist");
+    vr_gesture_state d = {0};
+    d.held = VR_HELD_MELEE;
+    in = base(0);
+    in.hand[1] = RWAIST;
+    in.grip[1] = true;
+    b = run(&d, in, 0, 0.4);
+    CHECK(b == 0);                         // no grab at the waist, nothing before the hold
+    b = run(&d, in, 0.4, 0.8);
+    CHECK(b & BIT(VRB_RIGHT));             // the weapons' quick menu (right hand)
+    CHECK(!(b & BIT(VRB_Y)));
+    b = run(&d, in, 0.8, 1.6);
+    CHECK(b & BIT(VRB_RIGHT));
+    CHECK(b & BIT(VRB_Y));                 // the selector's drop
+    b = run(&d, in, 1.95, 2.5);
+    CHECK(b == 0);                         // done: the menu let go, once a press though the grip stays down
+    CHECK_EQ_INT(d.held, VR_HELD_NONE);
+    in.grip[1] = false;
+    run(&d, in, 2.5, 2.7);
+    in.hand[0] = vr_g3v(0.2f, 1.0f, 0.05f);   // the left hand reaching across to the right waist: the shields
+    in.grip[0] = true;
+    b = run(&d, in, 2.7, 4.3);
+    CHECK(b & BIT(VRB_LEFT));
+    CHECK(b & BIT(VRB_Y));
+    CHECK(!(b & BIT(VRB_A)));
+    in.grip[0] = false;
+    run(&d, in, 4.3, 4.8);                 // (the drop ends at 1.4 s, the grip let go or not)
+    in.hand[0] = base(0).hand[0];
+    in.hand[1] = RWAIST;                   // a short press at the right waist: nothing
+    in.grip[1] = true;
+    b = run(&d, in, 4.8, 5.0);
+    in.grip[1] = false;
+    b |= run(&d, in, 5.0, 5.3);
+    CHECK(b == 0);
+
     VR_TEST("grab, whistle");
     vr_gesture_state g = {0};
     in = base(0);

@@ -64,6 +64,15 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Los puntos se ven en los dos ojos en el mismo lugar (sin doble imagen).
 - [ ] Para sacarlos: `SAVAGEWIND_VR_BOW_ARC=0`.
 
+## 4c. Soltar (nuevo)
+
+- [ ] Con la espada en la mano derecha: llevá la mano derecha a la cadera derecha y mantené el grip medio segundo. Se
+      abre un instante el menú rápido de armas y la espada cae al piso delante tuyo (y sale de tu inventario, como el
+      "soltar" del juego). La podés volver a agarrar con el grip.
+- [ ] Con el escudo: llevá la mano **izquierda** cruzada hasta la cadera derecha y mantené el grip: suelta el escudo.
+- [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
+- [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
+
 ## 5. Combate
 
 - [ ] Un tajo con la mano derecha ataca una vez; una estocada, una vez; volver lento a la guardia no ataca.
@@ -101,7 +110,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 | Qué | Por qué falta |
 |---|---|
-| Soltar el arma con un gesto (mano izquierda en la cadera derecha) | el juego no tiene botón para eso; hay que encontrar su función |
+| Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
 | Agarrar armas de dos manos con ambas manos | depende del punto anterior y de los brazos |
 | Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |
 | Cuerpo que sigue tus pasos reales (roomscale físico) | hay que mover a Link con su física |

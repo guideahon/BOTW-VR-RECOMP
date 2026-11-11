@@ -523,3 +523,15 @@ bool vr_swing(float *power, uint32_t *id) {
     pthread_mutex_unlock(&in.lock);
     return on;
 }
+
+// the drop gesture (vr_gestures.h, the right waist held) is on: in play with the BetterVR scheme, unless
+// SAVAGEWIND_VR_DROP=0; it uses the quick selector's native drop (runtime/quick_drop_action.c) even when that setting
+// is off
+bool vr_drop_gesture(void) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_DROP");
+        on = !(e && *e == '0');
+    }
+    return on && in.ready && in.bettervr && vr_enabled() && vr_session_running();
+}

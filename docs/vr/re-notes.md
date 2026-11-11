@@ -52,6 +52,20 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
+## Dropping what is in hand (2026-11-11): done for weapons (shields: same path, not checked in the game)
+
+BetterVR (hand over the right waist, grip held) calls Weapon::m_174_dropWeapon and ActorWeapons::resetBaseProc. On 1.9.0
+the weapon's vtable (main+0x1c3f330, from its constructor main+0x7a759c) has at #175 (+0x578, one more than the Wii U for
+Itanium's two destructors) a function of the same shape (main+0x7ac8bc: this, a position, two flags, a pointer, two
+more flags), and the "DropWeapon" / "ForceDropWeapon" strings only lead to AI parameter tables. Calling it by hand would
+still need the holder's slot reset and the pouch kept right; but the runtime already has a verified native drop of the
+equipped item: upstream's quick-selector drop (runtime/quick_drop*.c: the pouch's discard plus the player's scheduled
+empty equip, then waiting for the native detach; its site `quick_drop_actor_method` is the vtable's #177). So the
+gesture (runtime/vr/vr_gestures.h) holds the hand's quick menu (d-pad right: weapons; left: shields) and taps its drop
+button (Y) 0.9 s in. The selector's cursor is still -1 then (no stick moved) in later openings: with the VR gesture on,
+runtime/quick_drop.c takes the selector entry whose PouchItem is equipped (+ 0x24). Checked by tools/vr/test_vr_drop.py
+(pending, completed, the sword from hand height to the ground).
+
 ## The held weapon hits whenever it is swung (2026-11-11): done
 
 BetterVR (hook_EnableWeaponAttackSensor, at Wii U 0x024AA7C4 in the weapon's attack step) writes the weapon's

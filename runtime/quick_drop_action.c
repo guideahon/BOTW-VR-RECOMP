@@ -65,7 +65,13 @@ RT_ON_RESET(quick_drop_action_reset) {
     atomic_store(&drop_actor_consumed, false);
 }
 
+#ifdef SW_VR
+bool vr_drop_gesture(void);   // runtime/vr/vr_input.c: VR's drop gesture drives the quick selector's drop
+#endif
 bool quick_drop_action_enabled(void) {
+#ifdef SW_VR
+    if (vr_drop_gesture() && !strcmp(g_game_version, "1.9.0")) return true;
+#endif
     return g_settings.quick_drop && !strcmp(g_game_version, "1.9.0");
 }
 

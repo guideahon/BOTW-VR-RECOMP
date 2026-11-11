@@ -1,5 +1,6 @@
 // Native quick-selector drop and cancel for BOTW 1.9.0.
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -128,11 +129,28 @@ static void quick_drop_menu(Cpu *c) {
     int category = (int32_t)LD32(screen + 0x3738);
     int selected = (int32_t)LD32(screen + 0x387c);
     int count = (int32_t)LD32(screen + 0x3880);
+#ifdef SW_VR
+    // VR's drop gesture (runtime/vr/vr_gestures.h) opens the selector and drops at once, before the cursor has moved
+    // (-1): what it drops is what is in hand, the selector's equipped entry (PouchItem + 0x24)
+    {
+        extern bool vr_drop_gesture(void);
+        if (selected < 0 && count > 0 && count <= 20 && vr_drop_gesture())
+            for (int i = 0; i < count; i++) {
+                uint64_t it = LD64(screen + 0x37c8 + (uint64_t)i * 8);
+                if (getenv("SAVAGEWIND_VR_TRACE_DROP"))
+                    LOG("[quick-drop] vr entry %d %" PRIx64 " type %d equipped %d\n", i, it,
+                        guest_range(it, 0x38) ? (int)LD32(it + 0x18) : -9, guest_range(it, 0x38) ? LD8(it + 0x24) : -9);
+                if (guest_range(it, 0x38) && LD8(it + 0x24)) { selected = i; break; }
+            }
+        else if (getenv("SAVAGEWIND_VR_TRACE_DROP"))
+            LOG("[quick-drop] vr gesture %d selected %d count %d\n", vr_drop_gesture(), selected, count);
+    }
+#endif
     // Menu::execute sets/checks this transition flag when closing.
     if (LD8(screen + 0x38e4) == 2 || category < 0 || category > 2 ||
         count < 1 || count > 20 || selected < 0 || selected >= count) {
-        LOG("[quick-drop] ignored category=%d selected=%d count=%d (no inventory change)\n",
-            category, selected, count);
+        LOG("[quick-drop] ignored category=%d selected=%d count=%d applied=%d (no inventory change)\n",
+            category, selected, count, (int32_t)LD32(screen + 0x3878));
         return;
     }
     uint64_t mgr = LD64(screen + 0x3640);

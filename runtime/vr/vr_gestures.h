@@ -11,6 +11,9 @@
 //                                                                    else the bows (d-pad right after drawing the bow)
 //   left waist       the Sheikah Slate rune (L; again: B)           held: the runes (d-pad up)
 //   both at mouth    whistle (d-pad down)
+//   right waist      held (either hand): drop what that hand holds (BetterVR's drop): the hand's quick menu opens
+//                    (right hand: weapons, d-pad right; left: shields, d-pad left), the drop button (Y: the runtime's
+//                    quick-selector drop, runtime/quick_drop*.c) drops the item in hand, the menu closes
 // A quick menu stays open while the grip is held; let go, the item chosen is taken out (as BetterVR does).
 // Elsewhere the grip is grab / interact (A).
 //
@@ -100,7 +103,13 @@ typedef struct {
     vr_g3 mag_from[2];
     float stick_ry;             // out: the right stick's up-down to give the game (valid when stick_ry_set)
     bool stick_ry_set;
+    double drop_t0[2];          // a drop going on for this hand since then (0: none); done until the grip is let go
+    int drop_button[2];
+    bool drop_done[2];
 } vr_gesture_state;
+
+#define VR_G_DROP_PRESS 0.9      // s into a drop: the quick menu is open, the drop button is tapped
+#define VR_G_DROP_END 1.4        // s: the d-pad let go, the menu closes
 
 #define VR_G_MAG_FULL 0.15f     // m: a hand this far up or down is the stick pushed fully
 #define VR_G_MAG_PUSH 0.08f     // m: a hand this far forward or back pushes or pulls (d-pad up / down)
@@ -128,7 +137,8 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
             s->grip_down[h] = now;
             s->grip_slot[h] = slot[h];
             slotted = slot[h] == VR_SLOT_RSHOULDER || slot[h] == VR_SLOT_LSHOULDER || slot[h] == VR_SLOT_LWAIST;
-            if (!whistle && !slotted && slot[h] != VR_SLOT_MOUTH) vr_g_tap(s, VRB_A, now);   // grab / interact
+            if (!whistle && !slotted && slot[h] != VR_SLOT_MOUTH && slot[h] != VR_SLOT_RWAIST)
+                vr_g_tap(s, VRB_A, now);   // grab / interact
         }
         // a short press over a slot (let go before the quick menu): its item out, or put away when it is out
         if (!g && s->grip_was[h] && slotted && !s->menu_open[h] && now - s->grip_down[h] < VR_G_LONG) {
@@ -154,6 +164,23 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
             else s->menu_button[h] = VRB_RIGHT, s->menu_take = VR_HELD_BOW;   // (bows: the bow is out from the press)
             s->haptic[h] = 2;
         }
+        // held at the right waist: drop what this hand holds, once a press
+        if (g && sl == VR_SLOT_RWAIST && !s->drop_t0[h] && !s->drop_done[h] && now - s->grip_down[h] >= VR_G_LONG) {
+            s->drop_t0[h] = now;
+            s->drop_button[h] = h == 1 ? VRB_RIGHT : VRB_LEFT;
+            s->haptic[h] = 2;
+        }
+        if (s->drop_t0[h]) {
+            double t = now - s->drop_t0[h];
+            if (t < VR_G_DROP_END) {
+                b |= 1ull << s->drop_button[h];
+                if (t >= VR_G_DROP_PRESS && t < VR_G_DROP_PRESS + VR_G_TAP) b |= 1ull << VRB_Y;
+            } else {
+                s->drop_t0[h] = 0, s->drop_done[h] = true;
+                if (h == 1 && s->held == VR_HELD_MELEE) s->held = VR_HELD_NONE;
+            }
+        }
+        if (!g) s->drop_done[h] = false;
         if (s->menu_open[h]) {
             if (g) b |= 1ull << s->menu_button[h];
             else if (s->grip_was[h]) {   // let go: what was chosen comes out (it was put away by the press's toggle, or is new)
