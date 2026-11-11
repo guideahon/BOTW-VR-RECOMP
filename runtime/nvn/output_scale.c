@@ -384,7 +384,11 @@ void rt_persp_offset(uint64_t proj, uint32_t *x, uint32_t *y) {
     uint32_t w = __atomic_load_n(&jitter_size[0], __ATOMIC_RELAXED), h = __atomic_load_n(&jitter_size[1], __ATOMIC_RELAXED);
     if (nf[1] > 10001 && rt_jitter_on() && w && h) {
         uint32_t n = __atomic_load_n(&jitter_phases, __ATOMIC_RELAXED);
-        uint32_t i = (uint32_t)(framepace_shown_frame() % n) + 1;  // (from 1: Halton's 0 is 0)
+        uint64_t f = framepace_shown_frame();
+#ifdef SW_VR
+        { extern bool vr_stereo_now(void); if (vr_stereo_now()) f /= 2; }   // (VR: a pair's eyes, one jitter each)
+#endif
+        uint32_t i = (uint32_t)(f % n) + 1;  // (from 1: Halton's 0 is 0)
         ox += (halton(i, 2) - 0.5f) / (float)w;
         oy += (halton(i, 3) - 0.5f) / (float)h;  // (the projection gets twice the offset: NDC is 2 wide)
     }

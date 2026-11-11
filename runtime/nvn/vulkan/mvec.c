@@ -43,6 +43,7 @@ typedef struct {
     MvecRec *rec;
     int nrec, cap_rec;
     bool full;
+    int eye;         // VR in stereo: the eye it was drawn for (0 left, 1 right; -1 none)
     MvecCamera cam;  // (camera_finish, once the frame is recorded)
 } Slot;
 
@@ -321,6 +322,20 @@ static void frame_begin(uint64_t frame) {
     s->full = false;
     s->frame = frame;
     prev = last >= 0 && slots[last].frame + 1 == frame ? last : -1;
+#ifdef SW_VR
+    // VR in stereo: the eyes are drawn in turn, so the frame before is the other eye's; the previous frame for the
+    // vectors (and TAA's history, exec.c mvec_taa) is this eye's last one, two frames back
+    extern int vr_frame_eye(void);
+    static int shared = -1;   // (SAVAGEWIND_VR_TAA_SHARED=1, a test: the frame before, whichever eye)
+    if (shared < 0) shared = getenv("SAVAGEWIND_VR_TAA_SHARED") && *getenv("SAVAGEWIND_VR_TAA_SHARED") == '1';
+    s->eye = shared ? -1 : vr_frame_eye();
+    if (s->eye >= 0) {
+        int back = (int)((frame - 2) % MVEC_SLOTS);
+        prev = frame >= 2 && slots[back].frame == frame - 2 && slots[back].eye == s->eye ? back : -1;
+    }
+#else
+    s->eye = -1;
+#endif
     if (++epoch == 0) {  // (wrapped: entries 2^32 frames old would look current)
         memset(dedupe, 0, sizeof dedupe), memset(prev_index, 0, sizeof prev_index), memset(ord_index, 0, sizeof ord_index);
         if (krange) memset(krange, 0, (krange_mask + 1) * sizeof *krange);

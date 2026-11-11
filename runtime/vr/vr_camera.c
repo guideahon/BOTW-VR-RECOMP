@@ -27,6 +27,7 @@
 #include "../control_cells.h"
 #include "vr_event_table.h"
 #include "vr_options.h"
+#include "../settings.h"
 
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <vulkan/vulkan.h>
@@ -362,8 +363,10 @@ void vr_camera_lookat(float *f) {
     // ASYMMETRIC=0 for the symmetric one), widened to the window's shape about its centre: the game's projection gets
     // its half-size and its centre as an offset (vr_persp, vr_persp_offset). In mono (one picture for both eyes): both
     // fields together, made symmetric.
-    static int asym = -1;
-    if (asym < 0) asym = !(getenv("SAVAGEWIND_VR_ASYMMETRIC") && *getenv("SAVAGEWIND_VR_ASYMMETRIC") == '0');
+    // (with Anti-aliasing TAA symmetric: an off-centre projection left TAA's picture black; its cause is still to find)
+    static int asym_env = -2;
+    if (asym_env == -2) asym_env = getenv("SAVAGEWIND_VR_ASYMMETRIC") ? *getenv("SAVAGEWIND_VR_ASYMMETRIC") != '0' : -1;
+    int asym = asym_env >= 0 ? asym_env : g_settings.antialias != AA_TAA;
     float tx = 0, ty = 0, cx = 0, cy = 0;
     if (eye >= 0 && asym) {
         float l = tanf(v[eye].fov.angleLeft), r = tanf(v[eye].fov.angleRight);
@@ -487,3 +490,6 @@ int vr_frame_eye(void) {
     pthread_mutex_unlock(&lock);
     return eye;
 }
+
+// output_scale.c (TAA's jitter): in play in stereo, frames in pairs
+bool vr_stereo_now(void) { return vr_world_view() && stereo_on(); }

@@ -75,6 +75,7 @@ def run(save, out, env_extra):
     env.update(env_extra)
     game, proc, log = re_run.boot(save, out, env, ['0 head 0 1.7 0 0 0 0'])
     try:
+        game.cmd('set', 'antialias', 'smaa', ok=False)   # (with TAA each eye keeps a symmetric frustum)
         time.sleep(12)
     finally:
         perf_routes.stop_game(game, proc, log)

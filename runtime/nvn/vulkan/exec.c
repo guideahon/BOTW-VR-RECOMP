@@ -9190,7 +9190,7 @@ static VkPipeline post_pipeline(const char *fs, VkFormat fmt) {
 // output, 3, 4: FSR EASU / RCAS of the presented image; 5, 6: FSR EASU / RCAS of the 3D scene, 7: its CAS
 // sharpening (scene_post), 32: its colour grading, 33: the map background before cursor UI, 34: its DLSS output,
 // 35: DLSS's motion vectors (dlss_scene), 36: VR's HUD apart from the 3D scene (vr_hud_prepare).
-enum { POST_IMAGES = 37 };  // (mvec: 8 the object vectors, 9 the debug view, 10 the motion vectors, 11 / 12 TAA's
+enum { POST_IMAGES = 45 };  // (37-44: TAA's alternating images for the right eye in VR stereo, mvec_taa)  // (mvec: 8 the object vectors, 9 the debug view, 10 the motion vectors, 11 / 12 TAA's
                             //  history; FSR 3: 13 its output, 14 the depth, 15 the reactive mask; 16-31 TAA: mvec_taa)
 static TexBackend *post_image_ex(int i, uint32_t w, uint32_t h, VkFormat f, VkImageUsageFlags extra);
 static TexBackend *post_image(int i, uint32_t w, uint32_t h, VkFormat f) { return post_image_ex(i, w, h, f, 0); }
@@ -10354,28 +10354,47 @@ static TexBackend *mvec_taa(VkCommandBuffer cb, TexBackend *b, uint64_t frame) {
     }
     float jit[2], nr, fr, fov;
     if (!mvec_camera_now(jit, &nr, &fr, &fov)) return NULL;
-    static uint64_t last = ~0ull;
-    static uint32_t lw, lh;
-    static int n;
-    static float pj[2];
-    bool valid = last != ~0ull && last + 1 == frame && w == lw && h == lh;
-    int c = n, p = n ^ 1;  // (this frame's half of each pair, last frame's)
-    n ^= 1;
+    // VR in stereo: each eye its own history (the frames before are the other eye's): its own alternating images
+    // (37-44 for the right eye), its last frame two back
+    int e = 0, step = 1;
+#ifdef SW_VR
+    {   // (SAVAGEWIND_VR_TAA_SHARED=1, a test: one history for both eyes, as stereo had without this)
+        extern int vr_frame_eye(void);
+        static int shared = -1;
+        if (shared < 0) shared = getenv("SAVAGEWIND_VR_TAA_SHARED") && *getenv("SAVAGEWIND_VR_TAA_SHARED") == '1';
+        int eye = shared ? -1 : vr_frame_eye();
+        if (eye >= 0) e = eye, step = 2;
+    }
+#endif
+    static uint64_t lasts[2] = {~0ull, ~0ull};
+    static uint32_t lws[2], lhs[2];
+    static int ns[2];
+    static float pjs[2][2];
+    uint64_t last = lasts[e];
+    float *pj = pjs[e];
+    bool valid = last != ~0ull && last + (uint64_t)step == frame && w == lws[e] && h == lhs[e];
+    int c = ns[e], p = ns[e] ^ 1;  // (this frame's half of each pair, last frame's)
+    ns[e] ^= 1;
+    const int R = e ? 26 : 0;   // (the right eye's images: 11/12 -> 37/38, 17/18 -> 39/40, 25/26 -> 41/42, 28/29 -> 43/44)
+#define TAA_ID(i) ((i) == 11 || (i) == 12 ? (i) + R : (i) == 17 || (i) == 18 ? (i) + (e ? 22 : 0) : \
+                   (i) == 25 || (i) == 26 ? (i) + (e ? 16 : 0) : (i) == 28 || (i) == 29 ? (i) + (e ? 15 : 0) : (i))
     const VkImageUsageFlags S = VK_IMAGE_USAGE_STORAGE_BIT;
     const VkFormat F16 = VK_FORMAT_R16G16B16A16_SFLOAT, R8 = VK_FORMAT_R8_UNORM;
     uint32_t w2 = (w + 1) / 2, h2 = (h + 1) / 2, w4 = (w2 + 1) / 2, h4 = (h2 + 1) / 2, w8 = (w4 + 1) / 2, h8 = (h4 + 1) / 2;
     TexBackend *dil = post_image_ex(16, w, h, VK_FORMAT_R32G32B32A32_SFLOAT, S);
-    TexBackend *luma[2] = {post_image_ex(17, w, h, VK_FORMAT_R16_SFLOAT, S), post_image_ex(18, w, h, VK_FORMAT_R16_SFLOAT, S)};
+    TexBackend *luma[2] = {post_image_ex(TAA_ID(17), w, h, VK_FORMAT_R16_SFLOAT, S),
+                           post_image_ex(TAA_ID(18), w, h, VK_FORMAT_R16_SFLOAT, S)};
     TexBackend *recon = post_image_ex(19, w, h, VK_FORMAT_R32_UINT, S | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     TexBackend *sh[3] = {post_image_ex(20, w2, h2, VK_FORMAT_R16G16_SFLOAT, S), post_image_ex(21, w4, h4, VK_FORMAT_R16G16_SFLOAT, S),
                          post_image_ex(22, w8, h8, VK_FORMAT_R16G16_SFLOAT, S)};
     TexBackend *shade = post_image_ex(23, w2, h2, R8, S);
     TexBackend *react = post_image_ex(24, w, h, VK_FORMAT_R8G8B8A8_UNORM, S);
-    TexBackend *acc[2] = {post_image_ex(25, w, h, R8, S), post_image_ex(26, w, h, R8, S)};
+    TexBackend *acc[2] = {post_image_ex(TAA_ID(25), w, h, R8, S), post_image_ex(TAA_ID(26), w, h, R8, S)};
     TexBackend *lock = post_image_ex(27, w, h, R8, S);
-    TexBackend *lumah[2] = {post_image_ex(28, w, h, F16, S), post_image_ex(29, w, h, F16, S)};
+    TexBackend *lumah[2] = {post_image_ex(TAA_ID(28), w, h, F16, S), post_image_ex(TAA_ID(29), w, h, F16, S)};
     TexBackend *instab = post_image_ex(30, w, h, R8, S);
-    TexBackend *hist[2] = {post_image_ex(11, w, h, F16, S), post_image_ex(12, w, h, F16, S)};
+    TexBackend *hist[2] = {post_image_ex(TAA_ID(11), w, h, F16, S), post_image_ex(TAA_ID(12), w, h, F16, S)};
+#undef TAA_ID
     TexBackend *out = post_image_ex(31, w, h, F16, S);
     static const VkComponentMapping id = {0};
     VkImageView color = vk_image_view(b, VK_IMAGE_VIEW_TYPE_2D, b->format, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -10442,8 +10461,8 @@ static TexBackend *mvec_taa(VkCommandBuffer cb, TexBackend *b, uint64_t frame) {
     }
     vk_full_barrier(cb);
     gp_mark(cb, "post taa end");
-    last = frame;
-    lw = w, lh = h;
+    lasts[e] = frame;
+    lws[e] = w, lhs[e] = h;
     pj[0] = J[0], pj[1] = J[1];
     return out;
 }
