@@ -320,6 +320,15 @@ static uint64_t gestures(const vr_pad_in *p, double now) {
         g.head = vr_g3v(0, 1.7f, 0), g.fwd = vr_g3v(0, 0, -1), g.right = vr_g3v(1, 0, 0);
         g.hand[0] = vr_g3v(-0.3f, 0.9f, 0), g.hand[1] = vr_g3v(0.3f, 0.9f, 0);
     }
+    // what Link holds, read from the game where it can be (runtime/vr/vr_skel.c: the weapon models at his hands);
+    // the gestures' own tracking otherwise (a rune, or before his skeleton is seen)
+    extern int vr_skel_held(int hand);
+    int rh = vr_skel_held(1), lh = vr_skel_held(0);
+    if (rh >= 0) {
+        if (rh == 1) in.gest.held = VR_HELD_MELEE;            // (VR_SKEL_MELEE)
+        else if (lh == 2) in.gest.held = VR_HELD_BOW;         // (VR_SKEL_BOW, in the left hand)
+        else if (in.gest.held != VR_HELD_RUNE) in.gest.held = VR_HELD_NONE;
+    }
     int before = in.gest.held;
     uint64_t b = vr_gestures(&in.gest, &g);
     for (int h = 0; h < 2; h++)

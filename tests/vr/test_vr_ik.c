@@ -58,5 +58,25 @@ int main(void) {
     CHECK_NEAR(z.z, 0, 1e-5);    // (z, across the bone, untouched by a turn in its plane)
     CHECK_NEAR(m[13], 1.5f, 1e-5);
     CHECK_NEAR(vr_v3_len(vr_v3(vr_quat_arc(vr_v3(1, 0, 0), vr_v3(-1, 0, 0)).x, 0, 0)) <= 1, 1, 0);
+    VR_TEST("affine product and inverse: a weapon carried by its hand's change");
+    vr_bone_mtx a = {0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1};   // 90 deg about z, at (1, 2, 3)
+    vr_bone_mtx ai, id;
+    CHECK(vr_bm_inverse(a, ai));
+    vr_bm_mul(a, ai, id);
+    for (int i = 0; i < 16; i++) CHECK_NEAR(id[i], (i % 5 == 0) ? 1 : 0, 1e-5);
+    vr_bone_mtx sc = {2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1}, sci;   // (scaled: still inverted)
+    CHECK(vr_bm_inverse(sc, sci));
+    CHECK_NEAR(sci[0], 0.5f, 1e-6);
+    vr_bone_mtx flat = {0};
+    CHECK(!vr_bm_inverse(flat, ai));
+    // the hand moved from `a` to `b`: delta = b * inverse(a); a weapon at the hand moves with it
+    vr_bone_mtx b = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.5f, -0.4f, 1}, delta, w = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2.2f, 3, 1}, wm;
+    CHECK(vr_bm_inverse(a, ai));
+    vr_bm_mul(b, ai, delta);
+    vr_bm_mul(delta, w, wm);
+    // the weapon was 0.2 up the hand's x axis... in the hand's frame (0.2, 0, 0) under a's rotation: now along b's x
+    CHECK_NEAR(wm[12], 0.2f, 1e-5);
+    CHECK_NEAR(wm[13], 1.5f, 1e-5);
+    CHECK_NEAR(wm[14], -0.4f, 1e-5);
     VR_TEST_END("test_vr_ik");
 }

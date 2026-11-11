@@ -82,3 +82,32 @@ static inline vr_ik_result vr_ik_two_bone(vr_vec3 shoulder, vr_vec3 elbow, vr_ve
     r.lower = vr_quat_arc(vr_v3_normalize(fore), a2);
     return r;
 }
+
+// out = a * b, bone matrices as affine transforms (the fourth row taken as 0 0 0 1)
+static inline void vr_bm_mul(const float *a, const float *b, float *out) {
+    float r[16];
+    for (int c = 0; c < 4; c++)
+        for (int row = 0; row < 3; row++)
+            r[4 * c + row] = a[row] * b[4 * c] + a[4 + row] * b[4 * c + 1] + a[8 + row] * b[4 * c + 2] +
+                             (c == 3 ? a[12 + row] : 0);
+    for (int c = 0; c < 4; c++) r[4 * c + 3] = c == 3 ? 1 : 0;
+    for (int i = 0; i < 16; i++) out[i] = r[i];
+}
+
+// the inverse of an affine bone matrix; false when it is singular
+static inline bool vr_bm_inverse(const float *m, float *out) {
+    float a = m[0], b = m[4], c = m[8], d = m[1], e = m[5], f = m[9], g = m[2], h = m[6], i = m[10];
+    float A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+    float det = a * A + b * B + c * C;
+    if (fabsf(det) < 1e-12f) return false;
+    float inv = 1 / det;
+    float r[9] = {A * inv, (c * h - b * i) * inv, (b * f - c * e) * inv,
+                  B * inv, (a * i - c * g) * inv, (c * d - a * f) * inv,
+                  C * inv, (b * g - a * h) * inv, (a * e - b * d) * inv};   // (rows of the 3x3 inverse)
+    for (int col = 0; col < 3; col++)
+        for (int row = 0; row < 3; row++) out[4 * col + row] = r[3 * row + col];
+    for (int row = 0; row < 3; row++)
+        out[12 + row] = -(r[3 * row] * m[12] + r[3 * row + 1] * m[13] + r[3 * row + 2] * m[14]);
+    out[3] = out[7] = out[11] = 0, out[15] = 1;
+    return true;
+}

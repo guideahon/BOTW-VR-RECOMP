@@ -631,6 +631,47 @@ def scenario_arms(args, run_dir):
     print('    picture: {}'.format(os.path.join(run_dir, 'arms.png')))
 
 
+def scenario_weapon(args, run_dir):
+    """First person: the right grip at the right shoulder takes the weapon out; it is in Link's right hand, which
+    follows the controller (vr_skel.c reads what each hand holds from the weapon models there); a picture of it."""
+    G = '/user/hand/right/input/squeeze/value'
+    lines = ['0 head 0 1.7 0 0 0 0', '0 hand left -0.25 1.3 -0.4 0 0 0']
+    for k in range(40):
+        t = 30.0 * k
+        lines += ['%.1f hand right 0.25 1.45 -0.45 0 0 0' % t, '%.1f value %s 0' % (t, G),
+                  '%.1f hand right 0.25 1.45 -0.45 0 0 0' % (t + 4), '%.1f hand right 0.15 1.65 0.12 0 0 0' % (t + 4.5),
+                  '%.1f value %s 1' % (t + 5, G), '%.1f value %s 0' % (t + 5.2, G),
+                  '%.1f hand right 0.15 1.65 0.12 0 0 0' % (t + 6), '%.1f hand right 0.25 1.45 -0.45 0 0 0' % (t + 6.5)]
+    lines.sort(key=lambda l: float(l.split()[0]))
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={
+        'SAVAGEWIND_VR_STEREO': '0', 'SAVAGEWIND_VR_TRACE_GESTURES': '1', 'FAKE_XR_CAPTURE_EVERY': '0'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+        drawn = False
+        for _ in range(3):   # (each cycle toggles: out, away, out...)
+            t = now_s()
+            target = (t // 30 + 1) * 30 + 8.0
+            while now_s() < target:
+                time.sleep(0.1)
+            glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+            if re.search(r'right hand holds Weapon_\S+ \(1\)', glog):
+                game.cmd('shot', 'build/vr/weapon.png', ok=False)
+                drawn = True
+                break
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    if os.path.exists(os.path.join('build', 'vr', 'weapon.png')):
+        os.replace(os.path.join('build', 'vr', 'weapon.png'), os.path.join(run_dir, 'weapon.png'))
+    glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+    held = re.findall(r'right hand holds (Weapon_\S+) \(1\)', glog)
+    check(drawn and held, 'the shoulder grab put a melee weapon in Link\'s right hand ({})'.format(held[0] if held else 'none'))
+    check("[vr] Link's arms follow the controllers" in glog, 'the arm (and the weapon with it) follows the controller')
+    print('    picture: {}'.format(os.path.join(run_dir, 'weapon.png')))
+
+
 def scenario_snap(args, run_dir):
     """Snap turning: a push of the right stick turns the view one step, at once, and only one."""
     R = '/user/hand/right/input/thumbstick'
@@ -744,7 +785,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'snap', 'motion', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'weapon', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -780,6 +821,8 @@ def main(argv=None):
             scenario_firstperson(args, run_dir)
         elif sc == 'gestures':
             scenario_gestures(args, run_dir)
+        elif sc == 'weapon':
+            scenario_weapon(args, run_dir)
         elif sc == 'arms':
             scenario_arms(args, run_dir)
         elif sc == 'snap':

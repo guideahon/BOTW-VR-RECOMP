@@ -90,6 +90,7 @@ typedef struct {
     uint64_t skel;
     int n;
     int arm1[2], arm2[2], wrist[2], chest;   // Link's: the joints the IK reads
+    int weapon[2];                           // ... and the bones his weapons hang from (Weapon_L, Weapon_R)
     uint8_t part[MAX_BONES];
 } skel_info;
 static skel_info skels[MAX_SKELS];
@@ -109,7 +110,7 @@ static skel_info *info_of(uint64_t skel, bool log) {
     memset(s, 0, sizeof *s);
     s->skel = skel;
     s->n = bone_count(skel);
-    for (int h = 0; h < 2; h++) s->arm1[h] = s->arm2[h] = s->wrist[h] = -1;
+    for (int h = 0; h < 2; h++) s->arm1[h] = s->arm2[h] = s->wrist[h] = s->weapon[h] = -1;
     s->chest = -1;
     for (int i = 0; i < s->n; i++) {
         const char *b = bone_name(skel, i);
@@ -120,6 +121,7 @@ static skel_info *info_of(uint64_t skel, bool log) {
         if (!strcmp(b, "Arm_2_L") || !strcmp(b, "Arm_2_R")) s->arm2[side] = i;
         if (!strcmp(b, "Wrist_L") || !strcmp(b, "Wrist_R")) s->wrist[side] = i;
         if (!strcmp(b, "Spine_2")) s->chest = i;
+        if (!strcmp(b, "Weapon_L") || !strcmp(b, "Weapon_R")) s->weapon[side] = i;
         if (log) LOG("[vr]   bone %3d %s\n", i, b);
     }
     return s;
@@ -138,7 +140,33 @@ static struct {
         float miss;                       // the wrist's distance to its target after the solve (m)
     } arm[2];
     uint64_t frames;
+    // the weapons in his hands: each hand's Weapon_ bone before and after the arms' turns, the change between them
+    // (carried to the weapon models hanging there), and what each hand holds, from the weapon models found there
+    struct {
+        bool ok;
+        float before[16], delta[16];
+        int held;            // VR_SKEL_* below
+        uint64_t held_frame; // the frame it was last seen
+        uint64_t model;
+    } hand[2];
 } k = {.hide = -1, .arms = -1};
+
+enum { VR_SKEL_NONE, VR_SKEL_MELEE, VR_SKEL_BOW, VR_SKEL_SHIELD, VR_SKEL_OTHER };
+
+// vr_input.c: what Link holds in a hand (0 left, 1 right), as seen on the last frames: VR_SKEL_*
+// (-1: unknown, Link's skeleton not seen in the last half second)
+static uint64_t link_seen_ns;
+int vr_skel_held(int hand) {
+    if (!link_seen_ns || plat_now_ns() - link_seen_ns > 500000000ull) return -1;
+    return k.hand[hand].held_frame + 8 >= k.frames ? k.hand[hand].held : VR_SKEL_NONE;
+}
+
+static int weapon_kind(const char *n) {
+    if (strstr(n, "_Bow_")) return VR_SKEL_BOW;
+    if (strstr(n, "_Shield_")) return VR_SKEL_SHIELD;
+    if (strstr(n, "_Sword_") || strstr(n, "_Lsword_") || strstr(n, "_Spear_") || strstr(n, "_Weapon_")) return VR_SKEL_MELEE;
+    return VR_SKEL_OTHER;
+}
 
 bool vr_first_person_now(void);                            // vr_camera.c
 bool vr_tracking_to_world(const vr_pose *in, vr_pose *out);   // vr_camera.c
@@ -208,7 +236,7 @@ void vr_skel_calc(uint64_t model) {
     }
     bool fp = vr_enabled() && vr_first_person_now();
     bool hide = k.hide == 1 || (k.hide == 2 && fp), arms = k.arms && fp;
-    if (!hide && !arms) return;
+    if (!hide && !arms && !vr_enabled()) return;   // (in VR the weapons are watched even when nothing is changed)
     uint64_t skel = rd64(model + 0x118);
     if (!GUEST_OK(skel)) return;
     uint64_t world = rd64(skel + 0x20);
@@ -218,6 +246,7 @@ void vr_skel_calc(uint64_t model) {
     if (!strcmp(n, "Link")) {
         bool first = model != k.model;
         k.model = model;
+        link_seen_ns = plat_now_ns();
         const skel_info *s = info_of(skel, first && getenv("SAVAGEWIND_VR_LOG_BONES"));
         if (first)
             LOG("[vr] Link's skeleton: model %llx, %d bones, arms %d %d %d / %d %d %d\n", (unsigned long long)model, s->n,
@@ -226,6 +255,9 @@ void vr_skel_calc(uint64_t model) {
             const float *m = bone_m(world, s->chest);
             k.chest[0] = m[12], k.chest[1] = m[13], k.chest[2] = m[14], k.chest_ok = true;
         }
+        float before[2][16];
+        for (int side = 0; side < 2; side++)
+            if (s->weapon[side] >= 0) memcpy(before[side], bone_m(world, s->weapon[side]), sizeof before[side]);
         if (arms) {
             for (int side = 0; side < 2; side++) solve_arm(world, s, side);
             apply_arms(world, s);
@@ -236,11 +268,48 @@ void vr_skel_calc(uint64_t model) {
         } else {
             k.arm[0].ok = k.arm[1].ok = false;
         }
+        for (int side = 0; side < 2; side++) {   // (the hands' change, for the weapons there)
+            k.hand[side].ok = false;
+            if (s->weapon[side] < 0) continue;
+            memcpy(k.hand[side].before, before[side], sizeof before[side]);
+            float inv[16];
+            if (vr_bm_inverse(before[side], inv)) {
+                vr_bm_mul(bone_m(world, s->weapon[side]), inv, k.hand[side].delta);
+                k.hand[side].ok = true;
+            }
+        }
         if (hide) {
             hide_head(world, s, false);
             if (!k.said_head) LOG("[vr] Link's head hidden (first person)\n"), k.said_head = true;
         }
         k.frames++;
+        return;
+    }
+    // a weapon (sword, bow, shield...): in a hand when it sits at that hand's Weapon_ bone as the animation left it;
+    // it is then carried by the hand's change (the arms' turns), and tells what that hand holds
+    if (!strncmp(n, "Weapon_", 7) && !strstr(n, "Quiver")) {   // (the quiver stays on his back)
+        float *root = bone_m(world, 0);
+        vr_vec3 p = vr_bm_pos(root);
+        for (int side = 0; side < 2; side++) {
+            if (!k.hand[side].ok) continue;
+            vr_vec3 h = vr_bm_pos(k.hand[side].before);
+            float dist = vr_v3_len(vr_v3_sub(p, h));
+            if (getenv("SAVAGEWIND_VR_LOG_WEAPONS") && k.frames % 120 == 0)
+                LOG("[vr] %s %.3f m from the %s hand\n", n, dist, side ? "right" : "left");
+            if (dist > 0.12f) continue;
+            if (k.hand[side].held_frame != k.frames || k.hand[side].model != model) {
+                int kind = weapon_kind(n);
+                if (kind != k.hand[side].held && getenv("SAVAGEWIND_VR_TRACE_GESTURES"))
+                    LOG("[vr] %s hand holds %s (%d)\n", side ? "right" : "left", n, kind);
+                k.hand[side].held = kind, k.hand[side].model = model;
+            }
+            k.hand[side].held_frame = k.frames;
+            if (arms) {
+                int nb = bone_count(skel);
+                for (int i = 0; i < nb; i++) vr_bm_mul(k.hand[side].delta, bone_m(world, i), bone_m(world, i));
+            }
+            break;
+        }
         return;
     }
     if (strncmp(n, "Armor_", 6)) return;
