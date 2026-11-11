@@ -16,6 +16,7 @@ uint64_t vr_world_frames(void);  // runtime/vr/xr_vulkan.c
 bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs);  // runtime/vr/vr_input.c
 uint64_t vr_rumble_pulses(void);  // runtime/vr/vr_input.c
 uint64_t vr_arrows_aimed(void);   // runtime/vr/vr_skel.c
+uint64_t vr_arc_frames(void);     // runtime/vr/xr_vulkan.c
 void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on);
 
 static void cmd_vr(int argc, char **argv, ControlReply *r) {
@@ -75,6 +76,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_bool(r, "motion_shield", shield);
     control_field_int(r, "rumble_pulses", (int64_t)vr_rumble_pulses());
     control_field_int(r, "arrows_aimed", (int64_t)vr_arrows_aimed());
+    control_field_int(r, "arc_frames", (int64_t)vr_arc_frames());
     control_text(r, "VR %s: %s; session %s, %llu frames (%llu with an image)", vr_enabled() ? "on" : "off",
                  vr_status_text(), state_name(st), (unsigned long long)frames, (unsigned long long)rendered);
 }

@@ -374,3 +374,34 @@ void vr_arrow_aim(float *dir, const float *origin, float *target) {
     arrows_aimed++;
     if (log) fprintf(stderr, "[vr-arrow] aimed by hand: %.3f %.3f %.3f\n", d.x, d.y, d.z);
 }
+
+// The arc the arrow about to go would fly (BetterVR draws it while the bow is drawn): LOCAL space points (metres), from
+// the string hand along the line through the bow hand; none unless the bow is in one hand and an arrow nocked in the
+// other, in first person, aiming by hand. The shape is the one measured from the game's arrows (a straight run of about
+// 25 m, then a fall growing with the square of the distance: 4.6 m down at 50 m), not the bow's own parameters.
+// SAVAGEWIND_VR_BOW_ARC=0: no arc.
+int vr_bow_arc(float (*pts)[3], int max) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_BOW_ARC"), *a = getenv("SAVAGEWIND_VR_BOW_AIM");
+        on = !(e && *e == '0') && !(a && !strcmp(a, "head"));
+    }
+    if (!on || !vr_first_person_now()) return 0;
+    int bow = vr_skel_held(1) == VR_SKEL_BOW ? 1 : 0;
+    if (vr_skel_held(bow) != VR_SKEL_BOW || vr_skel_held(1 - bow) != VR_SKEL_OTHER) return 0;
+    vr_pose hb, hs;
+    if (!vr_hand_pose(bow, &hb) || !vr_hand_pose(1 - bow, &hs)) return 0;
+    vr_vec3 d = vr_v3_sub(hb.p, hs.p);
+    if (vr_v3_len(d) < 0.08f) d = vr_quat_rotate(hb.q, vr_v3(0, 0, -1));
+    d = vr_v3_normalize(d);
+    int n = 0;
+    for (int i = 0; n < max; i++) {
+        float s = 0.4f + 0.06f * (float)(i * i);   // denser near the bow
+        float fall = s > 25.0f ? 0.0074f * (s - 25.0f) * (s - 25.0f) : 0.0f;
+        if (s > 80.0f || fall > 20.0f) break;
+        vr_vec3 p = vr_v3_add(hb.p, vr_v3_scale(d, s));
+        pts[n][0] = p.x, pts[n][1] = p.y - fall, pts[n][2] = p.z;
+        n++;
+    }
+    return n;
+}

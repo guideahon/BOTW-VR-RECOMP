@@ -16,6 +16,7 @@
 // and wants the app's writes to an image submitted before the release. Both run through rec_custom, on the recorder
 // thread, after the submission that copies into the image: in order with every other use of the queue. The next
 // frame waits until they have run, so one release / headset frame is in flight at a time.
+#include <math.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,7 @@
 
 #include "vr.h"
 #include "vr_internal.h"
+#include "vr_math.h"
 
 #define MAX_IMAGES 8
 enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_COUNT };
@@ -321,6 +323,85 @@ static bool begin_headset_frame(void) {
     return fs.shouldRender;
 }
 
+// ---- the bow's arc (vr_skel.c vr_bow_arc): dots copied onto an eye's image, each the size of a tile from a small
+// buffer of one colour, at where the eye's pose and frustum see the arc's points (over the scene: no depth) ----
+#define ARC_MAX 48
+#define ARC_TILE 16
+static struct {
+    float pts[ARC_MAX][3];
+    int n;               // this frame's points (0: no arc)
+    VkBuffer buf;        // two tiles: R G B A, then B G R A
+    VmaAllocation mem;
+    bool failed;
+    uint64_t frames;     // eye images the arc was drawn on
+} arc;
+
+int vr_bow_arc(float (*pts)[3], int max);  // vr_skel.c
+uint64_t vr_arc_frames(void) { return arc.frames; }
+
+static bool arc_buffer(void) {
+    if (arc.buf) return true;
+    if (arc.failed) return false;
+    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = 2 * ARC_TILE * ARC_TILE * 4,
+                             .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO,
+                                  .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
+    VmaAllocationInfo info;
+    if (vmaCreateBuffer(g_vk.vma, &bi, &ai, &arc.buf, &arc.mem, &info) != VK_SUCCESS || !info.pMappedData) {
+        arc.failed = true;
+        arc.buf = VK_NULL_HANDLE;
+        return false;
+    }
+    uint8_t *p = info.pMappedData;
+    for (int k = 0; k < ARC_TILE * ARC_TILE; k++) {   // a warm yellow, as sRGB bytes
+        uint8_t *a = p + 4 * k, *b = p + 4 * (ARC_TILE * ARC_TILE + k);
+        a[0] = 255, a[1] = 214, a[2] = 72, a[3] = 255;
+        b[0] = 72, b[1] = 214, b[2] = 255, b[3] = 255;
+    }
+    vmaFlushAllocation(g_vk.vma, arc.mem, 0, VK_WHOLE_SIZE);
+    return true;
+}
+
+// onto dst (an eye's swapchain image of the format src_fmt, in TRANSFER_DST_OPTIMAL), seen as the view v
+static void arc_draw(VkCommandBuffer cb, VkImage dst, VkExtent2D ext, VkFormat src_fmt, const vr_view *v) {
+    VkDeviceSize tile;
+    if (src_fmt == VK_FORMAT_R8G8B8A8_UNORM || src_fmt == VK_FORMAT_R8G8B8A8_SRGB) tile = 0;
+    else if (src_fmt == VK_FORMAT_B8G8R8A8_UNORM || src_fmt == VK_FORMAT_B8G8R8A8_SRGB) tile = ARC_TILE * ARC_TILE * 4;
+    else return;
+    if (!arc.n || !v->world || !arc_buffer()) return;
+    vr_quat qi = {-v->pose.orientation.x, -v->pose.orientation.y, -v->pose.orientation.z, v->pose.orientation.w};
+    vr_vec3 eye = vr_v3(v->pose.position.x, v->pose.position.y, v->pose.position.z);
+    float tl = tanf(v->fov.angleLeft), tr = tanf(v->fov.angleRight), tu = tanf(v->fov.angleUp), td = tanf(v->fov.angleDown);
+    VkBufferImageCopy rg[ARC_MAX];
+    uint32_t n = 0;
+    for (int i = 0; i < arc.n; i++) {
+        vr_vec3 p = vr_quat_rotate(qi, vr_v3_sub(vr_v3(arc.pts[i][0], arc.pts[i][1], arc.pts[i][2]), eye));
+        if (p.z > -0.05f) continue;   // behind the eye
+        float x = p.x / -p.z, y = p.y / -p.z;
+        float u = (x - tl) / (tr - tl), w = (tu - y) / (tu - td);
+        // a dot about 2.5 cm across where it is, at least 3 pixels, at most a tile
+        float px = 0.025f / -p.z / (tr - tl) * (float)ext.width;
+        int r = (int)(px * 0.5f + 0.5f);
+        r = r < 2 ? 2 : r > ARC_TILE / 2 ? ARC_TILE / 2 : r;
+        int cx = (int)(u * (float)ext.width), cy = (int)(w * (float)ext.height);
+        int x0 = cx - r, y0 = cy - r, x1 = cx + r, y1 = cy + r;
+        if (x0 < 0) x0 = 0;
+        if (y0 < 0) y0 = 0;
+        if (x1 > (int)ext.width) x1 = (int)ext.width;
+        if (y1 > (int)ext.height) y1 = (int)ext.height;
+        if (x1 <= x0 || y1 <= y0) continue;
+        rg[n++] = (VkBufferImageCopy){.bufferOffset = tile, .bufferRowLength = ARC_TILE, .bufferImageHeight = ARC_TILE,
+                                      .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                                      .imageOffset = {x0, y0, 0},
+                                      .imageExtent = {(uint32_t)(x1 - x0), (uint32_t)(y1 - y0), 1}};
+    }
+    if (!n) return;
+    barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT,
+            VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    rec_CmdCopyBufferToImage(cb, arc.buf, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, n, rg);
+    arc.frames++;
+}
+
 // src (in layout src_layout: COLOR_ATTACHMENT_OPTIMAL for the window image, GENERAL for exec.c's images) into
 // swapchain i, made at its size in the sRGB twin of its format: acquired and waited here, released after the submission
 static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkExtent2D ext, VkFormat fmt) {
@@ -345,6 +426,7 @@ static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_l
     VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ext.width, ext.height, 1}};
     rec_CmdCopyImage(cb, src, read, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+    if (i < 2) arc_draw(cb, dst, ext, fmt, &pres);
     // the runtime takes its images back as colour attachments (XR_KHR_vulkan_enable2)
     barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -372,6 +454,7 @@ void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat f
     fr.view = pres;
     fr.aspect = (float)ext.height / (float)ext.width;
     fr.hud = false;
+    arc.n = pres.world ? vr_bow_arc(arc.pts, ARC_MAX) : 0;
     {   // (debugging) SAVAGEWIND_VR_TRACE=<n>: the first n frames recorded in play, as what
         static int left = -1;
         if (left < 0) left = getenv("SAVAGEWIND_VR_TRACE") ? atoi(getenv("SAVAGEWIND_VR_TRACE")) : 0;
