@@ -67,6 +67,18 @@ BetterVR (Wii U) overrides the arrow's launch transform where AI_Arrow::handleSt
 - The matrix reaches the GPU through a generic uniform-block setter (main+0xef0f78, from main+0xf86e80; `mem find
   view:<eye>,<r>` lists the 93 copies of the view matrix and `mem watch` on them names it), at render time, from the
   same camera. Decoupling the aim from the picture there would mean telling the view's uniform apart from the rest.
+- Second round: the function profiler (SAVAGEWIND_FNPROF) over a whole run shooting and one not shooting: 87
+  functions run only when shooting. A block at main+0x9cd7d4 .. 0x9d7434 runs once a frame while an arrow flies (176
+  frames for one shot): the arrow's AI. Of the ones run once a shot, main+0x9d50e4 reads the arrow actor's matrix
+  (actor + 0x39c, 3x4 row-major; actor = [AI + 0x188]) and sets a random 5-35 s timer: it is **the arrow sticking**
+  (its state when it lands), not the launch (it runs before the trigger is pulled for arrows of earlier shots, and
+  long after letting go). Hooking it changed nothing; removed. The "IsShootByPlayer" users all run equally with and
+  without a shot: parameter set-ups, not the shot.
+- Still to find: the arrow's launch (the AI state entered when the bow is let go, among the arrow AI block's other
+  once-a-shot functions: main+0x9cd7d4, 0x9ce3dc, 0x9d6780, 0x9d6be0, or the player's side: main+0x812080 .. 0x812ddc,
+  0x684e5c, 0x68717c, 0x687bb0, 0xbcb250, 0xbde780, 0x138c1dc, 0x138fdbc, 0x1390898), then where it sets the arrow's
+  matrix or velocity. A frame-exact window (SAVAGEWIND_FNPROF=<from>:<to> around the release, the arrow seen leaving in
+  SAVAGEWIND_VR_LOG_MODELS=Weapon_Arrow) separates the launch from the flight.
 - Next: the shot itself. "IsShootByPlayer" (main .rodata 0x161b425) is read by 16 functions (tools: an adrp/add xref
   scan); the one of the player's arrow AI, then where it sets the arrow's transform or velocity (a `mem watch` on a
   flying arrow's rigid body, the arrow found with SAVAGEWIND_VR_LOG_MODELS=Weapon_Arrow), is the place to override

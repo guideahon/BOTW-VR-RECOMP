@@ -390,6 +390,11 @@ static uint64_t gestures(const vr_pad_in *p, double now) {
     }
     int before = in.gest.held;
     uint64_t b = vr_gestures(&in.gest, &g);
+    if (g.trigger[1] && getenv("SAVAGEWIND_VR_TRACE_GESTURES")) {
+        static uint64_t last;
+        if (plat_now_ns() - last > 500000000ull)
+            last = plat_now_ns(), LOG("[vr] right trigger: in hand %d (game: left %d right %d)\n", in.gest.held, lh, rh);
+    }
     for (int h = 0; h < 2; h++)
         if (in.gest.haptic[h]) {
             pulse(in.left_handed ? 1 - h : h, in.gest.haptic[h] == 2 ? 0.8f : 0.3f, in.gest.haptic[h] == 2 ? 0.08 : 0.03);
@@ -498,3 +503,4 @@ bool vr_hand_pose(int hand, vr_pose *out) {
     *out = pose_of(l.pose);
     return true;
 }
+

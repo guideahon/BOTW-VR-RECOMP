@@ -304,9 +304,13 @@ void vr_skel_calc(uint64_t model) {
             float dist = vr_v3_len(vr_v3_sub(p, h));
             if (getenv("SAVAGEWIND_VR_LOG_WEAPONS") && k.frames % 120 == 0)
                 LOG("[vr] %s %.3f m from the %s hand\n", n, dist, side ? "right" : "left");
-            if (dist > 0.12f) continue;
-            if (k.hand[side].held_frame != k.frames || k.hand[side].model != model) {
-                int kind = weapon_kind(n);
+            if (dist > 0.03f) continue;   // (one in the hand sits on the bone; one on the back only passes near it)
+            int kind = weapon_kind(n);
+            // two at one hand this frame (a bow and the arrow's...): the bow first, then a melee weapon, then a shield
+            static const int prio[] = {0, 2, 3, 1, 0};
+            if (k.hand[side].held_frame == k.frames && k.hand[side].model != model && prio[kind] < prio[k.hand[side].held])
+                kind = -1;
+            if (kind >= 0 && (k.hand[side].held_frame != k.frames || k.hand[side].model != model)) {
                 if (kind != k.hand[side].held && getenv("SAVAGEWIND_VR_TRACE_GESTURES"))
                     LOG("[vr] %s hand holds %s (%d)\n", side ? "right" : "left", n, kind);
                 k.hand[side].held = kind, k.hand[side].model = model;
@@ -327,3 +331,4 @@ void vr_skel_calc(uint64_t model) {
     if (hide && head_armor) hide_head(world, s, true);
     else if (arms) apply_arms(world, s);   // (sleeves and gloves follow the arms)
 }
+
