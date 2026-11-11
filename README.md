@@ -2,9 +2,10 @@
 
 > [!NOTE]
 > **BOTW VR Recomp** is a fork of [Savage Wind Recomp](https://github.com/Revivedx/SavageWindRecomp) with a PC-VR mode
-> (OpenXR): stereo, 6DOF head tracking, the HUD floating ahead, VR controllers and motion combat (ported from
-> [BetterVR](https://github.com/Crementif/BotW-BetterVR)). **Set it up from zero, dumping your own game:
-> [docs/vr/SETUP.md](docs/vr/SETUP.md)** ([en español](docs/vr/SETUP.es.md)). Status, settings and what is still missing:
+> (OpenXR): stereo, 6DOF head tracking, first person (or third), the HUD floating ahead, VR controllers with
+> [BetterVR](https://github.com/Crementif/BotW-BetterVR)'s controls, body gestures, motion combat and vibration.
+> **Install: run `Install BOTW VR.bat`** (pick your extracted ExeFS / RomFS folders; it does the rest). Dumping your own
+> game and the manual way: [docs/vr/SETUP.md](docs/vr/SETUP.md) ([en español](docs/vr/SETUP.es.md)). Status, settings and what is still missing:
 > [docs/VR.md](docs/VR.md); the plan: [docs/VR-PLAN.md](docs/VR-PLAN.md). Its sister project for *Tears of the Kingdom*:
 > [TOTK-VR-RECOMP](https://github.com/guideahon/TOTK-VR-RECOMP). Everything else below is upstream's README.
 

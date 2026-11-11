@@ -48,6 +48,11 @@ Copia o enlace: `mklink /J extracted\romfs D:\BOTW\romfs` ahorra 15 GB. Detalles
 
 ## 4. Compilar
 
+Lo fácil: ejecutá `Install BOTW VR.bat` en la raíz del repo. Pide tus carpetas (ExeFS, RomFS, DLC), las verifica,
+instala las herramientas si faltan, las enlaza en `extracted/`, compila y escribe `Play BOTW VR.bat` con las opciones
+VR que elijas, más un acceso directo en el escritorio. A mano:
+
+
 Una vez, en PowerShell en la raíz del repo:
 
 ```

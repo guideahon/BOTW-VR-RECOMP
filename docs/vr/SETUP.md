@@ -49,6 +49,11 @@ A copy or a link both work: `mklink /J extracted\romfs D:\BOTW\romfs` saves 15 G
 
 ## 4. Building
 
+The easy way: run `Install BOTW VR.bat` at the repository's root. It asks for your folders (ExeFS, RomFS, the
+DLC), checks them, installs the tools if they are missing, links the folders into `extracted/`, builds, and writes
+`Play BOTW VR.bat` with the VR options you pick, plus a desktop shortcut. By hand:
+
+
 Once, from PowerShell at the repository root:
 
 ```
