@@ -128,6 +128,7 @@ static struct {
     bool bettervr;         // SAVAGEWIND_VR_CONTROLS: bettervr (the default) or classic (vr_input_map.h)
     bool left_handed;      // SAVAGEWIND_VR_LEFT_HANDED: the hands' roles swapped (sticks stay)
     bool drawing;          // the main hand's trigger held (the bow drawn: vr_skel.c vr_bow_arc)
+    bool grip_now[2];      // each hand's grip (the hands' roles), this frame
     float turn_speed;      // SAVAGEWIND_VR_TURN_SPEED: the right stick's turning, scaled
     vr_gesture_state gest;
     uint32_t gestures;     // gestures that fired (for `vr`)
@@ -353,6 +354,11 @@ static uint64_t gestures(const vr_pad_in *p, double now) {
     vr_gesture_in g = {0};
     g.now = now;
     g.grip[0] = p->lgrip >= VR_PAD_PRESS, g.grip[1] = p->rgrip >= VR_PAD_PRESS;
+    in.grip_now[0] = g.grip[0], in.grip_now[1] = g.grip[1];
+    {   // the grip that takes hold of the weapon with the other hand does not grab (vr_skel.c two_hand)
+        extern bool vr_two_hand_zone(int hand);
+        for (int h = 0; h < 2; h++) g.no_grab[h] = vr_two_hand_zone(in.left_handed ? 1 - h : h);
+    }
     g.trigger[0] = p->ltrigger >= VR_PAD_PRESS, g.trigger[1] = p->rtrigger >= VR_PAD_PRESS;
     g.a = p->a, g.b = p->b, g.x = p->x, g.y = p->y, g.lclick = p->lclick, g.rclick = p->rclick;
     XrTime t = vr_next_display_time();
@@ -534,4 +540,10 @@ bool vr_drop_gesture(void) {
         on = !(e && *e == '0');
     }
     return on && in.ready && in.bettervr && vr_enabled() && vr_session_running();
+}
+
+// a hand's grip held now (0 left, 1 right; the hands' roles as the player set them)
+bool vr_grip_held(int hand) {
+    if (!in.ready) return false;
+    return in.grip_now[in.left_handed ? 1 - hand : hand];
 }

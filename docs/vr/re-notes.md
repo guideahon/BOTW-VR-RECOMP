@@ -52,6 +52,16 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
+## Both hands on a large sword or a spear (2026-11-11): done
+
+BetterVR (skeleton.cpp two-hand grip) latches the off hand when its grip goes down inside the weapon's bounding box, then
+turns the main wrist so the blade (the weapon actor's z column) points from the main hand to the off one, and multiplies
+the hits (x1.2 two-handed, x0.85 a two-handed kind held in one). Here it rides on the weapon bind site (main+0x1525fb8,
+see below): after the hand's change, `two_hand` in runtime/vr/vr_skel.c turns the weapon's matrix about its origin (the
+grip) so its z axis points at the other controller; the game copies that matrix to the model and the physics. The
+latch zone is 0.25 m around the line (the idle animation sways a large sword's blade 10-20 cm). Checked by
+tools/vr/test_vr_two_hands.py: the drawn model's blade at 0 deg from the left hand after it moved.
+
 ## Dropping what is in hand (2026-11-11): done for weapons (shields: same path, not checked in the game)
 
 BetterVR (hand over the right waist, grip held) calls Weapon::m_174_dropWeapon and ActorWeapons::resetBaseProc. On 1.9.0

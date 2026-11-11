@@ -151,6 +151,7 @@ static struct {
         uint64_t held_frame; // the frame it was last seen
         uint64_t model;
         uint64_t actor;      // its actor, as its bind made its matrix (vr_weapon_bind)
+        bool two_handed;     // a large sword or a spear (can be held with both hands)
     } hand[2];
 } k = {.hide = -1, .arms = -1};
 
@@ -175,6 +176,7 @@ bool vr_first_person_now(void);                            // vr_camera.c
 bool vr_tracking_to_world(const vr_pose *in, vr_pose *out);   // vr_camera.c
 bool vr_hand_pose(int hand, vr_pose *out);                  // vr_input.c
 bool vr_drawing(void);                                      // vr_input.c
+bool vr_two_hand_latched(void);                             // below
 
 static inline float *bone_m(uint64_t world, int i) { return (float *)(uintptr_t)(world + 0x40ull * i); }
 
@@ -326,8 +328,18 @@ void vr_skel_calc(uint64_t model) {
                 if (kind != k.hand[side].held && getenv("SAVAGEWIND_VR_TRACE_GESTURES"))
                     LOG("[vr] %s hand holds %s (%d)\n", side ? "right" : "left", n, kind);
                 k.hand[side].held = kind, k.hand[side].model = model;
+                k.hand[side].two_handed = kind == VR_SKEL_MELEE && (strstr(n, "_Lsword_") || strstr(n, "_Spear_"));
             }
             k.hand[side].held_frame = k.frames;
+            if (moved && vr_two_hand_latched() && getenv("SAVAGEWIND_VR_TRACE_TWO_HANDS") && k.frames % 30 == 0) {
+                vr_pose ho, hw;   // (tests) how far the model's blade is from the line to the other hand
+                if (vr_hand_pose(1 - side, &ho) && vr_tracking_to_world(&ho, &hw)) {
+                    vr_vec3 z = vr_v3_normalize(vr_v3(root[8], root[9], root[10]));
+                    vr_vec3 to = vr_v3_normalize(vr_v3_sub(hw.p, p));
+                    float c = fabsf(vr_v3_dot(z, to));
+                    LOG("[vr-two-hands] model blade %.1f deg from the other hand\n", acosf(c > 1 ? 1 : c) * 57.29578f);
+                }
+            }
             if (arms && !moved) {
                 int nb = bone_count(skel);
                 for (int i = 0; i < nb; i++) vr_bm_mul(k.hand[side].delta, bone_m(world, i), bone_m(world, i));
@@ -427,6 +439,68 @@ int vr_bow_arc(float (*pts)[3], int max) {
 static uint64_t weapons_moved;
 uint64_t vr_weapons_moved(void) { return weapons_moved; }
 
+// ---- both hands on a large sword or a spear (BetterVR's two-hand grip) ----
+// With one in the main hand and the other hand empty, the other hand's grip pressed near the weapon's line (within
+// 0.25 m of it: the idle sways it, and BetterVR uses its bounding box; 0.08 to 1.2 m from the main hand, either way) takes hold of it until let go: the weapon then turns
+// about the main hand's grip so its blade (its actor's z axis, as BetterVR's) points at the other hand, on the side it
+// was taken. That grip does not grab (vr_input.c asks vr_two_hand_zone). Its hits are x1.2; held in one hand, x0.85.
+// SAVAGEWIND_VR_TWO_HANDS=0: off.
+bool vr_grip_held(int hand);   // vr_input.c
+static struct {
+    bool zone, latched, grip_was;
+    int off;                    // the other hand (0 left, 1 right: the hand itself)
+    float sign;
+    uint64_t frames;            // weapon updates turned by it
+} th;
+bool vr_two_hand_zone(int hand) { return th.zone && th.off == hand; }
+bool vr_two_hand_latched(void) { return th.latched; }
+uint64_t vr_two_hand_frames(void) { return th.frames; }
+
+// m: the weapon's matrix (4x4 column-major, already carried by the main hand), turned in place when held in both
+static void two_hand(int side, float *m) {
+    static int en = -1;
+    if (en < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_TWO_HANDS");
+        en = !(e && *e == '0');
+    }
+    int off = 1 - side;
+    th.off = off;
+    bool can = en && k.hand[side].two_handed && k.hand[side].held == VR_SKEL_MELEE &&
+               (k.hand[off].held_frame + 8 < k.frames || k.hand[off].held == VR_SKEL_NONE);
+    vr_pose ho, hw;
+    bool grip = vr_grip_held(off);
+    if (!can || !vr_hand_pose(off, &ho) || !vr_tracking_to_world(&ho, &hw)) {
+        th.zone = th.latched = false, th.grip_was = grip;
+        return;
+    }
+    vr_vec3 o = vr_v3(m[12], m[13], m[14]), blade = vr_v3_normalize(vr_v3(m[8], m[9], m[10]));
+    vr_vec3 to = vr_v3_sub(hw.p, o);
+    float t = vr_v3_dot(to, blade);
+    float across = vr_v3_len(vr_v3_sub(to, vr_v3_scale(blade, t)));
+    th.zone = fabsf(t) > 0.08f && fabsf(t) < 1.2f && across < 0.25f;
+    if (getenv("SAVAGEWIND_VR_TRACE_TWO_HANDS") && k.frames % 45 == 0) {
+        // (tests) the blade's line in the room's (tracking) space too: the other hand's two poses give the turn between
+        vr_quat back = vr_quat_mul(ho.q, vr_quat_conj(hw.q));   // world -> tracking
+        vr_vec3 bt = vr_quat_rotate(back, blade), ot = vr_v3_add(ho.p, vr_quat_rotate(back, vr_v3_sub(o, hw.p)));
+        LOG("[vr-two-hands] other hand %.2f m along the blade, %.2f m off it; blade %.3f %.3f %.3f from %.3f %.3f %.3f"
+            " (tracking)\n", t, across, bt.x, bt.y, bt.z, ot.x, ot.y, ot.z);
+    }
+    if (grip && !th.grip_was && th.zone) {
+        th.latched = true, th.sign = t >= 0 ? 1.0f : -1.0f;
+        LOG("[vr] both hands on the weapon (the other hand %.2f m along it)\n", t);
+    }
+    if (!grip) th.latched = false;
+    th.grip_was = grip;
+    if (!th.latched || vr_v3_len(to) < 0.05f) return;
+    // turn the weapon about its grip: its blade onto the line to the other hand
+    vr_quat q = vr_quat_arc(blade, vr_v3_scale(vr_v3_normalize(to), th.sign));
+    for (int c = 0; c < 3; c++) {
+        vr_vec3 v = vr_quat_rotate(q, vr_v3(m[4 * c], m[4 * c + 1], m[4 * c + 2]));
+        m[4 * c] = v.x, m[4 * c + 1] = v.y, m[4 * c + 2] = v.z;
+    }
+    th.frames++;
+}
+
 void vr_weapon_bind(uint64_t actor) {
     static int on = -1;
     if (on < 0) {
@@ -445,6 +519,7 @@ void vr_weapon_bind(uint64_t actor) {
         float m[16] = {a[0], a[4], a[8], 0, a[1], a[5], a[9], 0, a[2], a[6], a[10], 0, a[3], a[7], a[11], 1}, r[16];
         vr_bm_mul(k.hand[side].delta, m, r);
         k.hand[side].actor = actor;
+        two_hand(side, r);
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 4; col++) a[row * 4 + col] = r[col * 4 + row];
         if (!weapons_moved++)
@@ -488,6 +563,7 @@ void vr_weapon_attack(uint64_t weapon) {
         float n = (power - 0.15f) / 0.85f;
         n = n < 0 ? 0 : n > 1 ? 1 : n;
         float mult = 0.20f + 1.15f * n * n * (3 - 2 * n);
+        if (k.hand[side].two_handed) mult *= th.latched ? 1.2f : 0.85f;   // (BetterVR's grip multipliers)
         *(int32_t *)(w + 0xc20) = 2;          // mode: on
         *(uint32_t *)(w + 0xc30) = 2;         // shield break power (2 cuts trees)
         *(float *)(w + 0xc28) = mult;         // the power multiplier, set up...

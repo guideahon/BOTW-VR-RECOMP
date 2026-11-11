@@ -78,6 +78,7 @@ typedef struct {
     bool a, b, x, y;            // right A, B; left X, Y
     bool lclick, rclick;
     double now;                 // s
+    bool no_grab[2];            // this hand's grip takes hold of something else now (both hands on a weapon)
 } vr_gesture_in;
 
 typedef struct {
@@ -137,7 +138,7 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
             s->grip_down[h] = now;
             s->grip_slot[h] = slot[h];
             slotted = slot[h] == VR_SLOT_RSHOULDER || slot[h] == VR_SLOT_LSHOULDER || slot[h] == VR_SLOT_LWAIST;
-            if (!whistle && !slotted && slot[h] != VR_SLOT_MOUTH && slot[h] != VR_SLOT_RWAIST)
+            if (!whistle && !slotted && slot[h] != VR_SLOT_MOUTH && slot[h] != VR_SLOT_RWAIST && !in->no_grab[h])
                 vr_g_tap(s, VRB_A, now);   // grab / interact
         }
         // a short press over a slot (let go before the quick menu): its item out, or put away when it is out

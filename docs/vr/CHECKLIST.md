@@ -64,6 +64,17 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Los puntos se ven en los dos ojos en el mismo lugar (sin doble imagen).
 - [ ] Para sacarlos: `SAVAGEWIND_VR_BOW_ARC=0`.
 
+## 4b2. Espadones y lanzas a dos manos (nuevo)
+
+- [ ] Con un espadón o una lanza en la mano derecha y nada en la izquierda: acercá la mano izquierda a la hoja / al
+      mango (sobre la línea del arma, hasta ~25 cm de ella) y apretá el grip izquierdo: queda agarrada con las dos
+      manos mientras lo mantengas. Ahora el arma apunta de tu mano derecha hacia la izquierda: moviendo la izquierda la
+      dirigís (como un bastón).
+- [ ] Ese grip no agarra objetos del mundo (no hace "A").
+- [ ] Los golpes a dos manos pegan más fuerte (x1.2); con una sola mano un poco menos (x0.85), como en BetterVR.
+- [ ] Ojo: la mano izquierda de Link va a tu control, no queda clavada en el mango; si se ve muy separada, avisame.
+- [ ] Para apagarlo: `SAVAGEWIND_VR_TWO_HANDS=0`.
+
 ## 4c. Soltar (nuevo)
 
 - [ ] Con la espada en la mano derecha: llevá la mano derecha a la cadera derecha y mantené el grip medio segundo. Se
@@ -111,7 +122,6 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 | Qué | Por qué falta |
 |---|---|
 | Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
-| Agarrar armas de dos manos con ambas manos | depende del punto anterior y de los brazos |
 | Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |
 | Cuerpo que sigue tus pasos reales (roomscale físico) | hay que mover a Link con su física |
 | Menú de opciones VR dentro del juego | hoy son variables de entorno (el instalador las escribe) |

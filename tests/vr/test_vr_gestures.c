@@ -149,6 +149,18 @@ int main(void) {
     b |= run(&d, in, 5.0, 5.3);
     CHECK(b == 0);
 
+    VR_TEST("a grip that takes hold of the weapon with both hands does not grab");
+    vr_gesture_state n = {0};
+    in = base(0);
+    in.no_grab[0] = true;
+    in.grip[0] = true;
+    CHECK(!(run(&n, in, 0, 0.3) & BIT(VRB_A)));
+    in.grip[0] = false;
+    in.no_grab[0] = false;
+    run(&n, in, 0.3, 0.5);
+    in.grip[0] = true;
+    CHECK(run(&n, in, 0.5, 0.7) & BIT(VRB_A));   // (elsewhere it grabs again)
+
     VR_TEST("grab, whistle");
     vr_gesture_state g = {0};
     in = base(0);

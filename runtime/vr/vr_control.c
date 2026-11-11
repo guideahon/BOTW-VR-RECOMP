@@ -19,6 +19,8 @@ uint64_t vr_arrows_aimed(void);   // runtime/vr/vr_skel.c
 uint64_t vr_arc_frames(void);     // runtime/vr/xr_vulkan.c
 uint64_t vr_weapons_moved(void);  // runtime/vr/vr_skel.c
 uint64_t vr_swing_hits(void);     // runtime/vr/vr_skel.c
+uint64_t vr_two_hand_frames(void); // runtime/vr/vr_skel.c
+bool vr_two_hand_latched(void);    // runtime/vr/vr_skel.c
 int vr_swing_sensor(void);         // runtime/vr/vr_skel.c
 void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on);
 
@@ -82,6 +84,8 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_int(r, "arc_frames", (int64_t)vr_arc_frames());
     control_field_int(r, "weapons_moved", (int64_t)vr_weapons_moved());
     control_field_int(r, "swing_hits", (int64_t)vr_swing_hits());
+    control_field_int(r, "two_hand_frames", (int64_t)vr_two_hand_frames());
+    control_field_int(r, "two_hands", vr_two_hand_latched() ? 1 : 0);
     control_field_int(r, "swing_sensor", (int64_t)vr_swing_sensor());
     control_text(r, "VR %s: %s; session %s, %llu frames (%llu with an image)", vr_enabled() ? "on" : "off",
                  vr_status_text(), state_name(st), (unsigned long long)frames, (unsigned long long)rendered);
