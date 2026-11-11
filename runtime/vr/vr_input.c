@@ -361,6 +361,7 @@ static uint64_t gestures(const vr_pad_in *p, double now) {
     }
     g.trigger[0] = p->ltrigger >= VR_PAD_PRESS, g.trigger[1] = p->rtrigger >= VR_PAD_PRESS;
     g.a = p->a, g.b = p->b, g.x = p->x, g.y = p->y, g.lclick = p->lclick, g.rclick = p->rclick;
+    g.drop_enabled = vr_opt_on(VR_OPT_DROP);
     XrTime t = vr_next_display_time();
     XrSpace local = vr_xr_local(), view = vr_xr_view();
     XrSpaceLocation head = {XR_TYPE_SPACE_LOCATION};
@@ -393,6 +394,8 @@ static uint64_t gestures(const vr_pad_in *p, double now) {
     // the gestures' own tracking otherwise (a rune, or before his skeleton is seen)
     extern int vr_skel_held(int hand);
     int rh = vr_skel_held(1), lh = vr_skel_held(0);
+    g.hand_held[0] = in.left_handed ? rh : lh;
+    g.hand_held[1] = in.left_handed ? lh : rh;
     if (rh >= 0) {
         if (rh == 1) in.gest.held = VR_HELD_MELEE;            // (VR_SKEL_MELEE)
         else if (lh == 2) in.gest.held = VR_HELD_BOW;         // (VR_SKEL_BOW, in the left hand)

@@ -81,6 +81,8 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
       abre un instante el menú rápido de armas y la espada cae al piso delante tuyo (y sale de tu inventario, como el
       "soltar" del juego). La podés volver a agarrar con el grip.
 - [ ] Con el escudo: llevá la mano **izquierda** cruzada hasta la cadera derecha y mantené el grip: suelta el escudo.
+- [ ] Con el arco en la mano izquierda: cruzá esa mano hasta la cadera derecha y mantené el grip: el arco cae al piso.
+- [ ] Con la runa activa, el mismo gesto no descarta la Sheikah Slate.
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
@@ -151,8 +153,7 @@ Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como e
 - [ ] Sentado: recentrar (`vr recenter` en la consola) te pone a la altura de Link.
 - [ ] Tercera persona (`SAVAGEWIND_VR_VIEW=third`): la cámara del juego detrás de Link, con la cabeza encima.
 
-## Lo que todavía no está (de BetterVR)
+## Verificación pendiente
 
-| Qué | Por qué falta |
-|---|---|
-| Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
+Los gestos anteriores y la comodidad visual todavía necesitan una prueba en el Quest. BetterVR tampoco permite
+descartar la Sheikah Slate: el gesto de la cadera no la suelta.

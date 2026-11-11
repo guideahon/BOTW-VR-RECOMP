@@ -62,7 +62,7 @@ grip) so its z axis points at the other controller; the game copies that matrix 
 latch zone is 0.25 m around the line (the idle animation sways a large sword's blade 10-20 cm). Checked by
 tools/vr/test_vr_two_hands.py: the drawn model's blade at 0 deg from the left hand after it moved.
 
-## Dropping what is in hand (2026-11-11): done for weapons (shields: same path, not checked in the game)
+## Dropping what is in hand (2026-11-11): done for weapons and bows (shields: same path, not checked in the game)
 
 BetterVR (hand over the right waist, grip held) calls Weapon::m_174_dropWeapon and ActorWeapons::resetBaseProc. On 1.9.0
 the weapon's vtable (main+0x1c3f330, from its constructor main+0x7a759c) has at #175 (+0x578, one more than the Wii U for
@@ -71,10 +71,12 @@ more flags), and the "DropWeapon" / "ForceDropWeapon" strings only lead to AI pa
 still need the holder's slot reset and the pouch kept right; but the runtime already has a verified native drop of the
 equipped item: upstream's quick-selector drop (runtime/quick_drop*.c: the pouch's discard plus the player's scheduled
 empty equip, then waiting for the native detach; its site `quick_drop_actor_method` is the vtable's #177). So the
-gesture (runtime/vr/vr_gestures.h) holds the hand's quick menu (d-pad right: weapons; left: shields) and taps its drop
+gesture (runtime/vr/vr_gestures.h) holds the hand's quick menu (d-pad right: weapons or bows; left: shields) and taps its drop
 button (Y) 0.9 s in. The selector's cursor is still -1 then (no stick moved) in later openings: with the VR gesture on,
 runtime/quick_drop.c takes the selector entry whose PouchItem is equipped (+ 0x24). Checked by tools/vr/test_vr_drop.py
-(pending, completed, the sword from hand height to the ground).
+(pending, completed, the sword and bow from hand height to the ground). The gesture now starts only if the skeleton
+reports a melee weapon in the right hand, or a bow or shield in the left; another equipped item is not enough. BetterVR's
+`isDroppable` excludes `Item_Conductor`, so the Sheikah Slate stays protected.
 
 ## The held weapon hits whenever it is swung (2026-11-11): done
 

@@ -12,8 +12,8 @@
 //   left waist       the Sheikah Slate rune (L; again: B)           held: the runes (d-pad up)
 //   both at mouth    whistle (d-pad down)
 //   right waist      held (either hand): drop what that hand holds (BetterVR's drop): the hand's quick menu opens
-//                    (right hand: weapons, d-pad right; left: shields, d-pad left), the drop button (Y: the runtime's
-//                    quick-selector drop, runtime/quick_drop*.c) drops the item in hand, the menu closes
+//                    (right hand: weapons, d-pad right; left: bows, d-pad right, or shields, d-pad left). The drop
+//                    button (Y: runtime/quick_drop*.c) drops the item in hand, then the menu closes
 // A quick menu stays open while the grip is held; let go, the item chosen is taken out (as BetterVR does).
 // Elsewhere the grip is grab / interact (A).
 //
@@ -39,6 +39,7 @@
 typedef struct { float x, y, z; } vr_g3;
 
 enum { VR_HELD_NONE, VR_HELD_MELEE, VR_HELD_BOW, VR_HELD_RUNE };
+enum { VR_HAND_EMPTY, VR_HAND_MELEE, VR_HAND_BOW, VR_HAND_SHIELD };
 enum { VR_SLOT_NONE, VR_SLOT_RSHOULDER, VR_SLOT_LSHOULDER, VR_SLOT_LWAIST, VR_SLOT_RWAIST, VR_SLOT_MOUTH };
 
 #define VR_G_SHOULDER_R 0.35f
@@ -73,10 +74,12 @@ static inline int vr_gesture_slot(vr_g3 head, vr_g3 fwd, vr_g3 right, vr_g3 hand
 typedef struct {
     vr_g3 head, fwd, right;     // the head (tracking space)
     vr_g3 hand[2];              // left, right hand positions
+    int hand_held[2];           // model at each hand (vr_skel_held: melee, bow, shield)
     float hand_speed[2];        // their speeds (m/s)
     bool grip[2], trigger[2];   // pressed
     bool a, b, x, y;            // right A, B; left X, Y
     bool lclick, rclick;
+    bool drop_enabled;           // the live VR option also disables the gesture's selector input
     double now;                 // s
     bool no_grab[2];            // this hand's grip takes hold of something else now (both hands on a weapon)
 } vr_gesture_in;
@@ -166,11 +169,15 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
             s->haptic[h] = 2;
         }
         // held at the right waist: drop what this hand holds, once a press
-        if (g && sl == VR_SLOT_RWAIST && !s->drop_t0[h] && !s->drop_done[h] && now - s->grip_down[h] >= VR_G_LONG) {
+        bool droppable = h == 1 ? in->hand_held[h] == VR_HAND_MELEE :
+            in->hand_held[h] == VR_HAND_BOW || in->hand_held[h] == VR_HAND_SHIELD;
+        if (g && sl == VR_SLOT_RWAIST && in->drop_enabled && droppable && !s->drop_t0[h] && !s->drop_done[h] &&
+            now - s->grip_down[h] >= VR_G_LONG) {
             s->drop_t0[h] = now;
-            s->drop_button[h] = h == 1 ? VRB_RIGHT : VRB_LEFT;
+            s->drop_button[h] = h == 1 || in->hand_held[h] == VR_HAND_BOW ? VRB_RIGHT : VRB_LEFT;
             s->haptic[h] = 2;
         }
+        if (!in->drop_enabled && s->drop_t0[h]) s->drop_t0[h] = 0, s->drop_done[h] = true;
         if (s->drop_t0[h]) {
             double t = now - s->drop_t0[h];
             if (t < VR_G_DROP_END) {
@@ -178,7 +185,8 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
                 if (t >= VR_G_DROP_PRESS && t < VR_G_DROP_PRESS + VR_G_TAP) b |= 1ull << VRB_Y;
             } else {
                 s->drop_t0[h] = 0, s->drop_done[h] = true;
-                if (h == 1 && s->held == VR_HELD_MELEE) s->held = VR_HELD_NONE;
+                if ((h == 1 && s->held == VR_HELD_MELEE) || (h == 0 && s->held == VR_HELD_BOW))
+                    s->held = VR_HELD_NONE;
             }
         }
         if (!g) s->drop_done[h] = false;

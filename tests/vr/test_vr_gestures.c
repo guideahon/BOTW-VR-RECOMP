@@ -10,6 +10,7 @@ static vr_gesture_in base(double now) {
     in.head = vr_g3v(0, 1.7f, 0);
     in.fwd = vr_g3v(0, 0, -1);
     in.right = vr_g3v(1, 0, 0);
+    in.drop_enabled = true;
     in.hand[0] = vr_g3v(-0.25f, 1.1f, -0.35f);   // (hands ahead at the belly: no slot)
     in.hand[1] = vr_g3v(0.25f, 1.1f, -0.35f);
     in.now = now;
@@ -119,6 +120,7 @@ int main(void) {
     d.held = VR_HELD_MELEE;
     in = base(0);
     in.hand[1] = RWAIST;
+    in.hand_held[1] = VR_HAND_MELEE;
     in.grip[1] = true;
     b = run(&d, in, 0, 0.4);
     CHECK(b == 0);                         // no grab at the waist, nothing before the hold
@@ -134,6 +136,7 @@ int main(void) {
     in.grip[1] = false;
     run(&d, in, 2.5, 2.7);
     in.hand[0] = vr_g3v(0.2f, 1.0f, 0.05f);   // the left hand reaching across to the right waist: the shields
+    in.hand_held[0] = VR_HAND_SHIELD;
     in.grip[0] = true;
     b = run(&d, in, 2.7, 4.3);
     CHECK(b & BIT(VRB_LEFT));
@@ -148,6 +151,48 @@ int main(void) {
     in.grip[1] = false;
     b |= run(&d, in, 5.0, 5.3);
     CHECK(b == 0);
+
+    VR_TEST("drop: a bow in the left hand opens the bows selector");
+    vr_gesture_state db = {0};
+    db.held = VR_HELD_BOW;
+    in = base(0);
+    in.hand[0] = RWAIST;
+    in.hand_held[0] = VR_HAND_BOW;
+    in.grip[0] = true;
+    b = run(&db, in, 0, 0.8);
+    CHECK(b & BIT(VRB_RIGHT));
+    CHECK(!(b & BIT(VRB_LEFT)));
+    b = run(&db, in, 0.8, 1.6);
+    CHECK(b & BIT(VRB_Y));
+    CHECK(!(b & BIT(VRB_LEFT)));
+    in.grip[0] = false;
+    run(&db, in, 1.6, 2.1);
+    CHECK(!db.drop_t0[0] && !db.drop_done[0]);
+    CHECK_EQ_INT(db.held, VR_HELD_NONE);
+    in.hand_held[0] = VR_HAND_EMPTY;
+    in.grip[0] = true;
+    b = run(&db, in, 2.1, 3.9);
+    CHECK(!(b & (BIT(VRB_LEFT) | BIT(VRB_RIGHT) | BIT(VRB_Y))));
+
+    VR_TEST("drop: the Sheikah Slate is not droppable");
+    vr_gesture_state dr = {0};
+    dr.held = VR_HELD_RUNE;
+    in = base(0);
+    in.hand[0] = RWAIST;
+    in.grip[0] = true;
+    b = run(&dr, in, 0, 2.0);
+    CHECK(!(b & (BIT(VRB_LEFT) | BIT(VRB_RIGHT) | BIT(VRB_Y) | BIT(VRB_A))));
+    CHECK_EQ_INT(dr.held, VR_HELD_RUNE);
+
+    VR_TEST("drop: disabled option leaves the quick selector closed");
+    vr_gesture_state off = {0};
+    in = base(0);
+    in.drop_enabled = false;
+    in.hand[1] = RWAIST;
+    in.hand_held[1] = VR_HAND_MELEE;
+    in.grip[1] = true;
+    b = run(&off, in, 0, 2.0);
+    CHECK(!(b & (BIT(VRB_LEFT) | BIT(VRB_RIGHT) | BIT(VRB_Y) | BIT(VRB_A))));
 
     VR_TEST("a grip that takes hold of the weapon with both hands does not grab");
     vr_gesture_state n = {0};
