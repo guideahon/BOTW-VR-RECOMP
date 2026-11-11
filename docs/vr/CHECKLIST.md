@@ -84,6 +84,15 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4f. Caminar por la habitación (nuevo)
+
+- [ ] En primera persona, dá un paso real hacia un costado o adelante: Link camina hasta quedar debajo tuyo (lo ves
+      moverse y se oyen sus pasos). La vista no salta: queda donde está tu cabeza.
+- [ ] Contra una pared o un borde Link se frena como siempre (el juego maneja los choques); tu cabeza puede seguir y
+      atravesar la pared (como antes).
+- [ ] Si mareás o no lo querés: Opciones > RV > Escala de habitación (apagado), o `SAVAGEWIND_VR_ROOMSCALE=0`.
+- [ ] Con el stick empujado, el stick manda (los pasos reales no lo mueven mientras tanto).
+
 ## 4e. Opciones de RV en el menú del juego (nuevo)
 
 - [ ] Menú de pausa > Sistema > Opciones: hay una sección **RV** (también desde las Opciones de la pantalla de título).
@@ -147,4 +156,3 @@ Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como e
 | Qué | Por qué falta |
 |---|---|
 | Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
-| Cuerpo que sigue tus pasos reales (roomscale físico) | hay que mover a Link con su física |

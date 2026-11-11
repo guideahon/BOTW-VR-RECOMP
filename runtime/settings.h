@@ -92,7 +92,8 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
     X(VR_OPT_TWO_HANDS, "vr_two_hands", 1)       /* 0 on */ \
     X(VR_OPT_DROP, "vr_drop_gesture", 1)         /* 0 on */ \
     X(VR_OPT_BOW_AIM, "vr_bow_by_hand", 1)       /* 0 by hand, 1 by the head */ \
-    X(VR_OPT_BOW_ARC, "vr_bow_arc", 1)           /* 0 on */
+    X(VR_OPT_BOW_ARC, "vr_bow_arc", 1)           /* 0 on */ \
+    X(VR_OPT_ROOMSCALE, "vr_roomscale", 1)       /* 0 on: walking in the room walks Link */
 #define VR_OPT_ENUM(id, key, inv) id,
 enum { VR_OPTIONS(VR_OPT_ENUM) VR_OPT_COUNT };
 

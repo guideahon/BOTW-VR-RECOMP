@@ -439,6 +439,8 @@ void build_vr_items(std::vector<Item> &v) {
     v.push_back(vr_toggle("Drop gesture", "Hold the grip at your right hip to drop what that hand holds.", VR_OPT_DROP,
                           false));
     v.push_back(vr_toggle("Aim the bow with your hands", "Off: arrows fly where you look.", VR_OPT_BOW_AIM, false));
+    v.push_back(vr_toggle("Roomscale", "Walking in your room walks Link (he catches up with your head). Off: only "
+                          "the stick walks him.", VR_OPT_ROOMSCALE, false));
     v.push_back(vr_toggle("Bow trajectory", "Yellow dots show where the arrow will fly while you draw the bow.",
                           VR_OPT_BOW_ARC, false));
 }

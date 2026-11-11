@@ -482,6 +482,11 @@ void vr_input_apply(uint64_t *b, int32_t *lx, int32_t *ly, int32_t *rx, int32_t 
         float a = walk.turn, cs = cosf(a), sn = sinf(a), x = (float)o.lx, y = (float)o.ly;
         o.lx = (int32_t)(x * cs - y * sn), o.ly = (int32_t)(x * sn + y * cs);
     }
+    // roomscale (vr_camera.c): the player walking in the room walks Link, while no stick is pushed
+    extern bool vr_roomscale_stick(float *x, float *y);
+    float rsx, rsy;
+    if (vr_roomscale_stick(&rsx, &rsy) && abs(o.lx) < 3000 && abs(o.ly) < 3000 && abs(*lx) < 3000 && abs(*ly) < 3000)
+        o.lx = (int32_t)(rsx * 32767), o.ly = (int32_t)(rsy * 32767);
     *lx = clamp_axis(*lx + o.lx), *ly = clamp_axis(*ly + o.ly);
     *rx = clamp_axis(*rx + o.rx), *ry = clamp_axis(*ry + o.ry);
 }

@@ -65,6 +65,12 @@ static struct {
     bool in_event;         // the last camera was set in an event
     float event_yaw;       // the view's turn kept through a still first-person event (the one before it)
     float last_yaw;
+    struct {               // roomscale: Link walked under the head (vr_roomscale_stick)
+        bool driving, have_lp;
+        double lp[3];      // Link's position at the last camera
+        float x, y;        // the walk stick it asks for (-1..1; y ahead)
+        uint64_t frames;   // cameras it walked him on
+    } rs;
     vr_anchor anchor;      // the tracking space -> the game's world, as the last camera used it
     bool anchor_ok;
 } c = {.stereo = -1, .window_aspect = 1, .first = -1, .events = -1};
@@ -159,6 +165,42 @@ static bool event_now(bool *fp, bool *still, bool *anim_hands) {
     }
     return true;
 }
+
+// ---- roomscale (BetterVR's: the player walking in the room walks Link) ----
+// In first person, with the head more than 10 cm (horizontally) from Link's eye, the walk stick is pushed toward it,
+// harder the farther (full at 40 cm), until it is within 4 cm: the game walks Link there, with its own collisions
+// (BetterVR moves his body itself, casting against the world). The eye stays at the head meanwhile (vr_camera_lookat
+// moves the neutral head with Link). Off while the player pushes the stick or plays an event; option VR_OPT_ROOMSCALE.
+static void roomscale(vr_anchor a, vr_pose head, vr_vec3 geye, bool ev, const double *lp, const float *f) {
+    if (c.fp_now) memcpy(c.rs.lp, lp, sizeof c.rs.lp), c.rs.have_lp = true;
+    else c.rs.have_lp = false;
+    vr_vec3 hw = vr_xr_to_game_point(a, head.p);
+    float gx = hw.x - geye.x, gz = hw.z - geye.z, d = sqrtf(gx * gx + gz * gz);
+    bool on = c.fp_now && !ev && vr_opt_on(VR_OPT_ROOMSCALE);
+    if (!on || d < 0.04f) c.rs.driving = false;
+    else if (d > 0.10f) c.rs.driving = true;
+    if (!c.rs.driving) {
+        c.rs.x = c.rs.y = 0;
+        return;
+    }
+    // the stick in the view's frame: ahead along the drawn view's heading, right across it
+    float vy = vr_game_yaw_of(vr_v3(f[3] - f[0], 0, f[5] - f[2]));
+    float ahead = (gx * sinf(vy) + gz * cosf(vy)) / d, right = (-gx * cosf(vy) + gz * sinf(vy)) / d;
+    float m = (d - 0.04f) / 0.36f;
+    m = m < 0.3f ? 0.3f : m > 1 ? 1 : m;
+    c.rs.x = right * m, c.rs.y = ahead * m;
+    c.rs.frames++;
+}
+
+// vr_input.c: the walk stick roomscale asks for now (false: none)
+bool vr_roomscale_stick(float *x, float *y) {
+    pthread_mutex_lock(&lock);
+    bool on = c.rs.driving && vr_world_view();
+    *x = c.rs.x, *y = c.rs.y;
+    pthread_mutex_unlock(&lock);
+    return on;
+}
+uint64_t vr_roomscale_frames(void) { return c.rs.frames; }
 
 // vr_skel.c: Link's hands left to the event's animation now
 bool vr_event_anim_hands(void) {
@@ -287,10 +329,18 @@ void vr_camera_lookat(float *f) {
                      (float)lp[2] + cosf(yaw + c.turn) * c.forward);
         c.fp_now = true;
     }
+    // roomscale (BetterVR's): Link walked toward the head since the last camera: the neutral head follows him, so the
+    // eye stays where the player's head is in the world while his body catches up
+    if (c.fp_now && c.rs.driving && c.rs.have_lp && c.anchor_ok) {
+        vr_vec3 dl = vr_v3((float)(lp[0] - c.rs.lp[0]), 0, (float)(lp[2] - c.rs.lp[2]));
+        if (vr_v3_len(dl) < 1.0f)
+            c.neutral.p = vr_v3_add(c.neutral.p, vr_quat_rotate(vr_quat_conj(vr_anchor_rotation(c.anchor)), dl));
+    }
     // the anchor that puts the neutral head at the game's eye, looking the game's way; the eye's pose from there
     vr_anchor a = vr_anchor_recenter(c.neutral, geye, yaw + c.turn, 1.0f);
     c.anchor = a, c.anchor_ok = true;
     vr_lookat_from_view(a, view, f, f + 3, f + 6);
+    roomscale(a, head, geye, ev, lp, f);
     memcpy(c.out, f, sizeof c.out);
     c.out_ok = true;
     // the frustum: the eye's field (both, in mono) made symmetric, widened to the window's shape

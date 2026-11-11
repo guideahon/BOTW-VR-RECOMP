@@ -90,6 +90,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_int(r, "arc_frames", (int64_t)vr_arc_frames());
     control_field_int(r, "weapons_moved", (int64_t)vr_weapons_moved());
     control_field_int(r, "swing_hits", (int64_t)vr_swing_hits());
+    { extern uint64_t vr_roomscale_frames(void); control_field_int(r, "roomscale_frames", (int64_t)vr_roomscale_frames()); }
     control_field_int(r, "two_hand_frames", (int64_t)vr_two_hand_frames());
     control_field_int(r, "two_hands", vr_two_hand_latched() ? 1 : 0);
     control_field_int(r, "swing_sensor", (int64_t)vr_swing_sensor());
