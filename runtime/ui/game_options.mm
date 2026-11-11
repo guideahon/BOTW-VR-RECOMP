@@ -342,6 +342,7 @@ constexpr int k_vr_rumble[] = {25, 50, 75, 100, 125, 150};
 constexpr int k_vr_height[] = {-30, -20, -10, 0, 10, 20, 30};    // cm
 constexpr int k_vr_hud_dist[] = {80, 100, 120, 140, 160, 185, 220, 250};   // cm
 constexpr int k_vr_hud_size[] = {50, 70, 85, 100, 120, 150};      // %
+constexpr int k_vr_third[] = {50, 75, 100, 125, 150, 200};        // %
 
 Item vr_choice(const char *title, const char *desc, int opt, const char *const *names, int n) {
     Item it = choice(P_VR, title, desc, nullptr, nullptr, nullptr, nullptr, 0);
@@ -442,6 +443,19 @@ void build_vr_items(std::vector<Item> &v) {
     v.push_back(vr_toggle("Drop gesture", "Hold the grip at your right hip to drop what that hand holds.", VR_OPT_DROP,
                           false));
     v.push_back(vr_toggle("Aim the bow with your hands", "Off: arrows fly where you look.", VR_OPT_BOW_AIM, false));
+    Item td = choice(P_VR, "Third-person distance", "How far the camera is behind Link in third person. 100% is the "
+                     "game's own.", [](const Item &) { return N(k_vr_third); },
+                     [](const Item &, int x) {
+                         static std::string t;
+                         t = pct(k_vr_third[x]);
+                         return t.c_str();
+                     },
+                     [](const Item &) {
+                         int d = g_settings.vr[VR_OPT_THIRD_DISTANCE];
+                         return nearest(k_vr_third, N(k_vr_third), (float)(d ? d : 100));
+                     },
+                     [](const Item &, int x) { g_settings.vr[VR_OPT_THIRD_DISTANCE] = k_vr_third[x]; }, 2);
+    v.push_back(td);
     Item hgt = choice(P_VR, "Height", "Raises or lowers your eyes in first person, for a different height or playing "
                       "seated.", [](const Item &) { return N(k_vr_height); },
                       [](const Item &, int x) {

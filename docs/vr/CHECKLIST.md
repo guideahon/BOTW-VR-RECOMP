@@ -99,6 +99,8 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Distancia y tamaño del HUD: el HUD (corazones, mapa) se aleja / agranda al cambiarlos.
 - [ ] "El HUD sigue tu mirada" apagado: el HUD queda fijo delante de tu cuerpo, un poco abajo; al girar la cabeza no se
       mueve con vos (como en BetterVR con UiFollowsGaze apagado). Encendido (por defecto): siempre frente a tus ojos.
+- [ ] Distancia en tercera persona (con Vista: tercera persona): 50% acerca la cámara a Link, 200% la aleja.
+      Lejos puede atravesar paredes (el juego la acerca solo a su propia distancia).
 - [ ] "Un golpe por tajo" apagado: un tajo largo puede pegarle varias veces al mismo enemigo (cada golpe a la mitad).
       Esto no lo pude probar con un enemigo real.
 

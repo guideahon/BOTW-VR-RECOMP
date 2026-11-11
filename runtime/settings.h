@@ -98,7 +98,8 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
     X(VR_OPT_HUD_DISTANCE, "vr_hud_distance", 0) /* cm (0: 140) */ \
     X(VR_OPT_HUD_SIZE, "vr_hud_size", 0)         /* percent of 1.6 m wide (0: 100) */ \
     X(VR_OPT_HUD_GAZE, "vr_hud_follows_gaze", 1) /* 0 on: the HUD turns with the head; off: it stays ahead of the body */ \
-    X(VR_OPT_ONE_HIT, "vr_one_hit_per_swing", 1) /* 0 on: a swing hits each enemy once */
+    X(VR_OPT_ONE_HIT, "vr_one_hit_per_swing", 1) /* 0 on: a swing hits each enemy once */ \
+    X(VR_OPT_THIRD_DISTANCE, "vr_third_person_distance", 0) /* third person: the camera's distance, % (0: 100) */
 #define VR_OPT_ENUM(id, key, inv) id,
 enum { VR_OPTIONS(VR_OPT_ENUM) VR_OPT_COUNT };
 

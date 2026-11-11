@@ -169,6 +169,7 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_LEFT_HANDED` | 0 | `1`: the hands' parts swapped |
 | `SAVAGEWIND_VR_WALK` | head | `controller`: the left stick walks the way the left controller points |
 | `SAVAGEWIND_VR_RUMBLE`, `_RUMBLE_GAIN` | 1, 1 | the game's rumble on the controllers (`0`: off); its strength |
+| `SAVAGEWIND_VR_THIRD_DISTANCE` | 100 | third person: the game camera's distance from Link's head, % of the game's own (BetterVR's ThirdPlayerDistance; the camera may then pass through walls the game kept it from) |
 | `SAVAGEWIND_VR_HEIGHT_OFFSET` | 0 | first person: the eye this many cm higher (or lower), for another height or playing seated (BetterVR's PlayerHeightOffset) |
 | `SAVAGEWIND_VR_HUD_FOLLOWS_GAZE` | 1 | `0`: the HUD stays ahead of the body, turned the way the head was when centred (look down at it); else it turns with the head (BetterVR's UiFollowsGaze) |
 | `SAVAGEWIND_VR_ONE_HIT` | 1 | `0`: a swing can hit the same enemy again while it lasts, each hit half as strong (BetterVR's OneHitPerSwing off) |

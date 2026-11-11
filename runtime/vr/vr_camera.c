@@ -329,6 +329,14 @@ void vr_camera_lookat(float *f) {
                      (float)lp[1] + c.eye_height + vr_opt(VR_OPT_HEIGHT) / 100.0f,   // (the Options page's height)
                      (float)lp[2] + cosf(yaw + c.turn) * c.forward);
         c.fp_now = true;
+    } else if (!ev && control_cell_get(&control_cell_player_pos, lp)) {
+        // third person: the game's camera moved toward Link's head or away from it (BetterVR's ThirdPlayerDistance;
+        // the Options page's Third-person distance, % of the game's own), along the line between them
+        int k = vr_opt(VR_OPT_THIRD_DISTANCE);
+        if (k > 0 && k != 100) {
+            vr_vec3 head = vr_v3((float)lp[0], (float)lp[1] + 1.5f, (float)lp[2]);
+            geye = vr_v3_add(head, vr_v3_scale(vr_v3_sub(geye, head), k / 100.0f));
+        }
     }
     // roomscale (BetterVR's): Link walked toward the head since the last camera: the neutral head follows him, so the
     // eye stays where the player's head is in the world while his body catches up

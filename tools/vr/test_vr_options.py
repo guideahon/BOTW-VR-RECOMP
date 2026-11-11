@@ -7,6 +7,7 @@ the Options screen's VR page sets (control `set vr_<key> <value>`, the same fiel
   vr_height_offset 20    the eye 20 cm higher
   vr_hud_distance / _size / _follows_gaze   the HUD layer's distance, width, and whether it turns with the head
                         (fake_xr's FAKE_XR_LOG_QUADS lines)
+  vr_third_person_distance 150   the third-person camera 1.5 times as far from Link's head
 
   python tools/vr/test_vr_options.py --save <scratch save> [--out build/vr/options]
 """
@@ -103,6 +104,20 @@ def main():
         sp, x, y, z, w = hud()
         check(sp == 'local' and abs(x) < 0.15 and z < -1.5,
               'vr_hud_follows_gaze off: the HUD stays ahead of the body ({} x {:.2f} z {:.2f} m)'.format(sp, x, z))
+        # third person: the camera's distance to Link's head, 100% then 150%
+        def cam_dist():
+            p, cm = game.cmd('pos', ok=False), game.cmd('camera', ok=False)
+            return ((cm['x'] - p['x']) ** 2 + (cm['y'] - p['y'] - 1.5) ** 2 + (cm['z'] - p['z']) ** 2) ** 0.5
+        game.cmd('set', 'vr_view', '1', ok=False)
+        time.sleep(1.5)
+        d100 = cam_dist()
+        game.cmd('set', 'vr_third_person_distance', '150', ok=False)
+        time.sleep(1.5)
+        d150 = cam_dist()
+        game.cmd('set', 'vr_third_person_distance', '0', ok=False)
+        game.cmd('set', 'vr_view', '0', ok=False)
+        check(d100 > 1 and 1.35 < d150 / d100 < 1.65,
+              'vr_third_person_distance 150: the third-person camera 1.5 times as far ({:.2f} -> {:.2f} m)'.format(d100, d150))
     finally:
         perf_routes.stop_game(game, proc, log)
     print('PASS' if ok else 'FAIL')
