@@ -65,6 +65,7 @@ static struct {
     bool in_event;         // the last camera was set in an event
     float event_yaw;       // the view's turn kept through a still first-person event (the one before it)
     float last_yaw;
+    float off_x, off_y;    // the frustum's centre off the view's axis (tan units; 0: symmetric)
     struct {               // roomscale: Link walked under the head (vr_roomscale_stick)
         bool driving, have_lp;
         double lp[3];      // Link's position at the last camera
@@ -357,19 +358,30 @@ void vr_camera_lookat(float *f) {
     roomscale(a, head, geye, ev, lp, f);
     memcpy(c.out, f, sizeof c.out);
     c.out_ok = true;
-    // the frustum: the eye's field (both, in mono) made symmetric, widened to the window's shape
-    float tx = 0, ty = 0;
-    for (int i = 0; i < 2; i++) {
-        if (eye >= 0 && i != eye) continue;
-        tx = fmaxf(tx, fmaxf(tanf(v[i].fov.angleRight), tanf(-v[i].fov.angleLeft)));
-        ty = fmaxf(ty, fmaxf(tanf(v[i].fov.angleUp), tanf(-v[i].fov.angleDown)));
+    // the frustum. In stereo, the eye's own field, off-centre as it is (narrower on the nose's side: SAVAGEWIND_VR_
+    // ASYMMETRIC=0 for the symmetric one), widened to the window's shape about its centre: the game's projection gets
+    // its half-size and its centre as an offset (vr_persp, vr_persp_offset). In mono (one picture for both eyes): both
+    // fields together, made symmetric.
+    static int asym = -1;
+    if (asym < 0) asym = !(getenv("SAVAGEWIND_VR_ASYMMETRIC") && *getenv("SAVAGEWIND_VR_ASYMMETRIC") == '0');
+    float tx = 0, ty = 0, cx = 0, cy = 0;
+    if (eye >= 0 && asym) {
+        float l = tanf(v[eye].fov.angleLeft), r = tanf(v[eye].fov.angleRight);
+        float u = tanf(v[eye].fov.angleUp), d = tanf(v[eye].fov.angleDown);
+        tx = (r - l) / 2, ty = (u - d) / 2, cx = (r + l) / 2, cy = (u + d) / 2;
+    } else {
+        for (int i = 0; i < 2; i++) {
+            if (eye >= 0 && i != eye) continue;
+            tx = fmaxf(tx, fmaxf(tanf(v[i].fov.angleRight), tanf(-v[i].fov.angleLeft)));
+            ty = fmaxf(ty, fmaxf(tanf(v[i].fov.angleUp), tanf(-v[i].fov.angleDown)));
+        }
     }
     if (tx > 0.05f && ty > 0.05f) {
         float wa = c.window_aspect;
         if (tx / ty < wa) tx = ty * wa;
         else ty = tx / wa;
-        c.tan_x = tx, c.tan_y = ty;
-        c.cur = (vr_view){true, eye, to_xr(view), {-atanf(tx), atanf(tx), atanf(ty), -atanf(ty)}};
+        c.tan_x = tx, c.tan_y = ty, c.off_x = cx, c.off_y = cy;
+        c.cur = (vr_view){true, eye, to_xr(view), {atanf(cx - tx), atanf(cx + tx), atanf(cy + ty), atanf(cy - ty)}};
     }
     c.updates++;
     // (debugging) SAVAGEWIND_VR_LOG_CAMERA=<n>: every n-th update, the eye, the game's camera and the view made
@@ -386,6 +398,20 @@ void vr_camera_lookat(float *f) {
 }
 
 // rt_persp, the world camera (far plane over 10000): its tan(fovy / 2) and aspect in play
+// output_scale.c rt_persp_offset, the world camera's: its projection moved so that its centre is the frustum's
+// (vr_camera_lookat), as fractions of the image's width and height (NDC is 2 wide). SAVAGEWIND_VR_OFFSET_SIGN=-1 flips
+// them (a check of the sign).
+bool vr_persp_offset(float *x, float *y) {
+    if (!vr_world_view()) return false;
+    static float sign = 0;
+    if (!sign) sign = getenv("SAVAGEWIND_VR_OFFSET_SIGN") && atoi(getenv("SAVAGEWIND_VR_OFFSET_SIGN")) < 0 ? -1.0f : 1.0f;
+    pthread_mutex_lock(&lock);
+    bool ok = c.cur.world && c.tan_x > 0 && c.tan_y > 0;
+    if (ok) *x += sign * c.off_x / (2 * c.tan_x), *y += sign * c.off_y / (2 * c.tan_y);
+    pthread_mutex_unlock(&lock);
+    return ok;
+}
+
 bool vr_persp(float *tan_fovy, float *aspect) {
     if (!vr_world_view()) return false;
     pthread_mutex_lock(&lock);

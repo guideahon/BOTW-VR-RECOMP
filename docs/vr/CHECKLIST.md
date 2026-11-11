@@ -86,6 +86,14 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4j. Campo de visión propio de cada ojo (nuevo)
+
+- [ ] Cada ojo se dibuja con su propio campo (más angosto del lado de la nariz), así los mismos píxeles cubren ~35% menos
+      ángulo: la imagen debería verse más nítida que antes.
+- [ ] Nada se ve doble, desplazado arriba/abajo entre los ojos, ni "flotando" al girar la cabeza. Los bordes de la
+      imagen siguen fuera de tu vista.
+- [ ] Si algo se ve mal (mareo, doble imagen): `SAVAGEWIND_VR_ASYMMETRIC=0` vuelve al campo simétrico de antes.
+
 ## 4i. Sombras una vez por par (rendimiento, nuevo)
 
 - [ ] El ojo derecho reusa las sombras del sol del ojo izquierdo (más rendimiento, sobre todo con Video > Resolución de

@@ -378,6 +378,9 @@ void rt_persp_offset(uint64_t proj, uint32_t *x, uint32_t *y) {
         if (shape > 1) ox /= shape;
         else oy *= shape;  // (a taller window: the vertical one, a fraction of the taller height)
     }
+#ifdef SW_VR
+    if (nf[1] > 10001) { extern bool vr_persp_offset(float *, float *); vr_persp_offset(&ox, &oy); }  // (VR: off-centre eyes)
+#endif
     uint32_t w = __atomic_load_n(&jitter_size[0], __ATOMIC_RELAXED), h = __atomic_load_n(&jitter_size[1], __ATOMIC_RELAXED);
     if (nf[1] > 10001 && rt_jitter_on() && w && h) {
         uint32_t n = __atomic_load_n(&jitter_phases, __ATOMIC_RELAXED);

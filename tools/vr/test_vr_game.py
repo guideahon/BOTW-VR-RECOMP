@@ -13,6 +13,7 @@ Scenarios (each one boot):
   exit     the runtime asks the app to stop (as a dashboard's Quit does): the session ends cleanly, the game goes on
 """
 import argparse
+import math
 import os
 import re
 import struct
@@ -322,6 +323,30 @@ def best_shift(a, b, max_dx=20, max_dy=4):
     return dx, dy, best, scores[(0, 0)]
 
 
+def read_ppm_angles(path, fov, step=0.005, span=0.6):
+    """A PPM as rows of grey levels on a grid of view tangents (-span..span both ways, step apart), its pixels placed
+    by the field it was submitted with (fov: left, right, up, down in radians): pictures with other fields compare
+    there, as the headset shows them."""
+    data = open(path, 'rb').read()
+    head = data.split(b'\n', 3)
+    w, h = map(int, head[1].split())
+    px = head[3]
+    tl, tr, tu, td = (math.tan(x) for x in fov)
+    n = int(2 * span / step)
+    rows = []
+    for j in range(n):
+        ty = span - j * step
+        v = min(h - 1, max(0, int((tu - ty) / (tu - td) * h)))
+        row = []
+        for i in range(n):
+            tx = -span + i * step
+            u = min(w - 1, max(0, int((tx - tl) / (tr - tl) * w)))
+            k = (v * w + u) * 3
+            row.append((px[k] * 3 + px[k + 1] * 6 + px[k + 2]) // 10)
+        rows.append(row)
+    return rows
+
+
 def scenario_stereo(args, run_dir):
     """Two eyes: the left and right pictures of one headset frame differ by a sideways shift (near things more), never
     an up-down one; in mono they are the same picture."""
@@ -345,10 +370,19 @@ def scenario_stereo(args, run_dir):
         return
     left = os.path.join(run_dir, 'cap', caps[-1])
     right = left.replace('_view0.ppm', '_view1.ppm')
-    a, b = read_ppm_gray(left), read_ppm_gray(right)
+    # each eye as the headset shows it: its picture placed by the field it was submitted with (each eye's own,
+    # off-centre: fake_xr's `capture ... fov` lines), else the pictures as they are
+    fov = dict((t, [float(x) for x in f]) for t, *f in re.findall(r'capture (\S+) fov (\S+) (\S+) (\S+) (\S+)', fake_log(run_dir)))
+    lt, rt = os.path.basename(left)[:-4], os.path.basename(right)[:-4]
+    if lt in fov and rt in fov:
+        a, b = read_ppm_angles(left, fov[lt]), read_ppm_angles(right, fov[rt])
+        unit = '0.005-tangent samples'
+    else:
+        a, b = read_ppm_gray(left), read_ppm_gray(right)
+        unit = 'half-size pixels'
     dx, dy, best, at0 = best_shift(a, b)
-    print('    right eye against left: best shift dx {} dy {} (half-size pixels), difference {:.1f} there, {:.1f} '
-          'unshifted'.format(dx, dy, best, at0))
+    print('    right eye against left: best shift dx {} dy {} ({}), difference {:.1f} there, {:.1f} '
+          'unshifted'.format(dx, dy, unit, best, at0))
     check(at0 > 0.5, 'the eyes see different pictures (difference {:.1f})'.format(at0))
     # the right eye is to the right of the left one, so what both see appears further left in its picture
     check(dx <= -2, 'the right eye sees things further left: right[x + dx] = left[x] with dx {} < 0'.format(dx))
