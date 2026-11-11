@@ -240,6 +240,65 @@ static void pulse(int hand, float amplitude, double seconds) {
     xrApplyHapticFeedback(in.session, &hi, (const XrHapticBaseHeader *)&v);
 }
 
+// The game's own rumble (runtime/hle/vibration.c, as BetterVR's patch_CTRL_Rumble): each Joy-Con's strongest band, on
+// that hand's controller, re-applied in short pulses while the game holds it (SAVAGEWIND_VR_RUMBLE=0: off;
+// SAVAGEWIND_VR_RUMBLE_GAIN, 1).
+static struct {
+    _Atomic float amp[2];
+    uint64_t last_ns[2];
+    int on;          // -1 not read
+    float gain;
+    uint64_t pulses;
+} rumble = {.on = -1};
+
+void vr_rumble(int hand, float amplitude) {
+    if (hand >= 0 && hand < 2) rumble.amp[hand] = amplitude;
+}
+
+static void rumble_tick(uint64_t now) {
+    if (rumble.on < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_RUMBLE"), *g = getenv("SAVAGEWIND_VR_RUMBLE_GAIN");
+        rumble.on = !(e && *e == '0');
+        rumble.gain = g && atof(g) > 0 && atof(g) <= 4 ? (float)atof(g) : 1.0f;
+    }
+    if (!rumble.on) return;
+    for (int h = 0; h < 2; h++) {
+        float a = rumble.amp[h] * rumble.gain;
+        if (a < 0.02f || now - rumble.last_ns[h] < 40000000ull) continue;
+        rumble.last_ns[h] = now;
+        rumble.pulses++;
+        pulse(in.left_handed ? 1 - h : h, a > 1 ? 1 : a, 0.05);
+    }
+}
+
+uint64_t vr_rumble_pulses(void) { return rumble.pulses; }
+
+// BetterVR's walking direction: SAVAGEWIND_VR_WALK=controller makes the left stick walk the way the left controller
+// points instead of the way the head looks. The game walks Link relative to the view it draws (the head's), so the
+// stick is turned by the controller's heading less the head's (radians, + to the left), kept in in_walk.
+static struct {
+    int mode;        // -1 not read; 1: by the controller
+    _Atomic float turn;
+} walk = {.mode = -1};
+
+static vr_pose pose_of(XrPosef p);
+static void walk_turn(void) {
+    if (walk.mode < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_WALK");
+        walk.mode = e && !strcmp(e, "controller");
+        if (walk.mode) LOG("[vr] walking: the left stick walks the way the left controller points\n");
+    }
+    if (!walk.mode) return;
+    XrTime t = vr_next_display_time();
+    XrSpaceLocation head = {XR_TYPE_SPACE_LOCATION}, hand = {XR_TYPE_SPACE_LOCATION};
+    int src = in.left_handed ? 1 : 0;   // (the movement hand)
+    if (!t || !in.hand[src] || XR_FAILED(xrLocateSpace(vr_xr_view(), vr_xr_local(), t, &head)) ||
+        XR_FAILED(xrLocateSpace(in.hand[src], vr_xr_local(), t, &hand)) ||
+        !(hand.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
+        return;
+    walk.turn = remainderf(vr_quat_heading(pose_of(hand.pose).q) - vr_quat_heading(pose_of(head.pose).q), 2 * 3.14159265f);
+}
+
 static vr_pose pose_of(XrPosef p) {
     vr_pose r = {{p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w},
                  {p.position.x, p.position.y, p.position.z}};
@@ -383,6 +442,8 @@ static void update(void) {
     in.out.rx = (int32_t)(in.out.rx * in.turn_speed);
     if (in.out.snap) vr_turn(-in.out.snap * in.snap_deg * 3.14159265f / 180);  // (right: clockwise from above)
     if (in.motion) motion(now / 1e9);
+    rumble_tick(now);
+    walk_turn();
 }
 
 static int32_t clamp_axis(int32_t v) { return v > 32767 ? 32767 : v < -32767 ? -32767 : v; }
@@ -399,6 +460,10 @@ void vr_input_apply(uint64_t *b, int32_t *lx, int32_t *ly, int32_t *rx, int32_t 
     if (!lx) return;
     // (no turning of the left stick for the head: the game walks Link relative to the view it draws, which already
     // has the head's turn; tools/vr/test_vr_game.py firstperson)
+    if (walk.mode == 1 && (o.lx || o.ly)) {   // (by the controller: turned from the head's way to the controller's)
+        float a = walk.turn, cs = cosf(a), sn = sinf(a), x = (float)o.lx, y = (float)o.ly;
+        o.lx = (int32_t)(x * cs - y * sn), o.ly = (int32_t)(x * sn + y * cs);
+    }
     *lx = clamp_axis(*lx + o.lx), *ly = clamp_axis(*ly + o.ly);
     *rx = clamp_axis(*rx + o.rx), *ry = clamp_axis(*ry + o.ry);
 }

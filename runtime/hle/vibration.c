@@ -30,6 +30,10 @@ void vibration_send(uint32_t handle, const VibrationValue *value) {
         values[i] = *value;
         values[i].low_amplitude = amplitude(value->low_amplitude);
         values[i].high_amplitude = amplitude(value->high_amplitude);
+#ifdef SW_VR  // (make VR=1: the game's rumble on the VR controllers too, runtime/vr/vr_input.c; device 0 left, 1 right)
+        { extern void vr_rumble(int hand, float amplitude);
+          vr_rumble(i, values[i].low_amplitude > values[i].high_amplitude ? values[i].low_amplitude : values[i].high_amplitude); }
+#endif
         if ((previous.low_amplitude != values[i].low_amplitude || previous.high_amplitude != values[i].high_amplitude) &&
             getenv("SAVAGEWIND_VIBRATION"))
             LOG("[vibration] handle %#x low %.3f high %.3f\n", handle, values[i].low_amplitude, values[i].high_amplitude);

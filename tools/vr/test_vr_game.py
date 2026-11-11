@@ -631,6 +631,51 @@ def scenario_arms(args, run_dir):
     print('    picture: {}'.format(os.path.join(run_dir, 'arms.png')))
 
 
+def scenario_walkdir(args, run_dir):
+    """SAVAGEWIND_VR_WALK=controller: with the head ahead and the left controller turned 90 deg left, the left stick
+    pushed forward walks Link to the view's left."""
+    L = '/user/hand/left/input/thumbstick'
+    lines = []
+    for k in range(60):
+        t = 30.0 * k
+        lines += ['{} head 0 1.7 0 0 0 0'.format(t), '{} hand left -0.25 1.2 -0.3 90 0 0'.format(t),
+                  '{} stick {} 0 0'.format(t, L), '{} stick {} 0 1'.format(t + 20, L), '{} stick {} 0 0'.format(t + 21.5, L)]
+    lines.sort(key=lambda l: float(l.split()[0]))
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={
+        'SAVAGEWIND_VR_STEREO': '0', 'SAVAGEWIND_VR_WALK': 'controller', 'FAKE_XR_CAPTURE_EVERY': '0'})
+    try:
+        ready(args, game, proc)
+
+        def now_s():
+            return vr_state(game).get('frames', 0) / 90.0
+
+        def wait_until(offset):
+            t = now_s()
+            target = (t // 30) * 30 + offset
+            if target <= t:
+                target += 30
+            while now_s() < target:
+                time.sleep(0.1)
+        wait_until(18)
+        cam, p1 = camera(game), game.cmd('pos', ok=False)
+        wait_until(25)
+        p2 = game.cmd('pos', ok=False)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    import math
+    if not (cam and 'x' in p1 and 'x' in p2):
+        check(False, 'the camera and Link could be read')
+        return
+    wx, wz = p2['x'] - p1['x'], p2['z'] - p1['z']
+    n = math.hypot(wx, wz)
+    check(n > 0.5, 'the left stick walked Link ({:.2f} m)'.format(n))
+    if n > 0.5:
+        yaw = math.radians(cam['yaw'])
+        left = (math.cos(yaw), -math.sin(yaw))
+        c = (wx * left[0] + wz * left[1]) / n
+        check(c > 0.8, 'he walked the left controller\'s way, to the view\'s left (cos {:.2f})'.format(c))
+
+
 def scenario_weapon(args, run_dir):
     """First person: the right grip at the right shoulder takes the weapon out; it is in Link's right hand, which
     follows the controller (vr_skel.c reads what each hand holds from the weapon models there); a picture of it."""
@@ -785,7 +830,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'weapon', 'snap', 'motion', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'weapon', 'walkdir', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -821,6 +866,8 @@ def main(argv=None):
             scenario_firstperson(args, run_dir)
         elif sc == 'gestures':
             scenario_gestures(args, run_dir)
+        elif sc == 'walkdir':
+            scenario_walkdir(args, run_dir)
         elif sc == 'weapon':
             scenario_weapon(args, run_dir)
         elif sc == 'arms':
