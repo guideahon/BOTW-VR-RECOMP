@@ -50,6 +50,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] **Magnesis (sólo probado en pruebas unitarias):** con Magnesis activa y un objeto metálico agarrado, grip
       mantenido: subir / bajar la mano lo sube / baja; empujar / tirar hacia vos lo aleja / acerca.
 
+## 4b. Arco
+
+- [ ] Grip sobre el hombro izquierdo: el arco aparece en la mano izquierda y la sigue.
+- [ ] Gatillo derecho mantenido con el arco afuera: tensa; la flecha aparece en la mano derecha. Al soltar, dispara.
+- [ ] **Hoy la flecha sale hacia donde mirás con la cabeza**, no hacia donde apunta el arco (eso falta, ver abajo).
+      Apuntá con la mirada.
+
 ## 5. Combate
 
 - [ ] Un tajo con la mano derecha ataca una vez; una estocada, una vez; volver lento a la guardia no ataca.
@@ -76,7 +83,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 | Qué | Por qué falta |
 |---|---|
 | Que el arma pegue donde la movés (su hitbox siguiendo la mano) | hay que encontrar en el juego el "sensor de ataque" del arma |
-| Arco apuntado con las manos (la flecha sale hacia donde apunta la mano izquierda) | hay que encontrar el apuntado del arco |
+| Arco apuntado con las manos (la flecha sale hacia donde apunta el arco) | probado desviar la cámara lógica: el juego apunta con la misma matriz que se dibuja; falta encontrar el disparo de la flecha (notas en docs/vr/re-notes.md) |
 | Soltar el arma con un gesto (mano izquierda en la cadera derecha) | el juego no tiene botón para eso; hay que encontrar su función |
 | Agarrar armas de dos manos con ambas manos | depende del punto anterior y de los brazos |
 | Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |

@@ -243,6 +243,14 @@ void vr_skel_calc(uint64_t model) {
     if (!GUEST_OK(world)) return;
     const char *n = model == k.model ? "Link" : fmdl_name(rd64(model + 0xe0));
     if (!n) return;
+    static int log_models = -1;   // (debugging) SAVAGEWIND_VR_LOG_MODELS=<prefix>: those models' root position, each frame
+    static const char *log_prefix;
+    if (log_models < 0) log_prefix = getenv("SAVAGEWIND_VR_LOG_MODELS"), log_models = log_prefix != NULL;
+    if (log_models && !strncmp(n, log_prefix, strlen(log_prefix))) {
+        const float *m = bone_m(world, 0);
+        LOG("[vr-model] %llu %s %llx %.3f %.3f %.3f\n", (unsigned long long)k.frames, n, (unsigned long long)model, m[12],
+            m[13], m[14]);
+    }
     if (!strcmp(n, "Link")) {
         bool first = model != k.model;
         k.model = model;

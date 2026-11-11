@@ -52,6 +52,26 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
+## The bow aimed by the hands (2026-11-11): not yet
+
+BetterVR (Wii U) overrides the arrow's launch transform where AI_Arrow::handleStateShoot sets the arrow's rigid body
+(patch_CTRL_EntityController.asm 0x02706270 -> hook_OverrideArrowShotTransform, src/hooking/bow.cpp), and its
+"TargetPos" parameter loads. On 1.9.0 so far:
+
+- The bow and the arrow are in the hands: the weapon models at Link's hands are read (`Weapon_Bow_001` at the left,
+  `Weapon_Arrow_001` at the right while drawing; runtime/vr/vr_skel.c) and follow the IK hands.
+- Tried: while drawing, the LookAtCamera's eye / at set along the bow (from the string hand to the bow hand) and the
+  view matrix written back with the head's at the end of doUpdateMatrix (a site at 0x7000eb2e4c, its `ret`). The arrow
+  still flew where the head looked (it landed at the view's heading, 33.8 deg, with the hands aiming 60 deg to the
+  right): the aim follows the camera's matrix, which is also what is drawn. Removed again.
+- The matrix reaches the GPU through a generic uniform-block setter (main+0xef0f78, from main+0xf86e80; `mem find
+  view:<eye>,<r>` lists the 93 copies of the view matrix and `mem watch` on them names it), at render time, from the
+  same camera. Decoupling the aim from the picture there would mean telling the view's uniform apart from the rest.
+- Next: the shot itself. "IsShootByPlayer" (main .rodata 0x161b425) is read by 16 functions (tools: an adrp/add xref
+  scan); the one of the player's arrow AI, then where it sets the arrow's transform or velocity (a `mem watch` on a
+  flying arrow's rigid body, the arrow found with SAVAGEWIND_VR_LOG_MODELS=Weapon_Arrow), is the place to override
+  the direction with the bow's, as BetterVR does.
+
 ## What is found in 1.9.0 so far
 
 A scan of the main module (`.text`) for the shape of a 64-byte bone array accessor (index << 6, a halfword or byte flag

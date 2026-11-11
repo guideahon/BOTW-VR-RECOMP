@@ -388,6 +388,7 @@ typedef struct {
     size_t n;
     uint64_t lo, hi;      // ptr mode when hi > lo
     bool mtx;             // mtx mode: 3x4 float matrices (rows orthogonal, any scale) translated near (mx, my, mz)
+    bool view;            // view mode: the same, but a view matrix (rotation rows) whose eye, -R^T t, is near it
     float mx, my, mz, mr;
     uint64_t base;        // the guest address of the run being searched
     uint64_t *out;
@@ -400,6 +401,11 @@ static size_t find_run(const void *p, size_t n, void *vctx) {
         for (size_t i = 0; i + 48 <= n && c->found < c->max; i += 4) {
             const float *m = (const float *)(b + i);
             float tx = m[3] - c->mx, ty = m[7] - c->my, tz = m[11] - c->mz;
+            if (c->view) {
+                float e0 = -(m[0] * m[3] + m[4] * m[7] + m[8] * m[11]), e1 = -(m[1] * m[3] + m[5] * m[7] + m[9] * m[11]),
+                      e2 = -(m[2] * m[3] + m[6] * m[7] + m[10] * m[11]);
+                tx = e0 - c->mx, ty = e1 - c->my, tz = e2 - c->mz;
+            }
             if (!(tx * tx + ty * ty + tz * tz <= c->mr * c->mr)) continue;
             float n0 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2], n1 = m[4] * m[4] + m[5] * m[5] + m[6] * m[6],
                   n2 = m[8] * m[8] + m[9] * m[9] + m[10] * m[10];
@@ -437,8 +443,10 @@ static void find_cmd(int argc, char **argv, ControlReply *r) {
     static uint8_t pat[256];
     FindCtx c = {.pat = pat, .max = 50};
     const char *q = argv[2];
-    if (!strncmp(q, "mtx:", 4)) {   // mtx:<x>,<y>,<z>,<radius>
+    if (!strncmp(q, "mtx:", 4) || !strncmp(q, "view:", 5)) {   // mtx:<x>,<y>,<z>,<radius> (view: the same, as an eye)
         c.mtx = true;
+        c.view = q[0] == 'v';
+        if (c.view) q++;
         if (sscanf(q + 4, "%f,%f,%f,%f", &c.mx, &c.my, &c.mz, &c.mr) != 4) { control_fail(r, "mem find: mtx:x,y,z,r"); return; }
     } else if (!strncmp(q, "ptr:", 4)) {
         char *end;
