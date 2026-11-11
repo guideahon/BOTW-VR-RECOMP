@@ -146,7 +146,7 @@ static struct {
     // (carried to the weapon models hanging there), and what each hand holds, from the weapon models found there
     struct {
         bool ok;
-        float before[16], delta[16];
+        float before[16], after[16], delta[16];   // (after: the Weapon_ bone with the arms' turns)
         int held;            // VR_SKEL_* below
         uint64_t held_frame; // the frame it was last seen
         uint64_t model;
@@ -286,6 +286,7 @@ void vr_skel_calc(uint64_t model) {
             float inv[16];
             if (vr_bm_inverse(before[side], inv)) {
                 vr_bm_mul(bone_m(world, s->weapon[side]), inv, k.hand[side].delta);
+                memcpy(k.hand[side].after, bone_m(world, s->weapon[side]), sizeof k.hand[side].after);
                 k.hand[side].ok = true;
             }
         }
@@ -307,7 +308,14 @@ void vr_skel_calc(uint64_t model) {
             float dist = vr_v3_len(vr_v3_sub(p, h));
             if (getenv("SAVAGEWIND_VR_LOG_WEAPONS") && k.frames % 120 == 0)
                 LOG("[vr] %s %.3f m from the %s hand\n", n, dist, side ? "right" : "left");
-            if (dist > 0.03f) continue;   // (one in the hand sits on the bone; one on the back only passes near it)
+            // (one in the hand sits on the bone; one on the back only passes near it.) Already at the turned hand: its
+            // actor was moved there (vr_weapon_bind), so the model is in that hand and needs no carrying
+            bool moved = false;
+            if (dist > 0.03f) {
+                vr_vec3 ha = vr_bm_pos(k.hand[side].after);
+                if (!arms || vr_v3_len(vr_v3_sub(p, ha)) > 0.06f) continue;
+                moved = true;
+            }
             int kind = weapon_kind(n);
             // two at one hand this frame (a bow and the arrow's...): the bow first, then a melee weapon, then a shield
             static const int prio[] = {0, 2, 3, 1, 0};
@@ -319,7 +327,7 @@ void vr_skel_calc(uint64_t model) {
                 k.hand[side].held = kind, k.hand[side].model = model;
             }
             k.hand[side].held_frame = k.frames;
-            if (arms) {
+            if (arms && !moved) {
                 int nb = bone_count(skel);
                 for (int i = 0; i < nb; i++) vr_bm_mul(k.hand[side].delta, bone_m(world, i), bone_m(world, i));
             }
@@ -407,4 +415,39 @@ int vr_bow_arc(float (*pts)[3], int max) {
         n++;
     }
     return n;
+}
+
+// ---- the held weapon's hits where the hand is (BetterVR's hook_ChangeWeaponMtx) ----
+// A bound actor's matrix right after its bind made it from the parent's bone (rt_weapon_bind, main+0x1525fb8): its
+// model and its physics (the weapon's attack sensor) take it next. A weapon in one of Link's hands (its model the one
+// that hand carries, or its matrix on that hand's Weapon_ bone as the animation left it) gets the hand's change from
+// the arms' turns, as its model does: it then cuts where the controller swings it. 3x4 row-major (actor + 0x398).
+// SAVAGEWIND_VR_WEAPON_HITS=0: the hits stay where the animation holds the weapon.
+static uint64_t weapons_moved;
+uint64_t vr_weapons_moved(void) { return weapons_moved; }
+
+void vr_weapon_bind(uint64_t actor) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_WEAPON_HITS");
+        on = !(e && *e == '0');
+    }
+    if (!on || !GUEST_OK(actor) || !k.arms || !vr_enabled() || !vr_first_person_now()) return;
+    float *a = (float *)(uintptr_t)(actor + 0x398);
+    uint64_t model = rd64(actor + 0x4e0);
+    for (int side = 0; side < 2; side++) {
+        if (!k.hand[side].ok || !k.arm[side].ok || k.hand[side].held_frame + 8 < k.frames) continue;
+        const float *b = k.hand[side].before;
+        float dx = a[3] - b[12], dy = a[7] - b[13], dz = a[11] - b[14];
+        bool same = model && model == k.hand[side].model;
+        if (!same && dx * dx + dy * dy + dz * dz > 0.03f * 0.03f) continue;
+        float m[16] = {a[0], a[4], a[8], 0, a[1], a[5], a[9], 0, a[2], a[6], a[10], 0, a[3], a[7], a[11], 1}, r[16];
+        vr_bm_mul(k.hand[side].delta, m, r);
+        for (int row = 0; row < 3; row++)
+            for (int col = 0; col < 4; col++) a[row * 4 + col] = r[col * 4 + row];
+        if (!weapons_moved++)
+            LOG("[vr] the weapon in Link's %s hand follows it (actor %llx, its model %s the hand's)\n",
+                side ? "right" : "left", (unsigned long long)actor, same ? "is" : "is not");
+        return;
+    }
 }

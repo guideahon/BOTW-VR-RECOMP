@@ -870,6 +870,16 @@ def _skel_calc(gen, a):
             f'  /* {a:#x}: mov x0, x20 (a model\'s skeleton, before its world matrices) */')
 
 
+# An actor's update (main+0x1525f3c, x20 the actor): its bind to a parent's bone ([actor + 0x4d0], the weapon in
+# Link's hand from his Weapon_ bone) has just made its matrix (actor + 0x398), which its model and its physics (the
+# weapon's attack sensor) take next (docs/vr/re-notes.md). The runtime may move it (rt_weapon_bind,
+# runtime/hle/weapon.c; the VR mode carries a held weapon with the hand), then the displaced ldr x8, [x20, #0x4e0].
+def _weapon_bind(gen, a):
+    assert _word(gen, a) == 0xf9427288, hex(_word(gen, a))  # ldr x8, [x20, #0x4e0]
+    return ('{ extern void rt_weapon_bind(uint64_t); rt_weapon_bind(c->x[20]); c->x[8] = LD64(c->x[20] + 0x4e0); }'
+            f'  /* {a:#x}: ldr x8, [x20, #0x4e0] (an actor bound to a bone, its matrix made) */')
+
+
 # An arrow leaving the bow: the shoot step of its AI (main+0x931364) has just made the way it flies, s8 s13 s9, from
 # where the arrow is (s15 s12 s11, its actor's position) to the shooter's aim point, and next scales it by the first
 # speed; the aim point itself, at x29 - 0x50 (sp + 0xa90: x29 is a local of the lifted function), goes to the arrow too as its TargetPos (docs/vr/re-notes.md). The
@@ -908,6 +918,7 @@ PATCHES = {
     'lookat_update': _lookat_update,
     'skel_calc': _skel_calc,
     'arrow_aim': _arrow_aim,
+    'weapon_bind': _weapon_bind,
     'pc_map_focus': _pc_map_focus(False),
     'pc_map_focus_target': _pc_map_focus(True),
     'pc_map_focus_now': _pc_map_focus(True),

@@ -295,6 +295,9 @@ SITES = [
     Site('skel_calc', 'code', '39436008 91038014 aa0003f3 aa1403e0 12000501 94000000/fc000000', 3),
     # an arrow leaving the bow: the shoot step of its AI, the way it flies (s8, s13, s9) just made from where it is to
     # the shooter's aim point, before its first speed (tools/patches.py _arrow_aim; the VR mode aims the bow by hand)
+    # an actor bound to its parent's bone (the weapon in Link's hand): its matrix (+0x398) just made from the bone,
+    # before its model and physics take it (tools/patches.py _weapon_bind; the VR mode moves it with the hand)
+    Site('weapon_bind', 'code', 'f9427288 b4000c28 f9400288 aa1403e0 f9424508', 0),
     Site('arrow_aim', 'code', '1e200908 1e2009ad 1e200929 aa1403e0 1e2a094e', 3),
     # Native quick-selector sorting (runtime/quick_inventory_sort.c), optional as a complete group.
     Site('quick_sort_enter', 'code', 'fc1d0fe8 a900fbfd f9000ff5 a9024ff4 910023fd b978e014 aa0003f3 7100069f', 0),
@@ -374,7 +377,8 @@ OPTIONAL_GROUPS = [
     OPT_TWO_SITES,
     ('lookat_update',),  # (the free camera: without it Home does nothing)
     ('skel_calc',),  # (VR: Link's bones; without it his head stays in first person)
-    ('arrow_aim',),  # (VR: the bow aimed by hand; without it arrows follow the head)
+    ('arrow_aim',),
+    ('weapon_bind',),  # (VR: the held weapon's hits follow the hand; without it they follow the animation)  # (VR: the bow aimed by hand; without it arrows follow the head)
     ('gyro_scene_actor',),
     ('surf_contact', 'surf_boost_remove', 'surf_jump_request'),
     ('stale_actor_helper', 'stale_actor_target'),
@@ -459,6 +463,7 @@ KNOWN = {
         'lookat_update': 0x7000eb2d5c,
         'skel_calc': 0x7000f97900,
         'arrow_aim': 0x7000931590,
+        'weapon_bind': 0x7001525fb8,
         'yaz0_stream': 0x700131d674,
         'yaz0_stream_ret': 0x700131d7e8,
         'opt_create_rows': 0x7000e2f0a8,

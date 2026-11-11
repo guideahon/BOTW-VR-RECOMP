@@ -52,6 +52,32 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
+## The held weapon's hits at the hand (2026-11-11): where, done; when, not yet
+
+BetterVR rewrites the held weapon's matrix where the game binds an actor to its holder's bone (Wii U 0x0312587C ->
+hook_ChangeWeaponMtx: `Weapon_L` / `Weapon_R` of "GameROMPlayer"). On 1.9.0:
+
+- The weapon actor's matrix is actor + 0x398 (3x4 row-major), as the arrow's. Found by profiling the actor update
+  main+0x1525f3c's x0 (SAVAGEWIND_FNPROF_ARGS) while the sword is out and taking the one whose matrix is at the sword
+  model's root (tools/vr/re_weapon.py finds the matrices there; build-local scripts did the rest).
+- `mem watch` on it: written once a frame from main+0x1525f70, `[actor + 0x4d0]->vfunc 0x20(actor)`: the bind. It asks
+  the parent's model for the bone's matrix (vfunc 0x70, into the stack) and main+0x1096fb8 makes actor + 0x398 from it
+  and the bind offset. Link's `Weapon_R` world matrix is read from there too (a watch on it: main+0xf96990 from
+  main+0xf784d4 / 0xf77764, called by the same update, 0x15260f4).
+- After the bind the update copies actor + 0x398 to the model's base (0x1526034) and gives it to the physics:
+  main+0x1526180 `bl 0x12fa500(physics, actor + 0x398)`, which sets the weapon's rigid bodies (their matrices, at the
+  weapon, written by main+0x12f9f7c).
+- So the site is main+0x1525fb8 (right after the bind, `ldr x8, [x20, #0x4e0]`, every path goes through it):
+  `tools/patches.py _weapon_bind` -> `rt_weapon_bind` (runtime/hle/weapon.c) -> `vr_weapon_bind` (runtime/vr/vr_skel.c)
+  multiplies the matrix by the hand's change from the arms' turns (the one the weapon models got before) when it sits
+  on a hand's `Weapon_` bone as the animation left it. Its model then comes out already at the turned hand: vr_skel.c
+  counts it as held there without carrying it again. ([actor + 0x4e0] is not the gsys model vr_skel.c sees: the
+  weapon is told by its place.)
+- Checked by tools/vr/test_vr_weapon_hits.py (the hand 0.6 m right: the weapon's matrices 0.72 m from Link with it,
+  0.42 m without).
+- Not yet: the attack sensor is on only during the game's attack; BetterVR turns it on while its swing analysis says
+  an attack is going (hook_EnableWeaponAttackSensor) and scales the damage by the swing's power.
+
 ## The bow aimed by the hands (2026-11-11): done
 
 **Found.** BetterVR (src/hooking/bow.cpp) overrides two things at the shot: the arrow's launch transform and the

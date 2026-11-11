@@ -3,8 +3,8 @@
 Objetivo: modo VR (OpenXR, 6DOF, estéreo) dentro de Savage Wind Recomp, con la performance de código nativo, aprovechando
 lo aprendido por BetterVR (Cemu). Todo detrás de un flag: sin VR, el juego se comporta exactamente igual que upstream.
 
-Repo: [guideahon/Savage-Wind-VR](https://github.com/guideahon/Savage-Wind-VR), fork de
-[Revivedx/SavageWindRecomp](https://github.com/Revivedx/SavageWindRecomp); el trabajo VR va en la rama `vr`, basada en `test`.
+Repo: [guideahon/BOTW-VR-RECOMP](https://github.com/guideahon/BOTW-VR-RECOMP) (rama `main`), basado en
+[Revivedx/SavageWindRecomp](https://github.com/Revivedx/SavageWindRecomp) `test`.
 Estado de cada fase y cómo correr los tests: [VR.md](VR.md).
 
 ---

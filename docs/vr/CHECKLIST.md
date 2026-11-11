@@ -69,6 +69,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un tajo con la mano derecha ataca una vez; una estocada, una vez; volver lento a la guardia no ataca.
 - [ ] Mano izquierda levantada delante de la cara: cubre con el escudo.
 - [ ] Probá `SAVAGEWIND_VR_SWING=easy` si cuesta que cuenten los tajos.
+- [ ] **El golpe sale donde está tu mano (nuevo):** con la espada en la mano derecha, poné el brazo a un costado y
+      hacé un tajo hacia un enemigo o un arbusto que esté de ese lado: tiene que pegarle / cortarlo, aunque Link
+      "en el juego" mire hacia adelante. Antes el golpe salía donde la animación ponía la espada.
+- [ ] Mientras no atacás, tocar a un enemigo con la espada no le hace nada (todavía: el golpe vale solo durante el
+      ataque que dispara el gesto, como en el juego).
+- [ ] Si algo de la física del arma se ve raro (escudo, arco, la espada temblando o atravesando cosas):
+      `SAVAGEWIND_VR_WEAPON_HITS=0` lo deja como antes; avisame.
 
 ## 6. Vibración del juego (nuevo)
 
@@ -89,7 +96,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 | Qué | Por qué falta |
 |---|---|
-| Que el arma pegue donde la movés (su hitbox siguiendo la mano) | hay que encontrar en el juego el "sensor de ataque" del arma |
+| Que el arma pegue en cualquier movimiento, con daño según la fuerza del golpe | el golpe ya sale donde está la mano; falta prender el "sensor de ataque" fuera del ataque del juego |
 | Soltar el arma con un gesto (mano izquierda en la cadera derecha) | el juego no tiene botón para eso; hay que encontrar su función |
 | Agarrar armas de dos manos con ambas manos | depende del punto anterior y de los brazos |
 | Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |
