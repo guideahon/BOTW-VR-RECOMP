@@ -50,7 +50,8 @@ gives the pitch and roll itself. The world camera's projection (`rt_persp` in `r
 symmetric frustum that holds both eyes' fields, in the window's shape; the window takes the shape of the headset's eye
 images at start (`SAVAGEWIND_VR_HEIGHT` lines high, 1080; for the run only), and the frame goes to the headset as a
 projection layer with that frustum and the pose the camera was given. One picture for both eyes until phase 3; the HUD
-is in it. Menus, events and loading go back to the virtual screen. `vr recenter` (or the first frame in play) makes the
+is in it. Menus and loading go back to the virtual screen; events too with `SAVAGEWIND_VR_EVENTS=screen` (by
+default they stay in 3D, as BetterVR's table says). `vr recenter` (or the first frame in play) makes the
 head's pose the game camera's. Measured with fake_xr (RTX 3090, plateau, uncapped): 211 to 218 fps against 219 to 223
 flat with the same settings, the longest frame 6 ms in both.
 
@@ -173,6 +174,7 @@ The log says what was found (`[vr]` lines). Useful settings, as environment vari
 | `SAVAGEWIND_VR_HUD` | 1 | `0`: the HUD stays in the eyes' pictures |
 | `SAVAGEWIND_VR_HUD_WIDTH`, `_DISTANCE` | 1.6, 1.4 | the HUD's size and distance (m) |
 | `SAVAGEWIND_VR_SCREEN_WIDTH`, `_DISTANCE` | 3.0, 2.5 | the virtual screen of menus, events and loading (m) |
+| `SAVAGEWIND_VR_EVENTS` | auto | events (cutscenes): `auto` as BetterVR's table says for each (first person or the event's camera in 3D), `first`, `third` (the event's camera), `screen` (the flat virtual screen) |
 | `SAVAGEWIND_VR_CONTROLLERS` | 1 | `0`: the VR controllers are not read (a gamepad only) |
 | `SAVAGEWIND_VR_MOTION` | 1 | `0`: no motion combat (slashes, stabs and the raised-hand guard) |
 | `SAVAGEWIND_VR_SWING` | normal | `easy`: BetterVR's easier swing profile (slower swings count) |
@@ -231,7 +233,7 @@ meant and not otherwise. Needs a headset.
 | Turning with the head only (no stick turn) | nothing from the game | not started |
 | First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head | done but his head (the eye at his position, 1.55 m up; `SAVAGEWIND_VR_VIEW`) |
 | Hiding Link's head and hat in first person | nothing more | done (his head bones and head armor squeezed into his chest) |
-| Cutscenes in first person or third (BetterVR's event modes) | the game's code: the event camera | not started (events on the virtual screen) |
+| Cutscenes in first person or third (BetterVR's event modes) | the event's name (runtime/hle/framepace.c) | done: `SAVAGEWIND_VR_EVENTS` = `auto` (BetterVR's table of 1497 events, runtime/vr/vr_event_table.h from its patch_Settings_Cutscenes.asm: first person or the event's camera; still and animated hands where it says), `first`, `third` (the event's camera in 3D, the head free), `screen` (the virtual screen, as before); first person needs Link in the world (the new game's opening falls back to the event's camera) |
 | Smooth locomotion relative to the hand instead of the head | nothing from the game | not started |
 
 **Picture and performance (phase 9)**
@@ -308,6 +310,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
 | `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_events.py [--modes auto first screen]` | your game files, a `VR=1` build, a GPU | events: a new game from an empty save (its opening, Demo169_0): `auto` gives the headset the eyes in 3D on the event's camera; `first` the same while Link is not in the world yet (first person only with him there); `screen` only the virtual screen |
 | `python tools/vr/test_vr_two_hands.py --save <scratch save>` | as above | both hands on the large sword: a first run reads the sword's line (SAVAGEWIND_VR_TRACE_TWO_HANDS), a second puts the left hand on it: a grip far from it does not take hold, one on it does, and after the left hand moves the drawn model's blade points at it (0 deg) |
 | `python tools/vr/test_vr_drop.py --save <scratch save>` | as above | the drop gesture: the melee weapon out, the right grip held at the right hip; the quick selector's native drop reports the weapon dropped and done, and its model lies on the ground (from hand height to Link's feet) |
 | `python tools/vr/test_vr_swing_hits.py --save <scratch save>` | as above | hits by swinging: the melee weapon out, a fast cut with `SAVAGEWIND_VR_SWING_ATTACK=0`; two runs: with swing hits the weapon's sensor (its actor + 0xd09) is on in the cut and off before and after it, without them never |

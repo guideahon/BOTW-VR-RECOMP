@@ -25,6 +25,7 @@
 #include "../framepace.h"
 #include "../game_sites.h"
 #include "../control_cells.h"
+#include "vr_event_table.h"
 
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <vulkan/vulkan.h>
@@ -59,9 +60,13 @@ static struct {
     int first;             // -1 not read yet: SAVAGEWIND_VR_VIEW (first, the default, or third)
     float eye_height, forward;  // first person: the eye above Link's feet, and ahead of his head's centre (m)
     bool fp_now;           // the last camera was set in first person
+    int events;            // -1 not read yet: SAVAGEWIND_VR_EVENTS (EV_*)
+    bool in_event;         // the last camera was set in an event
+    float event_yaw;       // the view's turn kept through a still first-person event (the one before it)
+    float last_yaw;
     vr_anchor anchor;      // the tracking space -> the game's world, as the last camera used it
     bool anchor_ok;
-} c = {.stereo = -1, .window_aspect = 1, .first = -1};
+} c = {.stereo = -1, .window_aspect = 1, .first = -1, .events = -1};
 
 static float env_f(const char *name, float def, float lo, float hi) {
     const char *e = getenv(name);
@@ -105,9 +110,65 @@ static bool stereo_on(void) {
     return c.stereo;
 }
 
+// ---- events (cutscenes): BetterVR's modes (SAVAGEWIND_VR_EVENTS) ----
+//   auto    (the default) as BetterVR's table says for each event (runtime/vr/vr_event_table.h, from BetterVR's
+//           patch_Settings_Cutscenes.asm): in first person or on the event's camera; unknown events on its camera
+//   first   always in first person (in Link's head)
+//   third   always on the event's camera, in 3D, the head free to look around
+//   screen  on the virtual screen, flat (as before)
+// In first person an event the table marks still (PAN_OFF) does not turn the view with its camera (the turn before it
+// is kept), and one that leaves Link's hands to the animation (HND_OFF) gets no arms from the controllers.
+enum { EV_AUTO, EV_FIRST, EV_THIRD, EV_SCREEN };
+
+static int events_mode(void) {
+    if (c.events < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_EVENTS");
+        c.events = !e ? EV_AUTO : !strcmp(e, "first") ? EV_FIRST : !strcmp(e, "third") ? EV_THIRD
+                 : !strcmp(e, "screen") ? EV_SCREEN : EV_AUTO;
+        static const char *const names[] = {"as BetterVR's table says", "in first person", "on the event's camera",
+                                            "on the virtual screen"};
+        LOG("[vr] events (cutscenes): %s (SAVAGEWIND_VR_EVENTS)\n", names[c.events]);
+    }
+    return c.events;
+}
+
+static const vr_event_setting *event_setting(const char *name) {
+    int lo = 0, hi = (int)(sizeof vr_event_table / sizeof vr_event_table[0]) - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2, d = strcmp(name, vr_event_table[mid].name);
+        if (!d) return &vr_event_table[mid];
+        if (d < 0) hi = mid - 1;
+        else lo = mid + 1;
+    }
+    return NULL;
+}
+
+// in an event now, how it is shown: fp in first person, still (its camera's turns not followed), anim_hands (no arms)
+static bool event_now(bool *fp, bool *still, bool *anim_hands) {
+    *fp = *still = *anim_hands = false;
+    if (!framepace_in_event()) return false;
+    int m = events_mode();
+    if (m == EV_FIRST || m == EV_AUTO) {
+        const vr_event_setting *s = event_setting(framepace_event_name());
+        if (m == EV_FIRST || (s && s->fp)) {
+            *fp = true;
+            *still = !s || s->still;
+            *anim_hands = !s || s->anim_hands;
+        }
+    }
+    return true;
+}
+
+// vr_skel.c: Link's hands left to the event's animation now
+bool vr_event_anim_hands(void) {
+    bool fp, still, hands;
+    return event_now(&fp, &still, &hands) && hands;
+}
+
 bool vr_world_view(void) {
     if (!vr_enabled() || !vr_session_running()) return false;
-    if (framepace_in_event() || framepace_title_ui() || framepace_loading_ui() || framepace_map_ui()) return false;
+    if (framepace_in_event() && events_mode() == EV_SCREEN) return false;
+    if (framepace_title_ui() || framepace_loading_ui() || framepace_map_ui()) return false;
     if (g_site.pause_state && LD32(g_site.pause_state) != 0) return false;
     return true;
 }
@@ -207,9 +268,20 @@ void vr_camera_lookat(float *f) {
     vr_vec3 geye = vr_v3(gf[0], gf[1], gf[2]);
     float yaw = vr_game_yaw_of(vr_v3(gf[3] - gf[0], gf[4] - gf[1], gf[5] - gf[2]));
     // first person: the neutral head goes to Link's eyes, a little ahead of his head, facing the game camera's way
+    // an event: first person or its camera (event_now); a still one keeps the turn from before it
+    bool ev_fp, ev_still, ev_hands, ev = event_now(&ev_fp, &ev_still, &ev_hands);
+    if (ev && !c.in_event) {
+        c.event_yaw = c.last_yaw;
+        LOG("[vr] event %s: %s%s\n", framepace_event_name(), ev_fp ? "first person" : "its camera",
+            ev_fp && ev_still ? ", the view kept still" : "");
+    }
+    c.in_event = ev;
+    if (ev && ev_fp && ev_still) yaw = c.event_yaw;
+    else c.last_yaw = yaw;
+    bool fp = ev ? ev_fp : first_person();
     double lp[3];
     c.fp_now = false;
-    if (first_person() && control_cell_get(&control_cell_player_pos, lp)) {
+    if (fp && control_cell_get(&control_cell_player_pos, lp)) {
         geye = vr_v3((float)lp[0] + sinf(yaw + c.turn) * c.forward, (float)lp[1] + c.eye_height,
                      (float)lp[2] + cosf(yaw + c.turn) * c.forward);
         c.fp_now = true;

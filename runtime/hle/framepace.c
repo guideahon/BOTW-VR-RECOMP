@@ -104,6 +104,8 @@ static const char *event_name(void) {
     return n && n < 32 && !p[n] ? p : "";
 }
 
+const char *framepace_event_name(void) { return event_name(); }
+
 // Events held at the console's 30 fps whatever the chosen rate: a wait in them can miss its moment at another rate.
 //   Master Kohga's entrance in the Yiga Clan hideout froze after "The strong! The burly!!" (#196, #455, #533): the picture
 //   went on, the cutscene never finished. The hideout's EventTag starts Electric_Relic<WaitStable>, which calls the demo

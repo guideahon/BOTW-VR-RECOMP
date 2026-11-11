@@ -174,6 +174,7 @@ static int weapon_kind(const char *n) {
 
 bool vr_first_person_now(void);                            // vr_camera.c
 bool vr_tracking_to_world(const vr_pose *in, vr_pose *out);   // vr_camera.c
+bool vr_event_anim_hands(void);                              // vr_camera.c
 bool vr_hand_pose(int hand, vr_pose *out);                  // vr_input.c
 bool vr_drawing(void);                                      // vr_input.c
 bool vr_two_hand_latched(void);                             // below
@@ -241,7 +242,7 @@ void vr_skel_calc(uint64_t model) {
         k.log_arms = l ? atoi(l) : 0;
     }
     bool fp = vr_enabled() && vr_first_person_now();
-    bool hide = k.hide == 1 || (k.hide == 2 && fp), arms = k.arms && fp;
+    bool hide = k.hide == 1 || (k.hide == 2 && fp), arms = k.arms && fp && !vr_event_anim_hands();   // (an event may leave his hands to its animation)
     if (!hide && !arms && !vr_enabled()) return;   // (in VR the weapons are watched even when nothing is changed)
     uint64_t skel = rd64(model + 0x118);
     if (!GUEST_OK(skel)) return;

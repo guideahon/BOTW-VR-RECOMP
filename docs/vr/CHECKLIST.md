@@ -84,6 +84,19 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4d. Cinemáticas (nuevo)
+
+Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como en BetterVR, que trae una tabla con
+~1500 escenas que dice cuáles van en primera persona y cuáles con la cámara de la escena.
+
+- [ ] Abrir un cofre / cocinar / agarrar algo nuevo (escenas de la tabla en primera persona): las ves desde los ojos de
+      Link, y la vista no se gira sola con la cámara de la escena.
+- [ ] Una escena con cámara (charla con un personaje, una escena de historia): la ves en 3D desde la cámara de la escena
+      y podés mirar alrededor con la cabeza. Si marea, probá las otras opciones:
+- [ ] `SAVAGEWIND_VR_EVENTS=screen`: todas las escenas en la pantalla plana (como antes).
+- [ ] `SAVAGEWIND_VR_EVENTS=third`: todas con la cámara de la escena; `=first`: todas en primera persona.
+- [ ] Decime qué escenas se ven mal en el modo `auto` (nombre aproximado o qué pasaba), así ajusto la tabla.
+
 ## 5. Combate
 
 - [ ] Un tajo con la mano derecha ataca una vez; una estocada, una vez; volver lento a la guardia no ataca.
@@ -122,6 +135,5 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 | Qué | Por qué falta |
 |---|---|
 | Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
-| Modos de cinemáticas (primera persona en escenas) | hoy las escenas van a la pantalla virtual |
 | Cuerpo que sigue tus pasos reales (roomscale físico) | hay que mover a Link con su física |
 | Menú de opciones VR dentro del juego | hoy son variables de entorno (el instalador las escribe) |

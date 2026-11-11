@@ -59,6 +59,12 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_int(r, "world_frames", (int64_t)vr_world_frames());
     control_field_int(r, "camera_updates", (int64_t)vr_camera_updates());
     control_field_bool(r, "world_view", vr_world_view());
+    {   // events (cutscenes): the one playing and whether the last camera was set in first person
+        extern const char *framepace_event_name(void);
+        extern bool vr_first_person_now(void);
+        control_field_str(r, "event", framepace_event_name());
+        control_field_bool(r, "first_person", vr_first_person_now());
+    }
     control_field_int(r, "stereo_pairs", (int64_t)vr_stereo_pairs());
     uint64_t pad = 0, syncs = 0;
     int32_t sticks[4] = {0};
