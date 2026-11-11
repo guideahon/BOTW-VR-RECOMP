@@ -166,6 +166,10 @@ static uint64_t deferred_seq;  // (seq_lock; renderer_wait_seq, GPU_OVERLAP) a f
                                // submission wasn't waited for
 static uint64_t oneshot_seq;   // (seq_lock) the latest submission with a one-off readback: a wait on it is never deferred
 static bool in_pass;
+#ifdef SW_VR
+static uint64_t vr_shadow_passes_skipped;  // (VR: the right eye's shadow passes left to the left eye's maps)
+uint64_t vk_vr_shadow_passes_skipped(void) { return vr_shadow_passes_skipped; }
+#endif
 static bool pass_void;  // the pass in progress has nothing to draw into: not begun, its draws and clears skipped (begin_pass)
 static uint32_t chunk_draws;  // draws and dispatches recorded since the last submission
 static bool chunk_hold;       // a shader that stores to guest memory was recorded since the last submission
@@ -2299,6 +2303,27 @@ static void begin_pass(void) {
     static int empty_pass = -1;
     if (empty_pass < 0) empty_pass = getenv("SAVAGEWIND_VK_EMPTY_PASS") != NULL;
     pass_void = !w && !empty_pass;
+#ifdef SW_VR
+    // VR in stereo (runtime/vr): the right eye's frame reuses the left one's sun shadow maps. Its passes that draw only
+    // into them (the cascades, their half-size copy: RS_SHADOW) are not begun: the eyes are 6.4 cm apart and the right
+    // frame takes nearly no game time (vr_pair_step), so what they would draw is what the left frame drew.
+    // SAVAGEWIND_VR_SHADOWS_ONCE=0: drawn for both eyes.
+    if (!pass_void) {
+        static int once = -1;
+        if (once < 0) once = !(getenv("SAVAGEWIND_VR_SHADOWS_ONCE") && *getenv("SAVAGEWIND_VR_SHADOWS_ONCE") == '0');
+        bool any = false, all = true;   // (every target a shadow map)
+        if (st.rt.depth) any = true, all = vk_texture_scale_group(st.rt.depth) == RS_SHADOW;
+        for (int i = 0; i < st.rt.ncolor && i < 8; i++)   // (the cascades' half-size copy: made again from the same maps)
+            if (st.rt.color[i])
+                any = true, all = all && (vk_texture_scale_group(st.rt.color[i]) == RS_SHADOW || vk_is_shadow_copy(st.rt.color[i]));
+        bool shadow = any && all;
+        extern int vr_frame_eye(void);
+        if (once && shadow && vr_frame_eye() == 1) {
+            pass_void = true;
+            vr_shadow_passes_skipped++;
+        }
+    }
+#endif
     if (pass_void) {
         in_pass = true;
         key_gen++;

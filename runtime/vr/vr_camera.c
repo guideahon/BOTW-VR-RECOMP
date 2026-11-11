@@ -451,3 +451,13 @@ bool vr_neutral_heading(float *heading) {
     pthread_mutex_unlock(&lock);
     return ok;
 }
+
+// exec.c (the game's thread, translating the frame's commands): the eye the frame in progress is drawn for, in play in
+// stereo (0 left, 1 right; -1 otherwise). Fixed by the frame's first camera (vr_pair_camera), before its passes.
+int vr_frame_eye(void) {
+    if (!vr_world_view() || !stereo_on()) return -1;
+    pthread_mutex_lock(&lock);
+    int eye = c.cam_set ? vr_pair_eye(&c.pair) : -1;
+    pthread_mutex_unlock(&lock);
+    return eye;
+}

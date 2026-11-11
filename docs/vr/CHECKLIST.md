@@ -86,6 +86,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4i. Sombras una vez por par (rendimiento, nuevo)
+
+- [ ] El ojo derecho reusa las sombras del sol del ojo izquierdo (más rendimiento, sobre todo con Video > Resolución de
+      sombras alta). Las sombras se ven igual en los dos ojos, sin parpadeo ni doble sombra, también al moverte rápido
+      o girar la cabeza.
+- [ ] Si ves sombras raras en un solo ojo: `SAVAGEWIND_VR_SHADOWS_ONCE=0` las vuelve a dibujar en los dos; avisame.
+
 ## 4h. Ventana del escritorio (nuevo)
 
 - [ ] Mientras jugás en el visor, la ventana del juego en el monitor ya no parpadea / tiembla: muestra solo el ojo

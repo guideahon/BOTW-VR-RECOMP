@@ -17,7 +17,7 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 6 | Comfort: snap / smooth / head-only turning, its speed, roomscale, height, HUD placement, cutscene modes | done (a vignette: not yet) |
 | 7 | Link's arms follow the hands | done in first person: two-bone IK on his skeleton (and his armor's); his head hidden |
 | 8 | Motion combat | done: slashes, stabs and the shield by gesture (BetterVR's analysis); the weapon hits where the hand holds it, whenever it is swung, harder the faster; both hands on large swords and spears; the bow aimed by hand with its arc |
-| 9 | Performance | not started |
+| 9 | Performance | first part: the sun's shadow maps drawn once a pair (the right eye reuses the left one's) |
 
 Phase 1: the window image (the game with its HUD) is copied every frame to a quad layer, a screen 3 m wide 2.5 m ahead
 at eye height (`SAVAGEWIND_VR_SCREEN_WIDTH`, `SAVAGEWIND_VR_SCREEN_DISTANCE`, metres). The window keeps showing the
@@ -184,6 +184,7 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_ARMS`, `SAVAGEWIND_VR_HIDE_HEAD` | on in first person | `0`: Link's arms not moved / his head shown |
 | `SAVAGEWIND_VR_SNAP_DEGREES` | 45 | the step |
 | `SAVAGEWIND_VR_HEIGHT` | 1080 | the eye images' height (the width follows the headset's shape); with Video > Render scale above 100% the game draws them sharper |
+| `SAVAGEWIND_VR_SHADOWS_ONCE` | 1 | `0`: the right eye draws the sun's shadow maps again instead of reusing the left eye's |
 | `SAVAGEWIND_VR_WINDOW` | left | the desktop window in stereo: the left eye only; `both`: each frame as drawn (the window flickers between the eyes) |
 | `SAVAGEWIND_VR_STEREO` | 1 | `0`: one picture for both eyes (lighter, no depth) |
 | `SAVAGEWIND_VR_HUD` | 1 | `0`: the HUD stays in the eyes' pictures |
@@ -258,7 +259,7 @@ meant and not otherwise. Needs a headset.
 
 | What | Needs | State |
 |---|---|---|
-| Shadows and other passes that do not depend on the eye drawn once a pair | exec.c: knowing which passes those are | not started (one game frame per eye, all of it twice) |
+| Shadows and other passes that do not depend on the eye drawn once a pair | exec.c: knowing which passes those are | the sun's shadows done: the right eye's passes into the cascades and their half-size copy are not begun (exec.c begin_pass, `SAVAGEWIND_VR_SHADOWS_ONCE=0` to draw them twice): with Video > Shadow resolution at Savage the GPU time a frame went from 5.29 to 4.38 ms (-17%; the right eye's frames from ~5 to ~3 ms), at Console ~0.3 ms a pair; other passes still twice |
 | An asymmetric frustum per eye (about 15% fewer pixels) | rt_persp_offset's sign and scale worked out | not started (a symmetric frustum that holds the eye's field) |
 | Multiview (both eyes in one pass) | the Maxwell shader translator and the passes made view-aware | research |
 | Fixed foveation, the runtime's reprojection with motion vectors (XR_FB_space_warp) | exec.c, mvec.c | not started |
@@ -328,6 +329,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
 | `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_shadows.py --save <scratch save>` | as above | the shadows once a pair: 6 shadow passes a pair left out (3 cascades, 3 copies), none with `SAVAGEWIND_VR_SHADOWS_ONCE=0`, the frame rate not lower (+2% at Console); the right-eye captures kept to compare with the left (same shadows) |
 | `python tools/vr/test_vr_window.py --save <scratch save>` | as above | the window on one eye: every right frame of a stereo pair gets the left picture (488 of 488 in 5 s); with `SAVAGEWIND_VR_WINDOW=both` none (the pictures are not compared: the scene moves more than the eyes' parallax) |
 | `python tools/vr/test_vr_roomscale.py --save <scratch save>` | as above | roomscale: the head steps 50 cm right; Link walks about as far (0.52 m), the eye stays where the head put it and ends above him again; with `vr_roomscale` off he stays and the eye moves alone |
 | `python tools/vr/test_vr_head_turn.py --save <scratch save>` | as above | head-only turning: a right-stick push leaves the view's yaw unchanged; turning the tracked head 30 degrees turns the view by 30 degrees |
