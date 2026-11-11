@@ -4,6 +4,7 @@ Demo169_0 (BetterVR's table: on the event's camera), once per SAVAGEWIND_VR_EVEN
   auto    the headset gets the eyes' 3D view (a projection layer), not in first person
   first   the eyes' 3D view, in first person (the eye in Link's head)
   screen  the virtual screen only (a quad layer, no projection)
+  bars    auto with SAVAGEWIND_VR_CUTSCENE_BARS=1: this event, on its own camera, on the virtual screen
 
   python tools/vr/test_vr_events.py [--modes auto first screen] [--out build/vr/events]
 """
@@ -28,7 +29,10 @@ def run(mode, out):
     args = argparse.Namespace(save=empty, exe=os.path.join(T.TREE, 'build', 'savagewind.exe'),
                               runtime_json=os.path.join(T.TREE, 'build', 'vr', 'fake_xr.json'), port=7792, place='',
                               capture_every=0)
-    env = {'SAVAGEWIND_VR_EVENTS': mode, 'SAVAGEWIND_INPUT': NEW_GAME, 'SAVAGEWIND_VR_STEREO': '0'}
+    env = {'SAVAGEWIND_VR_EVENTS': 'auto' if mode == 'bars' else mode, 'SAVAGEWIND_INPUT': NEW_GAME,
+           'SAVAGEWIND_VR_STEREO': '0'}
+    if mode == 'bars':
+        env['SAVAGEWIND_VR_CUTSCENE_BARS'] = '1'
     game, proc, log = T.launch(args, out, ['0 head 0 1.7 0 0 0 0'], frame_rate=0, extra_env=env)
     seen = []
     try:
@@ -65,7 +69,7 @@ def run(mode, out):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--modes', nargs='+', default=['auto', 'first', 'screen'])
+    ap.add_argument('--modes', nargs='+', default=['auto', 'first', 'screen', 'bars'])
     ap.add_argument('--out', default='build/vr/events')
     a = ap.parse_args()
     ok = True
@@ -88,7 +92,7 @@ def main():
         elif mode == 'first':
             # (in first person when Link is in the world; before that, as in the opening, on the event's camera)
             ok &= wv == [True] and proj > 0 and quad_only == 0 and all(s[2] == s[4] for s in later)
-        elif mode == 'screen':
+        elif mode in ('screen', 'bars'):
             ok &= wv == [False] and proj == 0 and quad_only > 0
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)

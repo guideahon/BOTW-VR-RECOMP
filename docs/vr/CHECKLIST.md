@@ -135,6 +135,8 @@ Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como e
 - [ ] Una escena con cámara (charla con un personaje, una escena de historia): la ves en 3D desde la cámara de la escena
       y podés mirar alrededor con la cabeza. Si marea, probá las otras opciones:
 - [ ] `SAVAGEWIND_VR_EVENTS=screen`: todas las escenas en la pantalla plana (como antes).
+- [ ] Opciones > RV > "Barras negras en cinemáticas": las escenas con cámara propia se ven planas, encuadradas como en
+      el juego (con sus barras negras); las de primera persona siguen en 3D (como la opción de BetterVR).
 - [ ] `SAVAGEWIND_VR_EVENTS=third`: todas con la cámara de la escena; `=first`: todas en primera persona.
 - [ ] Decime qué escenas se ven mal en el modo `auto` (nombre aproximado o qué pasaba), así ajusto la tabla.
 

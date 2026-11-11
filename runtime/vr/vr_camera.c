@@ -210,7 +210,12 @@ bool vr_event_anim_hands(void) {
 
 bool vr_world_view(void) {
     if (!vr_enabled() || !vr_session_running()) return false;
-    if (framepace_in_event() && events_mode() == EV_SCREEN) return false;
+    if (framepace_in_event()) {
+        if (events_mode() == EV_SCREEN) return false;
+        // BetterVR's black bars: an event on its own camera (not in first person) shown flat, as the game frames it
+        bool fp, still, hands;
+        if (vr_opt(VR_OPT_EVENT_BARS) == 1 && event_now(&fp, &still, &hands) && !fp) return false;
+    }
     if (framepace_title_ui() || framepace_loading_ui() || framepace_map_ui()) return false;
     if (g_site.pause_state && LD32(g_site.pause_state) != 0) return false;
     return true;

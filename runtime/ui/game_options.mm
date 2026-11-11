@@ -376,6 +376,8 @@ void build_vr_items(std::vector<Item> &v) {
                         "scene's camera. Flat screen: on a big screen in front of you.", VR_OPT_EVENTS, k_vr_events, 4);
     ev.label = [](const Item &, int x) { return tr(k_vr_events[x]); };
     v.push_back(ev);
+    v.push_back(vr_toggle("Cutscene black bars", "Cutscenes seen from their own camera are shown flat, framed as in "
+                          "the game, instead of around you. First-person ones stay in 3D.", VR_OPT_EVENT_BARS, true));
     Item turn = vr_choice("Turning", "Smooth: continuous stick turning. Snap: one step per push. Head only: turn "
                           "your head; the stick does not turn the view in first person.", VR_OPT_TURN, k_vr_turn, 3);
     turn.label = [](const Item &, int x) { return tr(k_vr_turn[x]); };
