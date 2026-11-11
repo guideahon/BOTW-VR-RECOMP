@@ -94,7 +94,16 @@ typedef struct {
     double prev_now;
     int haptic[2];              // set when a slot is entered or a gesture fires: the caller pulses that hand
     int slot_now[2];
+    // magnesis by hand (BetterVR's magnesis gestures): with a rune out, a grip held away from the slots moves what the
+    // rune holds by the hand's motion from where the grip went down
+    bool mag[2];
+    vr_g3 mag_from[2];
+    float stick_ry;             // out: the right stick's up-down to give the game (valid when stick_ry_set)
+    bool stick_ry_set;
 } vr_gesture_state;
+
+#define VR_G_MAG_FULL 0.15f     // m: a hand this far up or down is the stick pushed fully
+#define VR_G_MAG_PUSH 0.08f     // m: a hand this far forward or back pushes or pulls (d-pad up / down)
 
 static inline void vr_g_tap(vr_gesture_state *s, int button, double now) { s->tap_until[button] = now + VR_G_TAP; }
 
@@ -172,6 +181,24 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
                 s->held = VR_HELD_MELEE;   // (attacking takes the weapon out)
             }
         }
+    }
+    // magnesis: a rune out and a grip held away from the slots: the hand's rise and fall moves the held object up and
+    // down (the right stick), its push and pull away or near (d-pad up, down); nearer the head's frame than the world
+    s->stick_ry_set = false;
+    for (int h = 0; h < 2; h++) {
+        bool held = in->grip[h] && s->held == VR_HELD_RUNE && s->grip_slot[h] == VR_SLOT_NONE && !s->menu_open[h];
+        if (held && !s->mag[h]) s->mag[h] = true, s->mag_from[h] = in->hand[h];
+        if (!held) s->mag[h] = false;
+        if (!s->mag[h]) continue;
+        vr_g3 d = vr_g3sub(in->hand[h], s->mag_from[h]);
+        vr_g3 f = vr_g3v(in->fwd.x, 0, in->fwd.z);
+        float fl = sqrtf(f.x * f.x + f.z * f.z);
+        float ahead = fl > 1e-4f ? (d.x * f.x + d.z * f.z) / fl : 0;
+        float up = d.y / VR_G_MAG_FULL;
+        s->stick_ry = up > 1 ? 1 : up < -1 ? -1 : (fabsf(up) < 0.15f ? 0 : up);
+        s->stick_ry_set = true;
+        if (ahead > VR_G_MAG_PUSH) b |= 1ull << VRB_UP;
+        else if (ahead < -VR_G_MAG_PUSH) b |= 1ull << VRB_DOWN;
     }
     // left trigger: lock on / shield
     if (in->trigger[0]) b |= 1ull << VRB_ZL;

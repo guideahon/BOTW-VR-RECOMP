@@ -435,6 +435,7 @@ static void update(void) {
         sticks.ltrigger = sticks.rtrigger = sticks.lgrip = sticks.rgrip = 0;
         vr_pad_map(&in.pad, &sticks, now / 1e9, &in.out);
         in.out.buttons = gestures(&p, now / 1e9);
+        if (in.gest.stick_ry_set) in.out.ry = (int32_t)(in.gest.stick_ry * 32767);   // (magnesis by hand)
         if (p.menu) in.out.buttons |= 1ull << VRB_PLUS;   // (the menu button: the inventory too)
     } else {
         vr_pad_map(&in.pad, &p, now / 1e9, &in.out);

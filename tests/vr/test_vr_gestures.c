@@ -218,5 +218,35 @@ int main(void) {
         in.hand_speed[0] = i == 19 ? 1.0f : 0.3f;
         CHECK(!(vr_gestures(&p2, &in) & BIT(VRB_A)));
     }
+    VR_TEST("magnesis: a rune out, a grip held: rise and fall to the stick, push and pull to the d-pad");
+    vr_gesture_state m = {0};
+    m.held = VR_HELD_RUNE;
+    in = base(0);
+    in.grip[1] = true;
+    run(&m, in, 0, 0.1);
+    CHECK(m.stick_ry_set);
+    CHECK_NEAR(m.stick_ry, 0, 1e-6);
+    in.hand[1].y += 0.15f;   // up 15 cm: the stick fully up
+    b = run(&m, in, 0.1, 0.2);
+    CHECK_NEAR(m.stick_ry, 1, 1e-4);
+    in.hand[1].y -= 0.30f;   // down: fully down
+    run(&m, in, 0.2, 0.3);
+    CHECK_NEAR(m.stick_ry, -1, 1e-4);
+    in.hand[1].y += 0.15f;
+    in.hand[1].z -= 0.12f;   // pushed away (ahead is -z): d-pad up
+    b = run(&m, in, 0.3, 0.4);
+    CHECK(b & BIT(VRB_UP));
+    in.hand[1].z += 0.24f;   // pulled near: d-pad down
+    b = run(&m, in, 0.4, 0.5);
+    CHECK(b & BIT(VRB_DOWN));
+    in.grip[1] = false;      // let go: nothing more
+    run(&m, in, 0.5, 0.6);
+    CHECK(!m.stick_ry_set);
+    vr_gesture_state m2 = {0};   // no rune out: a grip is a grab, no magnesis
+    in = base(0);
+    in.grip[1] = true;
+    in.hand[1].y += 0.2f;
+    run(&m2, in, 0, 0.2);
+    CHECK(!m2.stick_ry_set);
     VR_TEST_END("test_vr_gestures");
 }
