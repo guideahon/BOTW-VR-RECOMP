@@ -379,10 +379,124 @@ static void regions(ControlReply *r) {
     control_field_int(r, "regions", n);
 }
 static void path_cmd(int argc, char **argv, ControlReply *r);
+
+// mem find: a byte string (text, or hex:<bytes>) anywhere, or 8-byte aligned pointers into [lo, hi) (ptr:<lo>[-<hi>]),
+// over every readable guest region, synchronously (a few seconds over the whole heap). For reverse engineering: the
+// bone names of a model, then the tables that point at them (docs/vr/re-notes.md).
+typedef struct {
+    const uint8_t *pat;
+    size_t n;
+    uint64_t lo, hi;      // ptr mode when hi > lo
+    bool mtx;             // mtx mode: 3x4 float matrices (rows orthogonal, any scale) translated near (mx, my, mz)
+    float mx, my, mz, mr;
+    uint64_t base;        // the guest address of the run being searched
+    uint64_t *out;
+    size_t max, found;
+} FindCtx;
+static size_t find_run(const void *p, size_t n, void *vctx) {
+    FindCtx *c = vctx;
+    const uint8_t *b = p;
+    if (c->mtx) {
+        for (size_t i = 0; i + 48 <= n && c->found < c->max; i += 4) {
+            const float *m = (const float *)(b + i);
+            float tx = m[3] - c->mx, ty = m[7] - c->my, tz = m[11] - c->mz;
+            if (!(tx * tx + ty * ty + tz * tz <= c->mr * c->mr)) continue;
+            float n0 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2], n1 = m[4] * m[4] + m[5] * m[5] + m[6] * m[6],
+                  n2 = m[8] * m[8] + m[9] * m[9] + m[10] * m[10];
+            if (!(n0 > 0.01f && n0 < 100 && fabsf(n1 - n0) <= 0.02f * n0 && fabsf(n2 - n0) <= 0.02f * n0)) continue;
+            float d01 = m[0] * m[4] + m[1] * m[5] + m[2] * m[6], d02 = m[0] * m[8] + m[1] * m[9] + m[2] * m[10],
+                  d12 = m[4] * m[8] + m[5] * m[9] + m[6] * m[10];
+            if (!(fabsf(d01) <= 0.02f * n0 && fabsf(d02) <= 0.02f * n0 && fabsf(d12) <= 0.02f * n0)) continue;
+            c->out[c->found++] = c->base + i;
+            i += 44;   // (not the same matrix again, shifted)
+        }
+        return 0;
+    }
+    if (c->hi > c->lo) {
+        for (size_t i = 0; i + 8 <= n && c->found < c->max; i += 8) {
+            uint64_t v;
+            memcpy(&v, b + i, 8);
+            if (v >= c->lo && v < c->hi) c->out[c->found++] = c->base + i;
+        }
+        return 0;
+    }
+    for (size_t i = 0; i + c->n <= n && c->found < c->max; i++) {
+        const uint8_t *q = memchr(b + i, c->pat[0], n - c->n + 1 - i);
+        if (!q) break;
+        i = (size_t)(q - b);
+        if (!memcmp(q, c->pat, c->n)) c->out[c->found++] = c->base + i;
+    }
+    return 0;
+}
+static int hexval(char ch) { return ch >= '0' && ch <= '9' ? ch - '0' : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1; }
+static void find_cmd(int argc, char **argv, ControlReply *r) {
+    if (argc < 3 || argc > 4) {
+        control_fail(r, "Usage: mem find <text> | hex:<bytes> | ptr:<lo>[-<hi>] | mtx:<x>,<y>,<z>,<r> [max 1-500]");
+        return;
+    }
+    static uint8_t pat[256];
+    FindCtx c = {.pat = pat, .max = 50};
+    const char *q = argv[2];
+    if (!strncmp(q, "mtx:", 4)) {   // mtx:<x>,<y>,<z>,<radius>
+        c.mtx = true;
+        if (sscanf(q + 4, "%f,%f,%f,%f", &c.mx, &c.my, &c.mz, &c.mr) != 4) { control_fail(r, "mem find: mtx:x,y,z,r"); return; }
+    } else if (!strncmp(q, "ptr:", 4)) {
+        char *end;
+        c.lo = strtoull(q + 4, &end, 16);
+        c.hi = *end == '-' ? strtoull(end + 1, NULL, 16) : c.lo + 1;
+    } else if (!strncmp(q, "hex:", 4)) {
+        for (q += 4; q[0] && q[1] && c.n < sizeof pat; q += 2) {
+            int h = hexval(q[0]), l = hexval(q[1]);
+            if (h < 0 || l < 0) { control_fail(r, "mem find: bad hex"); return; }
+            pat[c.n++] = (uint8_t)(h << 4 | l);
+        }
+    } else {
+        c.n = strlen(q) + 1;   // (with its NUL: whole strings)
+        if (c.n > sizeof pat) c.n = sizeof pat;
+        memcpy(pat, q, c.n);
+    }
+    if (c.hi <= c.lo && !c.n && !c.mtx) { control_fail(r, "mem find: nothing to find"); return; }
+    if (argc == 4) c.max = (size_t)strtoul(argv[3], NULL, 10);
+    if (c.max < 1 || c.max > 500) c.max = 50;
+    static uint64_t hits[500];
+    c.out = hits;
+    static uint64_t ra[REGIONS], rs[REGIONS];
+    static bool rw[REGIONS];
+    int nr = collect_regions(ra, rs, rw);
+    for (int i = 0; i < nr && c.found < c.max; i++) {
+        const uint64_t CH = 64ull << 20;   // (in runs, each under the crash guard; runs overlap by the pattern)
+        for (uint64_t off = 0; off < rs[i] && c.found < c.max; off += CH) {
+            uint64_t len = rs[i] - off < CH + 256 ? rs[i] - off : CH + 256;
+            c.base = ra[i] + off;
+            size_t ret;
+            ms_guarded((const void *)(uintptr_t)c.base, (size_t)len, find_run, &c, &ret);
+        }
+    }
+    control_field_int(r, "found", (int64_t)c.found);
+    for (size_t i = 0; i < c.found; i++) {
+        char key[32];
+        snprintf(key, sizeof key, "hit.%u", (unsigned)i);
+        address(r, key, hits[i]);
+    }
+    control_text(r, "%u found", (unsigned)c.found);
+}
+
 static void cmd_mem(int argc, char **argv, ControlReply *r) {
     if (argc < 2) goto usage;
     const char *cmd = argv[1];
     if (!strcmp(cmd, "path")) { path_cmd(argc, argv, r); return; }
+    if (!strcmp(cmd, "find")) { find_cmd(argc, argv, r); return; }
+    if (!strcmp(cmd, "watch")) {   // (reverse engineering) the page trap on [addr, addr+len): SAVAGEWIND_WATCH_WRITES=<n>
+        uint64_t a = 0, len = 0;   // logs who writes there (docs/SAVAGE-WIND.md, SAVAGEWIND_WATCH)
+        if (argc != 4 || !integer(argv[2], &a) || !integer(argv[3], &len) || !len || len > 4096) {
+            control_fail(r, "Usage: mem watch <addr> <len 1-4096>");
+            return;
+        }
+        extern void watch_retarget(uint64_t lo, uint64_t hi);   // runtime/dispatch.c
+        watch_retarget(a, a + len);
+        control_text(r, "watching %llx+%llx", (unsigned long long)a, (unsigned long long)len);
+        return;
+    }
     if (!strcmp(cmd, "regions") && argc == 2) { regions(r); return; }
     if (!strcmp(cmd, "scan") && argc == 3 && (!strcmp(argv[2], "status") || !strcmp(argv[2], "continue"))) {
         if (!active) goto no_scan;

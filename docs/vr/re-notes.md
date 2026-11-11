@@ -18,6 +18,35 @@ BetterVR also carries Link's skeleton (bone names, rest positions, hierarchy) as
 can't come into this repository (AGENTS.md: no game data): it would have to be read from the player's own files at
 run time, or from the model in memory.
 
+## Link's skeleton in memory (2026-11-11)
+
+Tools: `mem find` (text, `hex:`, `ptr:<lo>-<hi>`, `mtx:<x>,<y>,<z>,<r>` for 3x4 matrices with orthogonal rows translated
+near a point) and `mem watch <addr> <len>` (the page trap of SAVAGEWIND_WATCH, armed at run time; with
+SAVAGEWIND_WATCH_WRITES=<n> each write logs its host pc and the guest call chain), driven by `tools/vr/re_run.py`,
+`re_bones.py`, `re_tables.py`, `re_bonewatch.py`, `re_skel.py`, `re_model.py` (each boots the game into play against
+fake_xr from a scratch save).
+
+- **Bone names in the code.** main's data has tables of sead::SafeString (vtable 0x7001bc32c8, then the text) naming
+  Link's bones: 0x7001e14xxx lists the hand and arm (Finger_e2_L ... Weapon_Root_L, Weapon_L, Clavicle_R, Arm_1_R,
+  Arm_2_R, Wrist_R, Finger_a1_R ... Finger_d3_R); 0x7001e45560 the clavicles, arms, legs and face controls
+  (Clavicle_L / _R, Arm_1_L / _R, Leg_1_L / _R, Lash_Trans_U/V, Nose_Scale, Mouth_Scale ...); 0x7001db1xxx the horse's
+  and other animals' bones.
+- **Link's world matrices.** In play, 111 contiguous 3x4 matrices (stride 0x30) translated within 1.6 m of Link:
+  the run `mem find mtx:` finds (one run, at the same address in runs from the same save). Next to it a second run of
+  the same size 0x1500 later: the pair is a double-buffered copy (a descriptor list nearby holds both, size 0x14d0 =
+  111 x 0x30).
+- **Who writes them.** `mem watch` on the first matrix: one writer, a copy (guest lr 0x7000045da4) called from
+  main+0xf9790c in **main+0xf978e8**, itself called through a vtable (+0x2b0) from main+0xf976cc. main+0xf978e8 takes a
+  gsys model (x0), passes `x0 + 0xe0` (an embedded nn::g3d ModelObj: its first field is the ResModel, "FMDL") and its
+  flags (`[x0 + 0xd8] & 3`) to main+0x41098, then tail-calls main+0x41250 with the same: the skeleton's world
+  calculation and its copy out. **The hook point for the arms and the head:** before main+0xf97908 (`bl 0x41098`) the
+  local matrices are animated and the world ones not yet made.
+- **Not yet:** which of the ~93 models main+0xf978e8 calculates a frame is Link's (none of their ModelObj's first
+  pointers reaches the run found, which is the double-buffered copy, not the SkeletonObj's own array), the
+  SkeletonObj's local-matrix array (64-byte entries, as the accessors at 0x7000f961c4 / f9621c below suggest), and the
+  bone indices of Head, Clavicle_R ... Weapon_R (from the ResSkeleton's name dictionary). Next run: dump the ModelObj
+  at x0 + 0xe0 of each model whose ResModel name is Link's ("Link" / "GameROMPlayer"), then its SkeletonObj.
+
 ## What is found in 1.9.0 so far
 
 A scan of the main module (`.text`) for the shape of a 64-byte bone array accessor (index << 6, a halfword or byte flag
