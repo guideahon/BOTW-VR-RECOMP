@@ -86,6 +86,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4h. Ventana del escritorio (nuevo)
+
+- [ ] Mientras jugás en el visor, la ventana del juego en el monitor ya no parpadea / tiembla: muestra solo el ojo
+      izquierdo. (Antes alternaba entre los dos ojos cada cuadro.)
+- [ ] Una captura de pantalla del juego (F12 o la del menú) sale con un solo ojo, sin doble imagen.
+- [ ] Si querés lo de antes: `SAVAGEWIND_VR_WINDOW=both`.
+
 ## 4g. Altura, HUD y golpes (nuevo, en Opciones > RV)
 
 - [ ] Altura: subí o bajá tus ojos de a 10 cm (sirve para jugar sentado o si sentís a Link muy alto / bajo).

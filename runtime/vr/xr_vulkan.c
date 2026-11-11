@@ -445,7 +445,7 @@ bool vk_vr_images(VkImage *scene, VkFormat *scene_fmt, VkImage *hud, VkFormat *h
 
 bool vr_hud_wanted(void) { return g.hud_on && vr_world_view(); }
 
-void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
+static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
     if (g.session == XR_NULL_HANDLE) return;
     wait_previous_end();
     poll_events();
@@ -594,4 +594,81 @@ void vr_stats(uint64_t *frames, uint64_t *rendered, int *state) {
     *frames = g.frames;
     *rendered = g.rendered;
     *state = (int)g.state;
+}
+
+// ---- the desktop window: one eye, not both in turn ----
+// In stereo the game draws the left eye, then the right one, each into the window image that is also presented: the
+// window showed them in turn (it flickered). The left frame's window image is kept (after its copy to the headset);
+// the right frame's, once copied to the headset, is overwritten with it, so the window shows the left eye only.
+// SAVAGEWIND_VR_WINDOW=both: as before.
+static struct {
+    VkImage img;
+    VmaAllocation mem;
+    VkExtent2D ext;
+    VkFormat fmt;
+    bool valid, written;   // a left frame is in it; it has been written once (its layout is TRANSFER_SRC then)
+    uint64_t shown;        // right frames that showed it instead
+} win;
+
+uint64_t vr_window_left_frames(void) { return win.shown; }
+
+static void window_eye(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
+    static int both = -1;
+    if (both < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_WINDOW");
+        both = e && !strcmp(e, "both");
+    }
+    if (both || !pres.world || pres.eye < 0) {
+        win.valid = false;
+        return;
+    }
+    if (win.img && (win.ext.width != ext.width || win.ext.height != ext.height || win.fmt != fmt)) {
+        vk_defer_image(win.img, win.mem);
+        win.img = VK_NULL_HANDLE, win.valid = win.written = false;
+    }
+    if (!win.img) {
+        VkImageCreateInfo ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fmt,
+                                .extent = {ext.width, ext.height, 1}, .mipLevels = 1, .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO};
+        if (vmaCreateImage(g_vk.vma, &ci, &ai, &win.img, &win.mem, NULL) != VK_SUCCESS) {
+            win.img = VK_NULL_HANDLE;
+            return;
+        }
+        win.ext = ext, win.fmt = fmt, win.valid = win.written = false;
+    }
+    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                      .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ext.width, ext.height, 1}};
+    if (pres.eye == 0) {   // the left frame: keep it
+        barrier(cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+                VK_ACCESS_2_TRANSFER_READ_BIT);
+        barrier(cb, win.img, win.written ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        rec_CmdCopyImage(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, win.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+        barrier(cb, win.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+                VK_ACCESS_2_TRANSFER_READ_BIT);
+        barrier(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COPY_BIT, 0, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+        win.valid = win.written = true;
+    } else if (win.valid) {   // the right frame, already copied to the headset: the window gets the left one
+        barrier(cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        rec_CmdCopyImage(cb, win.img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, src, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+        barrier(cb, src, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+        win.shown++;
+    }
+}
+
+void vr_frame_record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt) {
+    record(cb, src, ext, fmt);
+    if (g.session != XR_NULL_HANDLE && g.running) window_eye(cb, src, ext, fmt);
 }

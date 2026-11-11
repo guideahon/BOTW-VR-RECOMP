@@ -2149,8 +2149,8 @@ void vk_frame_end(const char *shot_path) {
     VkCommandBuffer cb = vk_cmd();
     rec_CmdEndRendering(cb);
     VkSpan shot = {0};
-    if (shot_path) save_window_image(cb, &shot);
     if (!g_hdr) vr_frame_record(cb, g_vk.sc_images[cur_frame.image], g_vk.sc_extent, g_vk.sc_format);
+    if (shot_path) save_window_image(cb, &shot);   // (after VR's: the image the window shows, one eye in stereo)
     if (g_hdr) hdr_write(cb, cur_frame.image);
     else image_barrier(cb, g_vk.sc_images[cur_frame.image], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     uint32_t img = cur_frame.image;
