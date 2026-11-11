@@ -173,6 +173,7 @@ static int weapon_kind(const char *n) {
 bool vr_first_person_now(void);                            // vr_camera.c
 bool vr_tracking_to_world(const vr_pose *in, vr_pose *out);   // vr_camera.c
 bool vr_hand_pose(int hand, vr_pose *out);                  // vr_input.c
+bool vr_drawing(void);                                      // vr_input.c
 
 static inline float *bone_m(uint64_t world, int i) { return (float *)(uintptr_t)(world + 0x40ull * i); }
 
@@ -376,9 +377,10 @@ void vr_arrow_aim(float *dir, const float *origin, float *target) {
 }
 
 // The arc the arrow about to go would fly (BetterVR draws it while the bow is drawn): LOCAL space points (metres), from
-// the string hand along the line through the bow hand; none unless the bow is in one hand and an arrow nocked in the
-// other, in first person, aiming by hand. The shape is the one measured from the game's arrows (a straight run of about
-// 25 m, then a fall growing with the square of the distance: 4.6 m down at 50 m), not the bow's own parameters.
+// the string hand along the line through the bow hand; none unless the bow is in one hand, an arrow nocked in the
+// other and the main hand's trigger held, in first person, aiming by hand. The shape is the one measured from the
+// game's arrows (a straight run of about 25 m, then a fall growing with the square of the distance: 4.6 m down at
+// 50 m), not the bow's own parameters.
 // SAVAGEWIND_VR_BOW_ARC=0: no arc.
 int vr_bow_arc(float (*pts)[3], int max) {
     static int on = -1;
@@ -388,6 +390,7 @@ int vr_bow_arc(float (*pts)[3], int max) {
     }
     if (!on || !vr_first_person_now()) return 0;
     int bow = vr_skel_held(1) == VR_SKEL_BOW ? 1 : 0;
+    if (!vr_drawing()) return 0;   // the main hand's trigger let go: the shot is gone
     if (vr_skel_held(bow) != VR_SKEL_BOW || vr_skel_held(1 - bow) != VR_SKEL_OTHER) return 0;
     vr_pose hb, hs;
     if (!vr_hand_pose(bow, &hb) || !vr_hand_pose(1 - bow, &hs)) return 0;

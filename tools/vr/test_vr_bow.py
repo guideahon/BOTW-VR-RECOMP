@@ -2,8 +2,8 @@
 """The bow aimed by hand (docs/VR.md), against fake_xr: equips the bow with the left-shoulder grip, holds the hands
 60 degrees right of the head (the head keeps looking ahead), draws with the right trigger for 3 s and looses. Passes when
 the runtime turned the shot (arrows_aimed) and the arrow, logged in flight by SAVAGEWIND_VR_LOG_MODELS, flies along the
-hands' line and not where the head looks, and the eye's pictures show the arc's yellow dots while drawing and not
-before.
+hands' line and not where the head looks, and the eye's pictures show the arc's yellow dots while drawing, not
+before and not after the shot.
 
   python tools/vr/test_vr_bow.py --save <scratch save> [--out build/vr/bow]
 """
@@ -67,9 +67,13 @@ def main():
             time.sleep(0.1)
         t_end = time.time()
         arc_frames = game.cmd('vr', ok=False).get('arc_frames', 0)
+        while now() < base + 12.6:
+            time.sleep(0.1)
+        t_shot = time.time()   # the trigger let go at 12: the arc gone
         while now() < base + 14:
             time.sleep(0.1)
         aimed = game.cmd('vr', ok=False).get('arrows_aimed', 0)
+        t_after = time.time()
     finally:
         perf_routes.stop_game(game, proc, log)
     text = open(os.path.join(a.out, 'game.log'), errors='replace').read()
@@ -87,20 +91,24 @@ def main():
     print('arrows aimed', aimed, '| head heading', head_h, '| hands', hand_h, '| arrow flew', fly_h)
     ok = (aimed >= 1 and hand_h is not None and fly_h is not None and abs(fly_h - hand_h) < 8 and
           (head_h is None or abs(fly_h - head_h) > 20))
-    # the arc's dots in the left eye's pictures: before the draw and during it
+    # the arc's dots in the left eye's pictures: before the draw, during it and after the shot
     def dots(path):
         b = open(path, 'rb').read()
         m = re.match(rb'P6\s+(\d+)\s+(\d+)\s+\d+\s', b)
         w, h = int(m.group(1)), int(m.group(2))
         px = b[m.end():]
-        return sum(1 for i in range(0, w * h * 3, 3 * 3)
-                   if px[i] > 230 and 180 < px[i + 1] < 240 and px[i + 2] < 110)
+        # the arc's own colour (255 214 72, copied as it is): the golden bow and the flowers are near it, not on it
+        return sum(1 for i in range(0, w * h * 3, 3)
+                   if px[i] >= 250 and 206 <= px[i + 1] <= 222 and 64 <= px[i + 2] <= 80)
     capdir = os.path.join(a.out, 'cap')
     caps = [os.path.join(capdir, f) for f in os.listdir(capdir) if f.endswith('_view0.ppm')]
     before = [dots(c) for c in caps if t_before <= os.path.getmtime(c) < t_draw - 0.5]
     during = [dots(c) for c in caps if t_drawn <= os.path.getmtime(c) < t_end]
-    print('arc frames', arc_frames, '| arc pixels before the draw', before[-3:], '| while drawing', during[-3:])
-    ok = ok and arc_frames > 0 and before and during and min(during) >= 3 * max(max(before), 20)
+    after = [dots(c) for c in caps if t_shot <= os.path.getmtime(c) < t_after]
+    print('arc frames', arc_frames, '| arc pixels before the draw', before[-3:], '| while drawing', during[-3:],
+          '| after the shot', after[-3:])
+    ok = (ok and arc_frames > 0 and before and during and after and max(before) < 20 and min(during) >= 100 and
+          max(after) < 20)
     print('PASS' if ok else 'FAIL')
     sys.exit(0 if ok else 1)
 

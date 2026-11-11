@@ -126,6 +126,7 @@ static struct {
     // BetterVR's scheme and gestures (vr_gestures.h)
     bool bettervr;         // SAVAGEWIND_VR_CONTROLS: bettervr (the default) or classic (vr_input_map.h)
     bool left_handed;      // SAVAGEWIND_VR_LEFT_HANDED: the hands' roles swapped (sticks stay)
+    bool drawing;          // the main hand's trigger held (the bow drawn: vr_skel.c vr_bow_arc)
     float turn_speed;      // SAVAGEWIND_VR_TURN_SPEED: the right stick's turning, scaled
     vr_gesture_state gest;
     uint32_t gestures;     // gestures that fired (for `vr`)
@@ -434,6 +435,7 @@ static void update(void) {
         t = p.a, p.a = p.x, p.x = t;
         t = p.b, p.b = p.y, p.y = t;
     }
+    in.drawing = p.rtrigger >= VR_PAD_PRESS;
     if (in.bettervr) {
         vr_pad_in sticks = p;   // (the sticks and snap turning from the classic map; the buttons from the gestures)
         sticks.a = sticks.b = sticks.x = sticks.y = sticks.lclick = sticks.rclick = sticks.menu = false;
@@ -504,3 +506,6 @@ bool vr_hand_pose(int hand, vr_pose *out) {
     return true;
 }
 
+
+// the main hand's trigger held (in the BetterVR scheme with the bow out: drawing it)
+bool vr_drawing(void) { return in.ready && in.drawing; }

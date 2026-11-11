@@ -59,7 +59,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Con las manos juntas (sin tensar lejos), la flecha sale hacia donde apunta el control del arco.
 - [ ] Si preferís apuntar con la mirada: `SAVAGEWIND_VR_BOW_AIM=head`.
 - [ ] Mientras tensás (flecha puesta) se ve la trayectoria como puntos amarillos que salen del arco: recta unos
-      25 m y después cae. Al bajar el arco desaparecen. Se dibujan encima de todo (no se esconden detrás de una
+      25 m y después cae. Al soltar el gatillo (disparo) desaparecen. Se dibujan encima de todo (no se esconden detrás de una
       pared) y la curva es aproximada (no depende del arco que uses): decime si la flecha cae muy lejos de los puntos.
 - [ ] Los puntos se ven en los dos ojos en el mismo lugar (sin doble imagen).
 - [ ] Para sacarlos: `SAVAGEWIND_VR_BOW_ARC=0`.
