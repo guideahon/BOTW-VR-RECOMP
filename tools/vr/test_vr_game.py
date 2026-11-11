@@ -14,6 +14,7 @@ Scenarios (each one boot):
 """
 import argparse
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -523,6 +524,9 @@ def scenario_firstperson(args, run_dir):
     h = cam0['y'] - pos0['y']
     print('    eye from Link: {:.2f} m across, {:.2f} m up; view yaw {:.1f} -> {:.1f}'.format(d, h, cam0['yaw'], cam1['yaw']))
     check(d < 0.5 and 1.0 < h < 2.2, 'the eye is in Link\'s head ({:.2f} m from him, {:.2f} m up)'.format(d, h))
+    glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+    sk = [l for l in glog.splitlines() if "Link's skeleton:" in l]
+    check("[vr] Link's head hidden" in glog, 'Link\'s head is hidden in first person ({})'.format(sk[0] if sk else 'no skeleton'))
     walk = (pos2['x'] - pos1['x'], pos2['z'] - pos1['z'])
     n = math.hypot(*walk)
     check(n > 0.5, 'the left stick walked Link ({:.2f} m)'.format(n))
@@ -595,6 +599,36 @@ def scenario_gestures(args, run_dir):
     check('gesture: in hand 1 -> 0' in glog, 'again: put it away')
     check('haptic /user/hand/right' in fl, 'the right controller vibrated ({} pulses)'.format(fl.count('haptic /user/hand/right')))
     print('    pictures: {}'.format(os.path.join(run_dir, 'gest_*.png')))
+
+
+def scenario_arms(args, run_dir):
+    """Link's arms follow the controllers (first person): fake_xr's hands held ahead, then moved; each wrist is solved
+    onto its controller (read from the arms' log), the head hidden; a picture from the eye shows the arms."""
+    lines = []
+    for k in range(60):
+        t = k * 20.0
+        lines += ['{:.2f} hand right 0.25 1.45 -0.45 0 0 0'.format(t), '{:.2f} hand left -0.25 1.3 -0.4 0 0 0'.format(t),
+                  '{:.2f} hand right 0.1 1.6 -0.5 0 30 0'.format(t + 10), '{:.2f} hand left -0.3 1.1 -0.3 0 -20 0'.format(t + 10)]
+    lines.sort(key=lambda l: float(l.split()[0]))
+    game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={
+        'SAVAGEWIND_VR_STEREO': '0', 'SAVAGEWIND_VR_LOG_ARMS': '60', 'FAKE_XR_CAPTURE_EVERY': '0'})
+    try:
+        ready(args, game, proc)
+        time.sleep(4)
+        game.cmd('shot', 'build/vr/arms.png', ok=False)
+        time.sleep(4)
+    finally:
+        perf_routes.stop_game(game, proc, log)
+    if os.path.exists(os.path.join('build', 'vr', 'arms.png')):
+        os.replace(os.path.join('build', 'vr', 'arms.png'), os.path.join(run_dir, 'arms.png'))
+    glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
+    check("[vr] Link's arms follow the controllers" in glog, 'Link\'s arms follow the controllers')
+    misses = [(float(a), float(b)) for a, b in re.findall(r'\[vr-arms\] left ok ([\d.]+) m, right ok ([\d.]+) m', glog)]
+    check(len(misses) >= 5, '{} frames with both arms solved'.format(len(misses)))
+    worst = max((max(m) for m in misses), default=9)
+    check(worst < 0.02, 'each wrist on its controller (worst {:.3f} m)'.format(worst))
+    check("[vr] Link's head hidden" in glog, 'his head hidden')
+    print('    picture: {}'.format(os.path.join(run_dir, 'arms.png')))
 
 
 def scenario_snap(args, run_dir):
@@ -710,7 +744,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--save', required=True, help='scratch save folder (holds save_0); copied, never written')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'snap', 'motion', 'lost', 'exit'])
+    ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
     ap.add_argument('--port', type=int, default=7792)
@@ -746,6 +780,8 @@ def main(argv=None):
             scenario_firstperson(args, run_dir)
         elif sc == 'gestures':
             scenario_gestures(args, run_dir)
+        elif sc == 'arms':
+            scenario_arms(args, run_dir)
         elif sc == 'snap':
             scenario_snap(args, run_dir)
         elif sc == 'motion':

@@ -289,6 +289,10 @@ SITES = [
     # sead::LookAtCamera::doUpdateMatrix (tools/patches.py _lookat_update): its first load of the eye (+0x38); eye,
     # at (+0x44) and up (+0x50) make the view matrix written to x1 (free camera, runtime/hle/freecam.c)
     Site('lookat_update', 'code', '2d470801 2d480c00 1e232020 2d491404 1e240440 1e250400 54000000/ff00001f 1e233823', 0),
+    # a gsys model's skeleton, right before its world matrices are made from the animated local ones (tools/patches.py
+    # _skel_calc: main+0xf978e8 hands x0 + 0xe0, its nn::g3d ModelObj, to the world calculation; the VR mode changes
+    # Link's local bones there: his head hidden in first person; docs/vr/re-notes.md)
+    Site('skel_calc', 'code', '39436008 91038014 aa0003f3 aa1403e0 12000501 94000000/fc000000', 3),
     # Native quick-selector sorting (runtime/quick_inventory_sort.c), optional as a complete group.
     Site('quick_sort_enter', 'code', 'fc1d0fe8 a900fbfd f9000ff5 a9024ff4 910023fd b978e014 aa0003f3 7100069f', 0),
     Site('quick_sort_menu', 'code', 'a9be7bfd a9014ff4 910003fd 52871b08 aa0003f3 8b080014 f95bd400 b4000000/ff00001f', 0),
@@ -366,6 +370,7 @@ OPTIONAL_GROUPS = [
      'quick_sort_labels', 'pouch_lock', 'pouch_unlock', 'quick_sort_event', 'quick_sort_player_busy'),
     OPT_TWO_SITES,
     ('lookat_update',),  # (the free camera: without it Home does nothing)
+    ('skel_calc',),  # (VR: Link's bones; without it his head stays in first person)
     ('gyro_scene_actor',),
     ('surf_contact', 'surf_boost_remove', 'surf_jump_request'),
     ('stale_actor_helper', 'stale_actor_target'),
@@ -448,6 +453,7 @@ KNOWN = {
         'opt_two_help': 0x7000e30550,
         'opt_two_pane_calc': 0x70000276a0,
         'lookat_update': 0x7000eb2d5c,
+        'skel_calc': 0x7000f97900,
         'yaz0_stream': 0x700131d674,
         'yaz0_stream_ret': 0x700131d7e8,
         'opt_create_rows': 0x7000e2f0a8,

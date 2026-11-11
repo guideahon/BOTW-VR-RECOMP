@@ -860,6 +860,16 @@ def _lookat_update(gen, a):
             f'  /* {a:#x}: ldp s1, s2, [x0, #0x38] (LookAtCamera view: eye x, y) */')
 
 
+# A gsys model's skeleton before its world matrices: x19 the model, x20 its nn::g3d ModelObj (x0 + 0xe0), its local
+# bone matrices animated, the world ones not made yet (main+0xf978e8, docs/vr/re-notes.md). The runtime may change
+# Link's local bones here (rt_skel_calc, runtime/hle/skel.c; the VR mode hides his head in first person), then the
+# displaced mov x0, x20.
+def _skel_calc(gen, a):
+    assert _word(gen, a) == 0xaa1403e0, hex(_word(gen, a))  # mov x0, x20
+    return ('{ extern void rt_skel_calc(uint64_t); rt_skel_calc(c->x[19]); c->x[0] = c->x[20]; }'
+            f'  /* {a:#x}: mov x0, x20 (a model\'s skeleton, before its world matrices) */')
+
+
 # The wait for the ground. Every game update asks (at 1.9.0 FUN_71010b7a40, called from the code that raises pause reason
 # 9, bit 9 of the flags at pause_state + 0 / 0x7001e1611c) whether the map sections around Link (his position +-200 on
 # x and z) are still loading. While they are, reason 9 pauses the world, and the world's own update is what loads
@@ -882,6 +892,7 @@ PATCHES = {
     'quick_sort_enter': _quick_sort_enter,
     'quick_sort_menu': _quick_sort_menu,
     'lookat_update': _lookat_update,
+    'skel_calc': _skel_calc,
     'pc_map_focus': _pc_map_focus(False),
     'pc_map_focus_target': _pc_map_focus(True),
     'pc_map_focus_now': _pc_map_focus(True),

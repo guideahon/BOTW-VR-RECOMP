@@ -28,6 +28,25 @@ def boot(save, out, env=None, script=None):
     return game, proc, log
 
 
+def probe(game, a, n):
+    import struct
+    d = game.cmd('mem', 'read', '{:#x}'.format(a), str(8 * n), 'u64', ok=False)
+    print('\n== probe {:#x}'.format(a))
+    for i in range(n):
+        v = int(d.get('value.%d' % i, '0'), 0)
+        extra = ''
+        if 0x7000000000 <= v < 0x7400000000:
+            r = game.cmd('mem', 'read', '{:#x}'.format(v), '32', 'u8', ok=False)
+            try:
+                b = bytes(int(r['value.%d' % k], 0) for k in range(32))
+                magic = b[:4].decode('latin-1') if all(48 <= c < 123 for c in b[:4]) else ''
+                fl = struct.unpack('<8f', b)
+                extra = '{:4} {}'.format(magic, ' '.join('{:.3g}'.format(x) for x in fl))
+            except Exception:
+                extra = '(unreadable)'
+        print('  +{:#05x} {:#018x} {}'.format(8 * i, v, extra))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--save', required=True)
@@ -45,6 +64,9 @@ def main():
             words = c.split()
             if words[0] == 'sleep':
                 time.sleep(float(words[1]))
+                continue
+            if words[0] == 'probe':   # probe <addr> <qwords>: each qword; a pointer's magic and first floats
+                probe(game, int(words[1], 16), int(words[2]))
                 continue
             print('\n$ ' + c)
             d = game.cmd(*words, ok=False, timeout=300)

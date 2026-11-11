@@ -59,6 +59,8 @@ static struct {
     int first;             // -1 not read yet: SAVAGEWIND_VR_VIEW (first, the default, or third)
     float eye_height, forward;  // first person: the eye above Link's feet, and ahead of his head's centre (m)
     bool fp_now;           // the last camera was set in first person
+    vr_anchor anchor;      // the tracking space -> the game's world, as the last camera used it
+    bool anchor_ok;
 } c = {.stereo = -1, .window_aspect = 1, .first = -1};
 
 static float env_f(const char *name, float def, float lo, float hi) {
@@ -214,6 +216,7 @@ void vr_camera_lookat(float *f) {
     }
     // the anchor that puts the neutral head at the game's eye, looking the game's way; the eye's pose from there
     vr_anchor a = vr_anchor_recenter(c.neutral, geye, yaw + c.turn, 1.0f);
+    c.anchor = a, c.anchor_ok = true;
     vr_lookat_from_view(a, view, f, f + 3, f + 6);
     memcpy(c.out, f, sizeof c.out);
     c.out_ok = true;
@@ -290,3 +293,15 @@ bool vr_present_take(vr_view *out) {
 
 uint64_t vr_camera_updates(void) { return c.updates; }
 uint64_t vr_stereo_pairs(void) { return c.pair.pairs; }
+
+// vr_skel.c: the last camera was set in first person (the eye in Link's head)
+bool vr_first_person_now(void) { return c.fp_now; }
+
+// vr_skel.c: a tracking-space pose in the game's world, with the anchor the last camera used (false before one)
+bool vr_tracking_to_world(const vr_pose *in, vr_pose *out) {
+    pthread_mutex_lock(&lock);
+    bool ok = c.anchor_ok && c.fp_now;
+    if (ok) *out = vr_xr_to_game_pose(c.anchor, *in);
+    pthread_mutex_unlock(&lock);
+    return ok;
+}

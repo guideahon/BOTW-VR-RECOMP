@@ -41,11 +41,16 @@ fake_xr from a scratch save).
   flags (`[x0 + 0xd8] & 3`) to main+0x41098, then tail-calls main+0x41250 with the same: the skeleton's world
   calculation and its copy out. **The hook point for the arms and the head:** before main+0xf97908 (`bl 0x41098`) the
   local matrices are animated and the world ones not yet made.
-- **Not yet:** which of the ~93 models main+0xf978e8 calculates a frame is Link's (none of their ModelObj's first
-  pointers reaches the run found, which is the double-buffered copy, not the SkeletonObj's own array), the
-  SkeletonObj's local-matrix array (64-byte entries, as the accessors at 0x7000f961c4 / f9621c below suggest), and the
-  bone indices of Head, Clavicle_R ... Weapon_R (from the ResSkeleton's name dictionary). Next run: dump the ModelObj
-  at x0 + 0xe0 of each model whose ResModel name is Link's ("Link" / "GameROMPlayer"), then its SkeletonObj.
+- **Found (same day):** Link's model is the one whose ResModel is named "Link" (tools/vr/re_model.py,
+  re_link.py). model + 0x118 (ModelObj + 0x38) is its SkeletonObj: + 0x00 the ResSkeleton (FSKL; FSKL + 0x18 the
+  ResBone array, 0x50 a bone, the name's pointer first; 121 bones, depth-first: Root, Skl_Root, Spine_1, Spine_2,
+  Clavicle_L, Arm_1_L ... Neck 52, Head 53 ... Weapon_Root 120), + 0x18 the local matrices (0x60 a bone: flags, scale,
+  rotation rows, translation; not read again before the skinning), + 0x20 **the world matrices** (0x40 a bone, four
+  columns), + 0x50 the bone count. main+0x41098 loads ModelObj + 0x38 and jumps to main+0x45d60, which multiplies the
+  world matrices by the inverse bind poses into the GPU's skinning matrices (the double-buffered run found first). So
+  the world matrices at the hook (main+0xf97900) are what is drawn: runtime/vr/vr_skel.c hides the head and solves the
+  arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
+  01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
 ## What is found in 1.9.0 so far
 

@@ -411,3 +411,15 @@ bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs) {
     pthread_mutex_unlock(&in.lock);
     return ok;
 }
+
+// vr_skel.c: a hand's grip pose now (tracking space), 0 left 1 right (the left-handed swap not applied: the real hand)
+bool vr_hand_pose(int hand, vr_pose *out) {
+    if (!in.ready || !in.hand[hand]) return false;
+    XrTime t = vr_next_display_time();
+    XrSpaceLocation l = {XR_TYPE_SPACE_LOCATION};
+    if (!t || XR_FAILED(xrLocateSpace(in.hand[hand], vr_xr_local(), t, &l)) ||
+        !(l.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) || !(l.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
+        return false;
+    *out = pose_of(l.pose);
+    return true;
+}
