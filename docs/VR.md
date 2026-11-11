@@ -14,9 +14,9 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 3 | Stereo: a frame per eye, the game's clock once a pair | done |
 | 4 | HUD apart from the scene, menus on the virtual screen | done |
 | 5 | VR controllers as the game's controller | done |
-| 6 | Comfort: snap turning | done (vignette and others: not yet) |
+| 6 | Comfort: snap / smooth / head-only turning, its speed, roomscale, height, HUD placement, cutscene modes | done (a vignette: not yet) |
 | 7 | Link's arms follow the hands | done in first person: two-bone IK on his skeleton (and his armor's); his head hidden |
-| 8 | Motion combat | first part done: slashes, stabs and the shield by gesture (BetterVR's analysis); the weapon's own hit not yet |
+| 8 | Motion combat | done: slashes, stabs and the shield by gesture (BetterVR's analysis); the weapon hits where the hand holds it, whenever it is swung, harder the faster; both hands on large swords and spears; the bow aimed by hand with its arc |
 | 9 | Performance | not started |
 
 Phase 1: the window image (the game with its HUD) is copied every frame to a quad layer, a screen 3 m wide 2.5 m ahead
