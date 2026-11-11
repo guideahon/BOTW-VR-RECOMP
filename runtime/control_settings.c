@@ -58,6 +58,11 @@ static const Setting settings[] = {
     B(god_mode), B(one_hit_kill), I(damage_taken, 25, 400, NULL), I(damage_dealt, 25, 400, NULL),
     I(text_language, 0, 0, NULL), I(voice_language, 0, 0, NULL), B(save_backups), B(stick_cam_on), I(stick_cam_x, STICK_CAM_MIN, STICK_CAM_MAX, NULL),
     I(stick_cam_y, STICK_CAM_MIN, STICK_CAM_MAX, NULL), B(auto_continue), B(menu_tip_seen),
+    // the VR options by their settings.ini keys, as stored (settings.h VR_OPTIONS: 0 the default; a toggle on by
+    // default holds 1 for off)
+#define VR_OPT_SETTING(id, k, inv) {k, &g_settings.vr[id], INT, 0, 400, NULL},
+    VR_OPTIONS(VR_OPT_SETTING)
+#undef VR_OPT_SETTING
 };
 #undef B
 #undef I

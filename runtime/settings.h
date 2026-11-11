@@ -70,6 +70,32 @@ enum { TEX_LOD_DEFAULT = 0, TEX_LOD_SHARP = 1, TEX_LOD_SHARPER = 2, TEX_LOD_COUN
 // to 2; Surround 5.1 sends all 6 channels to the audio device; 3D Headphones mixes the 6 channels to stereo with
 // binaural head-shadow and ear-delay cues for headphones.
 enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D = 2, AUDIO_OUT_COUNT };
+// The VR mode's options (runtime/vr/vr_options.c reads them; the game's Options screen has a VR page for them, in a
+// VR build). Each is a small number whose 0 is the default: X(id, settings.ini key, the value written for 0 / for 1
+// when the ini holds a toggle the other way round: 1 = the ini's "1" means 0 here)
+#define VR_OPTIONS(X) \
+    X(VR_OPT_VIEW, "vr_view", 0)                 /* 0 first person, 1 third (the game's camera) */ \
+    X(VR_OPT_EVENTS, "vr_events", 0)             /* cutscenes: 0 auto (BetterVR's table), 1 first, 2 the event's camera, 3 the flat screen */ \
+    X(VR_OPT_TURN, "vr_snap_turn", 0)            /* 0 smooth, 1 snap */ \
+    X(VR_OPT_SNAP_DEGREES, "vr_snap_degrees", 0) /* the snap step (0: 45) */ \
+    X(VR_OPT_TURN_SPEED, "vr_turn_speed", 0)     /* smooth turning, percent (0: 100) */ \
+    X(VR_OPT_WALK, "vr_walk_by_controller", 0)   /* 0 the way the head looks, 1 the left controller's */ \
+    X(VR_OPT_LEFT_HANDED, "vr_left_handed", 0) \
+    X(VR_OPT_RUMBLE, "vr_rumble", 1)             /* 0 on */ \
+    X(VR_OPT_RUMBLE_GAIN, "vr_rumble_strength", 0) /* percent (0: 100) */ \
+    X(VR_OPT_MOTION, "vr_motion_combat", 1)      /* 0 on */ \
+    X(VR_OPT_SWING, "vr_easy_swings", 0)         /* 0 normal, 1 BetterVR's easy profile */ \
+    X(VR_OPT_SWING_ATTACK, "vr_swing_attack", 1) /* 0 on: a swing also presses the game's attack */ \
+    X(VR_OPT_SWING_HITS, "vr_swing_hits", 1)     /* 0 on */ \
+    X(VR_OPT_WEAPON_HITS, "vr_weapon_hits", 1)   /* 0 on */ \
+    X(VR_OPT_SHIELD, "vr_shield_gesture", 1)     /* 0 on */ \
+    X(VR_OPT_TWO_HANDS, "vr_two_hands", 1)       /* 0 on */ \
+    X(VR_OPT_DROP, "vr_drop_gesture", 1)         /* 0 on */ \
+    X(VR_OPT_BOW_AIM, "vr_bow_by_hand", 1)       /* 0 by hand, 1 by the head */ \
+    X(VR_OPT_BOW_ARC, "vr_bow_arc", 1)           /* 0 on */
+#define VR_OPT_ENUM(id, key, inv) id,
+enum { VR_OPTIONS(VR_OPT_ENUM) VR_OPT_COUNT };
+
 typedef struct {
     bool fullscreen;
     int fullscreen_mode;     // FSMODE_*
@@ -104,6 +130,7 @@ typedef struct {
     bool freecam_sticks; // both stick clicks together turn the free camera on and off (hle/input.c)
     int gpu;             // Vulkan adapter index from the startup log; -1: automatic (restart required)
     bool quick_drop;      // native dropping from the quick equipment selector
+    int vr[VR_OPT_COUNT]; // the VR mode's options (VR_OPTIONS below; settings.ini vr_*; a SAVAGEWIND_VR_* variable wins)
     bool quick_sort;      // native sorting in the quick equipment selector
     bool dpad_move;      // the d-pad (and arrow keys) also act as the left stick while it is at rest
     bool stick_cam_on;   // Controls > Controller camera speed: stick_cam_x and _y apply (off: the game's own speed)

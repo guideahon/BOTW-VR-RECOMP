@@ -19,6 +19,7 @@
 #include "vr_input_map.h"
 #include "vr_internal.h"
 #include "vr_melee.h"
+#include "vr_options.h"
 #include "vr_gestures.h"
 
 enum {
@@ -115,6 +116,7 @@ static struct {
     // motion combat
     bool motion;           // SAVAGEWIND_VR_MOTION (on)
     bool swing_attack;     // SAVAGEWIND_VR_SWING_ATTACK (on): a swing also presses the game's attack (Y)
+    int easy;              // the swing profile in use (vr_melee: 1 BetterVR's easy one; -1 none yet)
     bool shield_gesture;   // SAVAGEWIND_VR_SHIELD (on)
     XrSpace hand[2];       // the grips' poses, left and right
     XrPath hand_path[2];
@@ -139,6 +141,8 @@ static XrPath path(XrInstance inst, const char *s) {
     xrStringToPath(inst, s, &p);
     return p;
 }
+
+static void apply_options(void);
 
 void vr_input_setup(XrSession session) {
     XrInstance inst = vr_xr_instance();
@@ -184,37 +188,37 @@ void vr_input_setup(XrSession session) {
                                       {{0, 0, 0, 1}, {0, 0, 0}}};
         if (!vr_xr_ok(xrCreateActionSpace(session, &sc, &in.hand[h]), "xrCreateActionSpace")) in.hand[h] = XR_NULL_HANDLE;
     }
-    // motion combat (SAVAGEWIND_VR_MOTION=0: off; SAVAGEWIND_VR_SWING=easy: BetterVR's easier swing profile;
-    // SAVAGEWIND_VR_SHIELD=0: no raised-hand guard)
-    const char *mo = getenv("SAVAGEWIND_VR_MOTION"), *sw = getenv("SAVAGEWIND_VR_SWING"), *sh = getenv("SAVAGEWIND_VR_SHIELD");
-    in.motion = !(mo && *mo == '0') && in.hand[1] != XR_NULL_HANDLE;
-    const char *sa = getenv("SAVAGEWIND_VR_SWING_ATTACK");
-    in.swing_attack = !(sa && *sa == '0');
-    in.shield_gesture = in.motion && !(sh && *sh == '0') && in.hand[0] != XR_NULL_HANDLE;
-    vr_melee_init(&in.melee, sw && !strcmp(sw, "easy"));
+    in.easy = -1;
+    apply_options();
     if (in.motion)
         LOG("[vr] motion combat: slashes and stabs of the right hand attack (%s swing profile)%s\n",
-            sw && !strcmp(sw, "easy") ? "easy" : "normal", in.shield_gesture ? "; the left hand raised guards" : "");
+            in.easy ? "easy" : "normal", in.shield_gesture ? "; the left hand raised guards" : "");
     in.ready = true;
-    // SAVAGEWIND_VR_TURN=snap: the right stick turns the view a step at once (SAVAGEWIND_VR_SNAP_DEGREES, 45), the
-    // comfortable way; default: smooth, the game's own camera turning
-    const char *turn = getenv("SAVAGEWIND_VR_TURN");
-    in.pad.snap = turn && !strcmp(turn, "snap");
-    const char *deg = getenv("SAVAGEWIND_VR_SNAP_DEGREES");
-    in.snap_deg = deg && atof(deg) >= 5 && atof(deg) <= 180 ? (float)atof(deg) : 45.0f;
     if (in.pad.snap) LOG("[vr] snap turning: %.0f degrees a step\n", in.snap_deg);
-    const char *ts = getenv("SAVAGEWIND_VR_TURN_SPEED");
-    in.turn_speed = ts && atof(ts) >= 0.2 && atof(ts) <= 3 ? (float)atof(ts) : 1.0f;
-    // BetterVR's control scheme and body gestures (vr_gestures.h), or the earlier one (classic)
-    const char *cs = getenv("SAVAGEWIND_VR_CONTROLS"), *lh = getenv("SAVAGEWIND_VR_LEFT_HANDED");
+    // BetterVR's control scheme and body gestures (vr_gestures.h), or the earlier one (classic; at start only)
+    const char *cs = getenv("SAVAGEWIND_VR_CONTROLS");
     in.bettervr = !(cs && !strcmp(cs, "classic"));
-    in.left_handed = lh && *lh == '1';
     LOG("[vr] controls: %s%s\n", in.bettervr ? "BetterVR's (gestures: weapon over the right shoulder, bow over the "
                                                "left, rune at the left hip, whistle at the mouth)"
                                              : "classic (SAVAGEWIND_VR_CONTROLS=classic)",
         in.left_handed ? ", left-handed" : "");
     LOG("[vr] controllers: %d actions, bindings for %d kinds of controller (SAVAGEWIND_VR_CONTROLLERS=0: off)\n",
         A_COUNT, suggested);
+}
+
+// the options (vr_options.c: the Options screen's VR page or SAVAGEWIND_VR_*), each frame: a change applies at once
+static void apply_options(void) {
+    in.motion = vr_opt_on(VR_OPT_MOTION) && in.hand[1] != XR_NULL_HANDLE;
+    in.swing_attack = vr_opt_on(VR_OPT_SWING_ATTACK);
+    in.shield_gesture = in.motion && vr_opt_on(VR_OPT_SHIELD) && in.hand[0] != XR_NULL_HANDLE;
+    int easy = vr_opt(VR_OPT_SWING) == 1;
+    if (easy != in.easy) vr_melee_init(&in.melee, easy), in.easy = easy;
+    in.pad.snap = vr_opt(VR_OPT_TURN) == 1;
+    int deg = vr_opt(VR_OPT_SNAP_DEGREES);
+    in.snap_deg = deg >= 5 && deg <= 180 ? (float)deg : 45.0f;
+    int ts = vr_opt(VR_OPT_TURN_SPEED);
+    in.turn_speed = ts >= 20 && ts <= 300 ? ts / 100.0f : 1.0f;
+    in.left_handed = vr_opt(VR_OPT_LEFT_HANDED) == 1;
 }
 
 static bool get_bool(int i) {
@@ -261,11 +265,9 @@ void vr_rumble(int hand, float amplitude) {
 }
 
 static void rumble_tick(uint64_t now) {
-    if (rumble.on < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_RUMBLE"), *g = getenv("SAVAGEWIND_VR_RUMBLE_GAIN");
-        rumble.on = !(e && *e == '0');
-        rumble.gain = g && atof(g) > 0 && atof(g) <= 4 ? (float)atof(g) : 1.0f;
-    }
+    rumble.on = vr_opt_on(VR_OPT_RUMBLE);   // (live: the Options screen)
+    int g = vr_opt(VR_OPT_RUMBLE_GAIN);
+    rumble.gain = g > 0 && g <= 400 ? g / 100.0f : 1.0f;
     if (!rumble.on) return;
     for (int h = 0; h < 2; h++) {
         float a = rumble.amp[h] * rumble.gain;
@@ -288,11 +290,9 @@ static struct {
 
 static vr_pose pose_of(XrPosef p);
 static void walk_turn(void) {
-    if (walk.mode < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_WALK");
-        walk.mode = e && !strcmp(e, "controller");
-        if (walk.mode) LOG("[vr] walking: the left stick walks the way the left controller points\n");
-    }
+    int mode = vr_opt(VR_OPT_WALK) == 1;   // (live: the Options screen)
+    if (mode != walk.mode && mode) LOG("[vr] walking: the left stick walks the way the left controller points\n");
+    walk.mode = mode;
     if (!walk.mode) return;
     XrTime t = vr_next_display_time();
     XrSpaceLocation head = {XR_TYPE_SPACE_LOCATION}, hand = {XR_TYPE_SPACE_LOCATION};
@@ -429,6 +429,7 @@ static void update(void) {
         return;
     }
     in.syncs++;
+    apply_options();
     vr_pad_in p = {0};
     get_vec(A_MOVE, &p.lx, &p.ly);
     get_vec(A_CAMERA, &p.rx, &p.ry);
@@ -534,12 +535,7 @@ bool vr_swing(float *power, uint32_t *id) {
 // SAVAGEWIND_VR_DROP=0; it uses the quick selector's native drop (runtime/quick_drop_action.c) even when that setting
 // is off
 bool vr_drop_gesture(void) {
-    static int on = -1;
-    if (on < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_DROP");
-        on = !(e && *e == '0');
-    }
-    return on && in.ready && in.bettervr && vr_enabled() && vr_session_running();
+    return vr_opt_on(VR_OPT_DROP) && in.ready && in.bettervr && vr_enabled() && vr_session_running();
 }
 
 // a hand's grip held now (0 left, 1 right; the hands' roles as the player set them)

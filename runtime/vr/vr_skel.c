@@ -36,6 +36,7 @@
 #include "../control_cells.h"
 #include "vr.h"
 #include "vr_ik.h"
+#include "vr_options.h"
 
 #define GUEST_OK(a) ((a) >= 0x7000000000ull && (a) < 0x7800000000ull)
 #define MAX_BONES 512
@@ -366,12 +367,9 @@ static uint64_t arrows_aimed;
 uint64_t vr_arrows_aimed(void) { return arrows_aimed; }
 
 void vr_arrow_aim(float *dir, const float *origin, float *target) {
-    static int mode = -1, log = -1;
-    if (mode < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_BOW_AIM");
-        mode = !(e && !strcmp(e, "head"));
-        log = getenv("SAVAGEWIND_VR_LOG_ARROWS") != NULL;
-    }
+    static int log = -1;
+    if (log < 0) log = getenv("SAVAGEWIND_VR_LOG_ARROWS") != NULL;
+    int mode = vr_opt(VR_OPT_BOW_AIM) == 0;   // (live: the Options screen)
     double lp[3];
     if (!mode || !vr_first_person_now() || !control_cell_get(&control_cell_player_pos, lp)) return;
     vr_vec3 o = vr_v3(origin[0], origin[1], origin[2]);
@@ -405,11 +403,7 @@ void vr_arrow_aim(float *dir, const float *origin, float *target) {
 // 50 m), not the bow's own parameters.
 // SAVAGEWIND_VR_BOW_ARC=0: no arc.
 int vr_bow_arc(float (*pts)[3], int max) {
-    static int on = -1;
-    if (on < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_BOW_ARC"), *a = getenv("SAVAGEWIND_VR_BOW_AIM");
-        on = !(e && *e == '0') && !(a && !strcmp(a, "head"));
-    }
+    int on = vr_opt_on(VR_OPT_BOW_ARC) && vr_opt(VR_OPT_BOW_AIM) == 0;
     if (!on || !vr_first_person_now()) return 0;
     int bow = vr_skel_held(1) == VR_SKEL_BOW ? 1 : 0;
     if (!vr_drawing()) return 0;   // the main hand's trigger let go: the shot is gone
@@ -459,11 +453,7 @@ uint64_t vr_two_hand_frames(void) { return th.frames; }
 
 // m: the weapon's matrix (4x4 column-major, already carried by the main hand), turned in place when held in both
 static void two_hand(int side, float *m) {
-    static int en = -1;
-    if (en < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_TWO_HANDS");
-        en = !(e && *e == '0');
-    }
+    int en = vr_opt_on(VR_OPT_TWO_HANDS);
     int off = 1 - side;
     th.off = off;
     bool can = en && k.hand[side].two_handed && k.hand[side].held == VR_SKEL_MELEE &&
@@ -503,11 +493,7 @@ static void two_hand(int side, float *m) {
 }
 
 void vr_weapon_bind(uint64_t actor) {
-    static int on = -1;
-    if (on < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_WEAPON_HITS");
-        on = !(e && *e == '0');
-    }
+    int on = vr_opt_on(VR_OPT_WEAPON_HITS);
     if (!on || !GUEST_OK(actor) || !k.arms || !vr_enabled() || !vr_first_person_now()) return;
     float *a = (float *)(uintptr_t)(actor + 0x398);
     uint64_t model = rd64(actor + 0x4e0);
@@ -543,11 +529,7 @@ static struct { uint64_t armed, actor; uint32_t id; bool on; } sw;
 uint64_t vr_swing_hits(void) { return sw.armed; }
 
 void vr_weapon_attack(uint64_t weapon) {
-    static int en = -1;
-    if (en < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_SWING_HITS");
-        en = !(e && *e == '0');
-    }
+    int en = vr_opt_on(VR_OPT_SWING_HITS);
     if (!en || !GUEST_OK(weapon) || !k.arms || !vr_enabled() || !vr_first_person_now()) return;
     int side = -1;
     for (int h = 0; h < 2; h++)

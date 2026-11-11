@@ -137,17 +137,33 @@ def write_launcher(opts):
     bat = ROOT / 'Play BOTW VR.bat'
     lines = ['@echo off', 'rem Written by tools/vr/installer.py: BOTW VR with the options chosen there.',
              'cd /d "%~dp0"', 'set PATH=C:\\msys64\\ucrt64\\bin;%PATH%', 'set SAVAGEWIND_VR=1',
-             'set SAVAGEWIND_VR_VIEW={}'.format(opts['view']), 'set SAVAGEWIND_VR_HEIGHT={}'.format(opts['height']),
-             'set SAVAGEWIND_VR_TURN={}'.format('snap' if opts['turn'].startswith('snap') else 'smooth'),
-             'set SAVAGEWIND_VR_SNAP_DEGREES={}'.format(opts['turn'][4:] if opts['turn'].startswith('snap') else 45),
-             'set SAVAGEWIND_VR_TURN_SPEED={}'.format({'smooth-slow': 0.6, 'smooth-fast': 1.5}.get(opts['turn'], 1.0)),
-             'set SAVAGEWIND_VR_MOTION={}'.format(1 if opts['motion'] else 0),
-             'set SAVAGEWIND_VR_LEFT_HANDED={}'.format(1 if opts['left'] else 0),
-             'set SAVAGEWIND_VR_HUD=1',
+             'set SAVAGEWIND_VR_HEIGHT={}'.format(opts['height']), 'set SAVAGEWIND_VR_HUD=1',
              'build\\savagewind.exe extracted --play',
              'if errorlevel 1 (echo. & echo The game ended with an error: see savagewind.log, the [vr] lines. & pause)']
     bat.write_text('\r\n'.join(lines) + '\r\n')
+    write_vr_settings(opts)
     return bat
+
+
+def write_vr_settings(opts):
+    """The options chosen here go to the game's settings file (savagewind.ini, the vr_* keys of runtime/settings.h
+    VR_OPTIONS), where the game's Options screen (VR page) shows and changes them; not as variables, which would win
+    over that screen."""
+    ini = ROOT / 'savagewind.ini'
+    snap = opts['turn'].startswith('snap')
+    want = {'vr_view': 1 if opts['view'] == 'third' else 0, 'vr_snap_turn': 1 if snap else 0,
+            'vr_snap_degrees': int(opts['turn'][4:]) if snap else 45,
+            'vr_turn_speed': {'smooth-slow': 60, 'smooth-fast': 150}.get(opts['turn'], 100),
+            'vr_motion_combat': 1 if opts['motion'] else 0, 'vr_left_handed': 1 if opts['left'] else 0}
+    lines = ini.read_text(errors='replace').splitlines() if ini.exists() else []
+    for k, v in want.items():
+        for n, line in enumerate(lines):
+            if line.split('=')[0].strip() == k:
+                lines[n] = '{} = {}'.format(k, v)
+                break
+        else:
+            lines.append('{} = {}'.format(k, v))
+    ini.write_text('\n'.join(lines) + '\n')
 
 
 def desktop_shortcut(target, name):

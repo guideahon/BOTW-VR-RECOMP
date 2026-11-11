@@ -92,7 +92,7 @@ struct Entry {           // the game's option entry (0x30)
 static_assert(sizeof(Entry) == 0x30);
 enum { KIND_TOGGLE = 0, KIND_CHOICE = 1, KIND_BUTTON = 2 };
 
-enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_COUNT };
+enum Page { P_MAIN, P_GAMEPLAY, P_VIDEO, P_COLOUR, P_AUDIO, P_CONTROLS, P_BINDS, P_LANGUAGE, P_ACCESS, P_VIDEO_ADV, P_VR, P_COUNT };
 // A_FIXED: a greyed row for an input that can never be rebound (Item.arg: 0 Esc, 1 F2); A_BIND: Item.arg is a binding slot (an input, or BIND_ACTION + an action); the next key, mouse button or controller button binds it
 enum Action { A_NONE, A_PAGE, A_BIND, A_BINDS_HEADER, A_RESET_BINDS, A_RESTART, A_QUIT, A_SIZE_LIST, A_FIXED, A_REPORT };
 static char g_report_dir[64];  // Problem report: the zip made this run (its row's description names it)
@@ -329,6 +329,121 @@ const char *bind_label(const Item &it, int) {
     return buf;
 }
 
+#ifdef SW_VR
+// VR (runtime/vr/vr_options.c reads these at once; a SAVAGEWIND_VR_* variable, if set, wins over the row). Each option
+// is a number whose 0 is its default (settings.h VR_OPTIONS): a toggle on by default stores 1 for off.
+const char *const k_vr_view[] = {"First person", "Third person"};
+const char *const k_vr_events[] = {"Automatic (as BetterVR)", "First person", "Cutscene camera", "Flat screen"};
+const char *const k_vr_turn[] = {"Smooth", "Snap"};
+const char *const k_vr_walk[] = {"Where you look", "Where the left hand points"};
+constexpr int k_vr_snap[] = {30, 45, 60, 90};
+constexpr int k_vr_speed[] = {60, 80, 100, 125, 150};
+constexpr int k_vr_rumble[] = {25, 50, 75, 100, 125, 150};
+
+Item vr_choice(const char *title, const char *desc, int opt, const char *const *names, int n) {
+    Item it = choice(P_VR, title, desc, nullptr, nullptr, nullptr, nullptr, 0);
+    it.arg = opt;
+    it.count = [](const Item &i) { return i.arg == VR_OPT_EVENTS ? 4 : 2; };
+    it.get = [](const Item &i) { return g_settings.vr[i.arg]; };
+    it.set = [](const Item &i, int x) { g_settings.vr[i.arg] = x; };
+    (void)names, (void)n;
+    return it;
+}
+
+Item vr_toggle(const char *title, const char *desc, int opt, bool off_by_default) {
+    Item it = toggle(P_VR, title, desc, nullptr, nullptr, off_by_default ? 0 : 1);
+    it.arg = opt;
+    if (off_by_default) {
+        it.get = [](const Item &i) { return g_settings.vr[i.arg] ? 1 : 0; };
+        it.set = [](const Item &i, int x) { g_settings.vr[i.arg] = x ? 1 : 0; };
+    } else {   // (on by default: stored 0 when on)
+        it.get = [](const Item &i) { return g_settings.vr[i.arg] ? 0 : 1; };
+        it.set = [](const Item &i, int x) { g_settings.vr[i.arg] = x ? 0 : 1; };
+    }
+    return it;
+}
+
+void build_vr_items(std::vector<Item> &v) {
+    Item view = vr_choice("View", "First person: your eyes are Link's, as in BetterVR. Third person: the game's camera "
+                          "behind him, in 3D.", VR_OPT_VIEW, k_vr_view, 2);
+    view.label = [](const Item &, int x) { return tr(k_vr_view[x]); };
+    v.push_back(view);
+    Item ev = vr_choice("Cutscenes", "Automatic: as BetterVR's list says for each scene, in first person or from the "
+                        "scene's camera. Flat screen: on a big screen in front of you.", VR_OPT_EVENTS, k_vr_events, 4);
+    ev.label = [](const Item &, int x) { return tr(k_vr_events[x]); };
+    v.push_back(ev);
+    Item turn = vr_choice("Turning", "Smooth: the right stick turns the view smoothly. Snap: in steps, more comfortable "
+                          "for many.", VR_OPT_TURN, k_vr_turn, 2);
+    turn.label = [](const Item &, int x) { return tr(k_vr_turn[x]); };
+    v.push_back(turn);
+    Item snap = choice(P_VR, "Snap angle", "How far one snap turns.", [](const Item &) { return N(k_vr_snap); },
+                       [](const Item &, int x) {
+                           static char b[4][16];
+                           static int k;
+                           char *o = b[k++ & 3];
+                           snprintf(o, sizeof b[0], "%d", k_vr_snap[x]);
+                           return (const char *)o;
+                       },
+                       [](const Item &) {
+                           int d = g_settings.vr[VR_OPT_SNAP_DEGREES];
+                           return nearest(k_vr_snap, N(k_vr_snap), (float)(d ? d : 45));
+                       },
+                       [](const Item &, int x) { g_settings.vr[VR_OPT_SNAP_DEGREES] = k_vr_snap[x]; }, 1);
+    v.push_back(snap);
+    Item speed = choice(P_VR, "Turning speed", "How fast smooth turning turns. 100% is the game's own.",
+                        [](const Item &) { return N(k_vr_speed); },
+                        [](const Item &, int x) {
+                            static std::string t;
+                            t = pct(k_vr_speed[x]);
+                            return t.c_str();
+                        },
+                        [](const Item &) {
+                            int s2 = g_settings.vr[VR_OPT_TURN_SPEED];
+                            return nearest(k_vr_speed, N(k_vr_speed), (float)(s2 ? s2 : 100));
+                        },
+                        [](const Item &, int x) { g_settings.vr[VR_OPT_TURN_SPEED] = k_vr_speed[x]; }, 2);
+    v.push_back(speed);
+    Item walk = vr_choice("Walking direction", "The way the left stick walks Link.", VR_OPT_WALK, k_vr_walk, 2);
+    walk.label = [](const Item &, int x) { return tr(k_vr_walk[x]); };
+    v.push_back(walk);
+    v.push_back(vr_toggle("Left-handed", "Swaps the hands: the weapon and the trigger that attacks go to the left one.",
+                          VR_OPT_LEFT_HANDED, true));
+    v.push_back(vr_toggle("Vibration", "The game's rumble on the VR controllers.", VR_OPT_RUMBLE, false));
+    Item rs = choice(P_VR, "Vibration strength", "How strong the controllers vibrate. 100% is the game's own.",
+                     [](const Item &) { return N(k_vr_rumble); },
+                     [](const Item &, int x) {
+                         static std::string t;
+                         t = pct(k_vr_rumble[x]);
+                         return t.c_str();
+                     },
+                     [](const Item &) {
+                         int g = g_settings.vr[VR_OPT_RUMBLE_GAIN];
+                         return nearest(k_vr_rumble, N(k_vr_rumble), (float)(g ? g : 100));
+                     },
+                     [](const Item &, int x) { g_settings.vr[VR_OPT_RUMBLE_GAIN] = k_vr_rumble[x]; }, 3);
+    v.push_back(rs);
+    v.push_back(vr_toggle("Motion combat", "Swing and thrust the right controller to attack; raise the left hand to "
+                          "guard.", VR_OPT_MOTION, false));
+    v.push_back(vr_toggle("Easy swings", "Slower swings count as attacks too (BetterVR's easy profile).", VR_OPT_SWING,
+                          true));
+    v.push_back(vr_toggle("Swings play Link's attack", "Off: a swing only hits, Link does not play his attack "
+                          "(as BetterVR).", VR_OPT_SWING_ATTACK, false));
+    v.push_back(vr_toggle("Hit by swinging", "The weapon hurts what it touches while you swing it, harder the faster "
+                          "the swing.", VR_OPT_SWING_HITS, false));
+    v.push_back(vr_toggle("Hits where your hand is", "The weapon hits where you hold it, not where Link's animation "
+                          "would.", VR_OPT_WEAPON_HITS, false));
+    v.push_back(vr_toggle("Raise the left hand to guard", "Holding the left hand up in front of your face raises the "
+                          "shield.", VR_OPT_SHIELD, false));
+    v.push_back(vr_toggle("Two-handed grip", "Grip a large sword or a spear with the other hand to aim it with both.",
+                          VR_OPT_TWO_HANDS, false));
+    v.push_back(vr_toggle("Drop gesture", "Hold the grip at your right hip to drop what that hand holds.", VR_OPT_DROP,
+                          false));
+    v.push_back(vr_toggle("Aim the bow with your hands", "Off: arrows fly where you look.", VR_OPT_BOW_AIM, false));
+    v.push_back(vr_toggle("Bow trajectory", "Yellow dots show where the arrow will fly while you draw the bow.",
+                          VR_OPT_BOW_ARC, false));
+}
+#endif
+
 void build_items(void) {
     std::vector<Item> &v = g_items;
     // first page: the sections (the game's own options are on Gameplay and Controls)
@@ -342,6 +457,10 @@ void build_items(void) {
     v.push_back(button(P_MAIN, "Key bindings", "Which key, mouse button or controller button does what.", "Open", A_PAGE, P_BINDS));
     v.push_back(button(P_MAIN, "Language", "Language of the texts and of the voices.", "Open", A_PAGE, P_LANGUAGE));
     v.push_back(button(P_MAIN, "Accessibility", "Assists that make the game easier.", "Open", A_PAGE, P_ACCESS));
+#ifdef SW_VR
+    v.push_back(button(P_MAIN, "VR", "First person, cutscenes, turning, hands, combat and the bow in the headset.", "Open",
+                       A_PAGE, P_VR));
+#endif
     v.push_back(button(P_MAIN, "Problem report",
                        "A zip file to attach to a bug report: the log of the last two runs, your settings and a short "
                        "system summary. No game files and no saves.",
@@ -975,6 +1094,9 @@ void build_items(void) {
     v.push_back(toggle(P_ACCESS, "Infinite stamina", "The stamina wheel never runs out.",
                        [](const Item &) { return (int)g_settings.infinite_stamina; },
                        [](const Item &, int x) { g_settings.infinite_stamina = x; }, 0));
+#ifdef SW_VR
+    build_vr_items(v);
+#endif
 
 }
 

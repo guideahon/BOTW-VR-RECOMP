@@ -27,6 +27,26 @@ int main(int argc, char **argv) {
     g_settings.sparse_heap = (g_settings.sparse_heap + 1) % SPARSE_HEAP_COUNT;
     g_settings.tex_lod_bias = (g_settings.tex_lod_bias + 1) % TEX_LOD_COUNT;
     g_settings.audio_output = (g_settings.audio_output + 1) % AUDIO_OUT_COUNT;
+    // The VR options (settings.h VR_OPTIONS): the first boot finds the defaults (all 0) and sets some; the next ones
+    // find them as set. A toggle on by default is written the player's way round: off as 0.
+    if (g_settings.vr[VR_OPT_SNAP_DEGREES] == 0) {
+        for (int i = 0; i < VR_OPT_COUNT; i++) assert(g_settings.vr[i] == 0);
+        g_settings.vr[VR_OPT_VIEW] = 1, g_settings.vr[VR_OPT_EVENTS] = 3, g_settings.vr[VR_OPT_SNAP_DEGREES] = 60;
+        g_settings.vr[VR_OPT_RUMBLE] = 1;   // (off)
+    } else {
+        assert(g_settings.vr[VR_OPT_VIEW] == 1 && g_settings.vr[VR_OPT_EVENTS] == 3);
+        assert(g_settings.vr[VR_OPT_SNAP_DEGREES] == 60 && g_settings.vr[VR_OPT_RUMBLE] == 1);
+        assert(g_settings.vr[VR_OPT_MOTION] == 0 && g_settings.vr[VR_OPT_TWO_HANDS] == 0);
+    }
     settings_save();
+    {
+        FILE *f = fopen(argv[1], "r");
+        char text[16384] = {0};
+        assert(f);
+        fread(text, 1, sizeof text - 1, f);
+        fclose(f);
+        assert(strstr(text, "vr_view = 1\n") && strstr(text, "vr_rumble = 0\n") && strstr(text, "vr_snap_degrees = 60\n"));
+        assert(strstr(text, "vr_motion_combat = 1\n") && strstr(text, "vr_events = 3\n"));
+    }
     printf("PASS: load cursor=%s, toggle and save for next boot\n", argv[2]);
 }

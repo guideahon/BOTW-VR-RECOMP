@@ -26,6 +26,7 @@
 #include "../game_sites.h"
 #include "../control_cells.h"
 #include "vr_event_table.h"
+#include "vr_options.h"
 
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <vulkan/vulkan.h>
@@ -78,9 +79,9 @@ static float env_f(const char *name, float def, float lo, float hi) {
 // behind him. SAVAGEWIND_VR_EYE_HEIGHT (1.55 m above his feet) and SAVAGEWIND_VR_EYE_FORWARD (0.18 m ahead, out of his
 // head's model) place it.
 static bool first_person(void) {
-    if (c.first < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_VIEW");
-        c.first = !(e && !strcmp(e, "third"));
+    bool first = vr_opt(VR_OPT_VIEW) == 0;   // (live: the Options screen's VR page)
+    if (c.first < 0 || first != c.first) {
+        c.first = first;
         c.eye_height = env_f("SAVAGEWIND_VR_EYE_HEIGHT", 1.55f, 0.3f, 3.0f);
         c.forward = env_f("SAVAGEWIND_VR_EYE_FORWARD", 0.18f, 0.0f, 1.0f);
         if (c.first) LOG("[vr] first person: the eye in Link's head (%.2f m up, %.2f m ahead; SAVAGEWIND_VR_VIEW=third: "
@@ -121,10 +122,10 @@ static bool stereo_on(void) {
 enum { EV_AUTO, EV_FIRST, EV_THIRD, EV_SCREEN };
 
 static int events_mode(void) {
-    if (c.events < 0) {
-        const char *e = getenv("SAVAGEWIND_VR_EVENTS");
-        c.events = !e ? EV_AUTO : !strcmp(e, "first") ? EV_FIRST : !strcmp(e, "third") ? EV_THIRD
-                 : !strcmp(e, "screen") ? EV_SCREEN : EV_AUTO;
+    int m = vr_opt(VR_OPT_EVENTS);   // (live; EV_* in the option's order)
+    if (m < EV_AUTO || m > EV_SCREEN) m = EV_AUTO;
+    if (c.events != m) {
+        c.events = m;
         static const char *const names[] = {"as BetterVR's table says", "in first person", "on the event's camera",
                                             "on the virtual screen"};
         LOG("[vr] events (cutscenes): %s (SAVAGEWIND_VR_EVENTS)\n", names[c.events]);

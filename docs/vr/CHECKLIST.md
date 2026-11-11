@@ -84,6 +84,18 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4e. Opciones de RV en el menú del juego (nuevo)
+
+- [ ] Menú de pausa > Sistema > Opciones: hay una sección **RV** (también desde las Opciones de la pantalla de título).
+- [ ] Adentro: Vista, Cinemáticas, Giro (suave / por pasos), Ángulo del paso, Velocidad de giro, Dirección al caminar,
+      Zurdo, Vibración y su fuerza, Combate con movimiento, Tajos fáciles, Los tajos hacen el ataque de Link, Pegar con
+      el movimiento, Golpe donde está tu mano, Levantar la mano izquierda para cubrirse, Agarre a dos manos, Gesto de
+      soltar, Apuntar el arco con las manos, Trayectoria del arco. Los textos en español.
+- [ ] Cambiar una opción se nota enseguida (por ejemplo Vista: tercera persona, o Giro: por pasos) y queda guardada al
+      volver a abrir el juego.
+- [ ] Ojo: si el lanzador pone alguna variable `SAVAGEWIND_VR_*`, esa opción manda sobre el menú. El instalador nuevo
+      no debería ponerlas; si una opción del menú "no hace nada", avisame.
+
 ## 4d. Cinemáticas (nuevo)
 
 Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como en BetterVR, que trae una tabla con
@@ -136,4 +148,3 @@ Ahora las escenas ya no van a la pantalla plana por defecto: se ven en 3D como e
 |---|---|
 | Soltar el arco o la runa con el gesto | el gesto suelta el arma y el escudo; el arco y la runa todavía no |
 | Cuerpo que sigue tus pasos reales (roomscale físico) | hay que mover a Link con su física |
-| Menú de opciones VR dentro del juego | hoy son variables de entorno (el instalador las escribe) |

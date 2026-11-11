@@ -269,6 +269,15 @@ void settings_load(void) {
         else if (!strcmp(key, "rumble_strength")) g_settings.rumble_strength = atoi(val);
         else if (!strcmp(key, "freecam_sticks")) g_settings.freecam_sticks = atoi(val) != 0;
         else if (!strcmp(key, "quick_drop")) g_settings.quick_drop = atoi(val) != 0;
+        else if (!strncmp(key, "vr_", 3)) {   // (the VR options: an inverted one stores the ini's 1 as 0)
+            static const struct { const char *key; int inv; } vr_keys[] = {
+#define VR_OPT_KEY(id, k, inv) {k, inv},
+                VR_OPTIONS(VR_OPT_KEY)
+#undef VR_OPT_KEY
+            };
+            for (int i = 0; i < VR_OPT_COUNT; i++)
+                if (!strcmp(key, vr_keys[i].key)) g_settings.vr[i] = vr_keys[i].inv ? !atoi(val) : atoi(val);
+        }
         else if (!strcmp(key, "quick_sort")) g_settings.quick_sort = atoi(val) != 0;
         else if (!strcmp(key, "dpad_move")) g_settings.dpad_move = atoi(val) != 0;
         else if (!strcmp(key, "left_stick_deadzone")) g_settings.stick_deadzone[0] = (float)atof(val) / 100;  // (percent)
@@ -502,6 +511,9 @@ void settings_save(void) {
     fprintf(f, "rumble_strength = %d\n", g_settings.rumble_strength);
     fprintf(f, "freecam_sticks = %d\n", g_settings.freecam_sticks);
     fprintf(f, "quick_drop = %d\n", g_settings.quick_drop);
+#define VR_OPT_SAVE(id, k, inv) fprintf(f, "%s = %d\n", k, inv ? !g_settings.vr[id] : g_settings.vr[id]);
+    VR_OPTIONS(VR_OPT_SAVE)
+#undef VR_OPT_SAVE
     fprintf(f, "quick_sort = %d\n", g_settings.quick_sort);
     fprintf(f, "dpad_move = %d\n", g_settings.dpad_move);
     fprintf(f, "left_stick_deadzone = %.0f\n", g_settings.stick_deadzone[0] * 100);
