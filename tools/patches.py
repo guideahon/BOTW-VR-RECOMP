@@ -870,6 +870,17 @@ def _skel_calc(gen, a):
             f'  /* {a:#x}: mov x0, x20 (a model\'s skeleton, before its world matrices) */')
 
 
+# A weapon's attack step (main+0x7b1670, x19 the weapon): its attack sensor's set-up (+0xc20 mode, flags, power
+# multiplier, scale, shield break power; +0xc48 contact layer made; +0xc4c re-arm) is about to be read: re-armed with
+# mode 0 or 2 it is copied to the sensor in use (+0xcf4, on with mode 2), with another mode the sensor is turned off
+# (docs/vr/re-notes.md). The runtime may set it up (rt_weapon_attack, runtime/hle/weapon.c; the VR mode turns the held
+# weapon's sensor on while it is swung), then the displaced ldrb w8, [x19, #0xc4c].
+def _weapon_attack(gen, a):
+    assert _word(gen, a) == 0x39713268, hex(_word(gen, a))  # ldrb w8, [x19, #0xc4c]
+    return ('{ extern void rt_weapon_attack(uint64_t); rt_weapon_attack(c->x[19]); c->x[8] = LD8(c->x[19] + 0xc4c); }'
+            f'  /* {a:#x}: ldrb w8, [x19, #0xc4c] (the attack sensor of a weapon, about to be set up) */')
+
+
 # An actor's update (main+0x1525f3c, x20 the actor): its bind to a parent's bone ([actor + 0x4d0], the weapon in
 # Link's hand from his Weapon_ bone) has just made its matrix (actor + 0x398), which its model and its physics (the
 # weapon's attack sensor) take next (docs/vr/re-notes.md). The runtime may move it (rt_weapon_bind,
@@ -919,6 +930,7 @@ PATCHES = {
     'skel_calc': _skel_calc,
     'arrow_aim': _arrow_aim,
     'weapon_bind': _weapon_bind,
+    'weapon_attack': _weapon_attack,
     'pc_map_focus': _pc_map_focus(False),
     'pc_map_focus_target': _pc_map_focus(True),
     'pc_map_focus_now': _pc_map_focus(True),

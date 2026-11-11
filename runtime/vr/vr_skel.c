@@ -150,6 +150,7 @@ static struct {
         int held;            // VR_SKEL_* below
         uint64_t held_frame; // the frame it was last seen
         uint64_t model;
+        uint64_t actor;      // its actor, as its bind made its matrix (vr_weapon_bind)
     } hand[2];
 } k = {.hide = -1, .arms = -1};
 
@@ -443,6 +444,7 @@ void vr_weapon_bind(uint64_t actor) {
         if (!same && dx * dx + dy * dy + dz * dz > 0.03f * 0.03f) continue;
         float m[16] = {a[0], a[4], a[8], 0, a[1], a[5], a[9], 0, a[2], a[6], a[10], 0, a[3], a[7], a[11], 1}, r[16];
         vr_bm_mul(k.hand[side].delta, m, r);
+        k.hand[side].actor = actor;
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 4; col++) a[row * 4 + col] = r[col * 4 + row];
         if (!weapons_moved++)
@@ -450,4 +452,64 @@ void vr_weapon_bind(uint64_t actor) {
                 side ? "right" : "left", (unsigned long long)actor, same ? "is" : "is not");
         return;
     }
+}
+
+// ---- the held weapon hits whenever it is swung (BetterVR's hook_EnableWeaponAttackSensor) ----
+// A weapon's attack step (rt_weapon_attack, main+0x7b1690) is about to read its attack sensor's set-up (actor + 0xc20:
+// mode, flags, power multiplier, scale, shield break power; + 0xc48 contact layer made, + 0xc4c re-arm) and, re-armed
+// with mode 0 or 2, copy it to the sensor in use (+ 0xcf4; on with mode 2), or with another mode turn it off. For the
+// melee weapon in Link's hand, in first person: while the motion analysis says a swing is going (vr_input.c
+// vr_swing), mode 2, armed once a swing (one hit each), the power multiplied as BetterVR's (0.2 for a brush, 1.35 for
+// a full swing) and the shield break power 2 (trees are cut); after it, off. SAVAGEWIND_VR_SWING_HITS=0: the game's
+// attacks only.
+bool vr_swing(float *power, uint32_t *id);   // vr_input.c
+static struct { uint64_t armed, actor; uint32_t id; bool on; } sw;
+uint64_t vr_swing_hits(void) { return sw.armed; }
+
+void vr_weapon_attack(uint64_t weapon) {
+    static int en = -1;
+    if (en < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_SWING_HITS");
+        en = !(e && *e == '0');
+    }
+    if (!en || !GUEST_OK(weapon) || !k.arms || !vr_enabled() || !vr_first_person_now()) return;
+    int side = -1;
+    for (int h = 0; h < 2; h++)
+        if (k.hand[h].actor == weapon && k.hand[h].held == VR_SKEL_MELEE && k.hand[h].held_frame + 8 >= k.frames) side = h;
+    if (side < 0) {
+        if (sw.on && sw.actor == weapon) sw.on = false;   // (put away while on: the game's own state takes over)
+        return;
+    }
+    uint8_t *w = (uint8_t *)(uintptr_t)weapon;
+    float power = 0;
+    uint32_t id = 0;
+    bool swinging = vr_swing(&power, &id);
+    if (swinging) {
+        float n = (power - 0.15f) / 0.85f;
+        n = n < 0 ? 0 : n > 1 ? 1 : n;
+        float mult = 0.20f + 1.15f * n * n * (3 - 2 * n);
+        *(int32_t *)(w + 0xc20) = 2;          // mode: on
+        *(uint32_t *)(w + 0xc30) = 2;         // shield break power (2 cuts trees)
+        *(float *)(w + 0xc28) = mult;         // the power multiplier, set up...
+        *(float *)(w + 0xd04) = mult;         // ... and in use
+        if (!sw.on || sw.actor != weapon || sw.id != id) {   // a new swing: armed again (a new hit list)
+            w[0xc4c] = 1, w[0xc48] = 0;
+            sw.armed++, sw.id = id;
+            static bool said;
+            if (!said) LOG("[vr] the weapon's attack sensor turned on by a swing (power %.2f, x%.2f)\n", power, mult), said = true;
+        }
+        sw.on = true, sw.actor = weapon;
+    } else if (sw.on && sw.actor == weapon) {
+        *(int32_t *)(w + 0xc20) = 1;          // mode: off
+        w[0xc4c] = 1, w[0xc48] = 0;
+        sw.on = false;
+    }
+}
+
+// (tests) the sensor in use of the melee weapon in Link's hand: 1 on (armed with mode 2: + 0xd09), 0 off, -1 none
+int vr_swing_sensor(void) {
+    for (int h = 0; h < 2; h++)
+        if (k.hand[h].held == VR_SKEL_MELEE && GUEST_OK(k.hand[h].actor) && k.hand[h].held_frame + 8 >= k.frames)
+            return *(const uint8_t *)(uintptr_t)(k.hand[h].actor + 0xd09) ? 1 : 0;
+    return -1;
 }

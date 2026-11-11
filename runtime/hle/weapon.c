@@ -15,3 +15,17 @@ void rt_weapon_bind(uint64_t actor) {
     (void)actor;
 #endif
 }
+
+// A weapon's attack step about to read its attack sensor's set-up (tools/patches.py _weapon_attack, main+0x7b1690;
+// docs/vr/re-notes.md). The VR mode turns the sensor of the weapon in Link's hand on while it is swung.
+#ifdef SW_VR
+void vr_weapon_attack(uint64_t weapon);
+#endif
+
+void rt_weapon_attack(uint64_t weapon) {
+#ifdef SW_VR
+    vr_weapon_attack(weapon);
+#else
+    (void)weapon;
+#endif
+}

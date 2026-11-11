@@ -52,7 +52,28 @@ fake_xr from a scratch save).
   arms there. The head armor and the hair's extras are models of their own ("Armor_..._Head", "Armor_Default_Extra_00 /
   01"), the arms' armor too ("Armor_..._Upper"), with the same bone names.
 
-## The held weapon's hits at the hand (2026-11-11): where, done; when, not yet
+## The held weapon hits whenever it is swung (2026-11-11): done
+
+BetterVR (hook_EnableWeaponAttackSensor, at Wii U 0x024AA7C4 in the weapon's attack step) writes the weapon's
+`AttackSensorInitArg` (mode 2 on / 1 off, re-arm, contact layer made, power multiplier, shield break power 2) while its
+swing analysis says an attack is going. On 1.9.0:
+
+- The block: the actor of the held sword read idle and during a game attack (`press y`, tools/vr/re_attack.py): + 0xc30
+  went -1 -> 2, + 0xcf8 -1 -> 2, + 0xd08 0 -> 1. The weapon's constructor (main+0x7a759c, vtable main+0x1c3f330) sets
+  them up together: the set-up at + 0xc20 (mode, flags, multiplier + 0xc28, scale + 0xc2c, shield break power + 0xc30,
+  override impact + 0xc34, power for players / impact + 0xc38, combo + 0xc44, contact layer made + 0xc48, re-arm
+  + 0xc4c) and the sensor in use at + 0xcf4 (flags, shield break power + 0xcf8, impact + 0xcfc, scale + 0xd00,
+  multiplier + 0xd04, re-armed + 0xd08, on with mode 2 + 0xd09, ...): BetterVR's two structs, 64-bit.
+- The attack step is main+0x7b1670 (the only reader of + 0xc20 near + 0xd08): with + 0xc4c set and mode 0 or 2 it copies
+  the set-up to the sensor in use (+ 0xd09 = mode == 2); with another mode it turns it off.
+- The site: main+0x7b1690 (`ldrb w8, [x19, #0xc4c]`) -> `rt_weapon_attack` (runtime/hle/weapon.c) -> `vr_weapon_attack`
+  (runtime/vr/vr_skel.c): for the actor vr_weapon_bind saw in a hand holding a melee weapon, mode 2 while vr_melee says
+  a swing is going (re-armed once a swing), the multiplier BetterVR's curve of the swing's power, shield break power 2;
+  mode 1 when it ends.
+- Checked by tools/vr/test_vr_swing_hits.py with the game's attack press off (SAVAGEWIND_VR_SWING_ATTACK=0): + 0xd09 on in
+  a fast cut, off before and after; never with SAVAGEWIND_VR_SWING_HITS=0.
+
+## The held weapon's hits at the hand (2026-11-11): done
 
 BetterVR rewrites the held weapon's matrix where the game binds an actor to its holder's bone (Wii U 0x0312587C ->
 hook_ChangeWeaponMtx: `Weapon_L` / `Weapon_R` of "GameROMPlayer"). On 1.9.0:
@@ -75,8 +96,6 @@ hook_ChangeWeaponMtx: `Weapon_L` / `Weapon_R` of "GameROMPlayer"). On 1.9.0:
   weapon is told by its place.)
 - Checked by tools/vr/test_vr_weapon_hits.py (the hand 0.6 m right: the weapon's matrices 0.72 m from Link with it,
   0.42 m without).
-- Not yet: the attack sensor is on only during the game's attack; BetterVR turns it on while its swing analysis says
-  an attack is going (hook_EnableWeaponAttackSensor) and scales the damage by the swing's power.
 
 ## The bow aimed by the hands (2026-11-11): done
 

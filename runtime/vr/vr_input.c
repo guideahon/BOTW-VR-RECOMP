@@ -114,6 +114,7 @@ static struct {
     float snap_deg;
     // motion combat
     bool motion;           // SAVAGEWIND_VR_MOTION (on)
+    bool swing_attack;     // SAVAGEWIND_VR_SWING_ATTACK (on): a swing also presses the game's attack (Y)
     bool shield_gesture;   // SAVAGEWIND_VR_SHIELD (on)
     XrSpace hand[2];       // the grips' poses, left and right
     XrPath hand_path[2];
@@ -186,6 +187,8 @@ void vr_input_setup(XrSession session) {
     // SAVAGEWIND_VR_SHIELD=0: no raised-hand guard)
     const char *mo = getenv("SAVAGEWIND_VR_MOTION"), *sw = getenv("SAVAGEWIND_VR_SWING"), *sh = getenv("SAVAGEWIND_VR_SHIELD");
     in.motion = !(mo && *mo == '0') && in.hand[1] != XR_NULL_HANDLE;
+    const char *sa = getenv("SAVAGEWIND_VR_SWING_ATTACK");
+    in.swing_attack = !(sa && *sa == '0');
     in.shield_gesture = in.motion && !(sh && *sh == '0') && in.hand[0] != XR_NULL_HANDLE;
     vr_melee_init(&in.melee, sw && !strcmp(sw, "easy"));
     if (in.motion)
@@ -326,7 +329,7 @@ static void motion(double now) {
             vr_vec3 ang = vr_v3(vel.angularVelocity.x, vel.angularVelocity.y, vel.angularVelocity.z);
             vr_melee_update(&in.melee, pose_of(right.pose), lin, ang, pose_of(head.pose).p, t / 1e9, tracked);
             if (in.melee.attacks != before) {  // (an attack begins: the game's attack, held long enough to be seen)
-                in.attack_until = now + 0.12;
+                if (in.swing_attack) in.attack_until = now + 0.12;
                 in.attacks++;
                 if (in.melee.locked == VR_MELEE_STAB) in.stabs++;
                 else in.slashes++;
@@ -509,3 +512,14 @@ bool vr_hand_pose(int hand, vr_pose *out) {
 
 // the main hand's trigger held (in the BetterVR scheme with the bow out: drawing it)
 bool vr_drawing(void) { return in.ready && in.drawing; }
+
+// the main hand's swing as the motion analysis sees it (vr_melee.h, BetterVR's): on (an attack going), its power and
+// the number of the attack (one more for each swing begun); vr_skel.c turns the held weapon's attack sensor on with it
+bool vr_swing(float *power, uint32_t *id) {
+    if (!in.ready || !in.motion) return false;
+    pthread_mutex_lock(&in.lock);
+    bool on = in.melee.active;
+    *power = in.melee.power, *id = in.melee.attacks;
+    pthread_mutex_unlock(&in.lock);
+    return on;
+}

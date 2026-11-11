@@ -297,6 +297,9 @@ SITES = [
     # the shooter's aim point, before its first speed (tools/patches.py _arrow_aim; the VR mode aims the bow by hand)
     # an actor bound to its parent's bone (the weapon in Link's hand): its matrix (+0x398) just made from the bone,
     # before its model and physics take it (tools/patches.py _weapon_bind; the VR mode moves it with the hand)
+    # a weapon's attack step about to read its attack sensor's set-up (+0xc20: mode, re-arm at +0xc4c) (tools/patches.py
+    # _weapon_attack; the VR mode turns the held weapon's sensor on while it is swung)
+    Site('weapon_attack', 'code', '39713268 340003c8 b94c2268 721e791f', 0),
     Site('weapon_bind', 'code', 'f9427288 b4000c28 f9400288 aa1403e0 f9424508', 0),
     Site('arrow_aim', 'code', '1e200908 1e2009ad 1e200929 aa1403e0 1e2a094e', 3),
     # Native quick-selector sorting (runtime/quick_inventory_sort.c), optional as a complete group.
@@ -378,7 +381,8 @@ OPTIONAL_GROUPS = [
     ('lookat_update',),  # (the free camera: without it Home does nothing)
     ('skel_calc',),  # (VR: Link's bones; without it his head stays in first person)
     ('arrow_aim',),
-    ('weapon_bind',),  # (VR: the held weapon's hits follow the hand; without it they follow the animation)  # (VR: the bow aimed by hand; without it arrows follow the head)
+    ('weapon_bind',),
+    ('weapon_attack',),  # (VR: the held weapon hits whenever it is swung; without it, in the game's attacks only)  # (VR: the held weapon's hits follow the hand; without it they follow the animation)  # (VR: the bow aimed by hand; without it arrows follow the head)
     ('gyro_scene_actor',),
     ('surf_contact', 'surf_boost_remove', 'surf_jump_request'),
     ('stale_actor_helper', 'stale_actor_target'),
@@ -464,6 +468,7 @@ KNOWN = {
         'skel_calc': 0x7000f97900,
         'arrow_aim': 0x7000931590,
         'weapon_bind': 0x7001525fb8,
+        'weapon_attack': 0x70007b1690,
         'yaz0_stream': 0x700131d674,
         'yaz0_stream_ret': 0x700131d7e8,
         'opt_create_rows': 0x7000e2f0a8,
