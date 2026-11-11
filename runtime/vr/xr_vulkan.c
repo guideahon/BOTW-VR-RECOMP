@@ -32,6 +32,7 @@
 #include "vr.h"
 #include "vr_internal.h"
 #include "vr_math.h"
+#include "vr_options.h"
 
 #define MAX_IMAGES 8
 enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_COUNT };
@@ -525,13 +526,28 @@ static void end_frame(void *arg) {
             if (fr.hud && g.hud_ready) {  // the HUD, with the head, a little below the line of sight
                 hudq.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
                                   XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
-                hudq.space = g.view;
+                // its size and distance (the Options page, else SAVAGEWIND_VR_HUD_WIDTH / _DISTANCE); with the gaze
+                // (the head's space) or ahead of the body (the room's, at the head, turned the way it was centred)
+                int hd = vr_opt(VR_OPT_HUD_DISTANCE), hs = vr_opt(VR_OPT_HUD_SIZE);
+                float dist = hd ? hd / 100.0f : g.hud_dist, w = g.hud_w * (hs ? hs / 100.0f : 1.0f);
+                float heading;
+                extern bool vr_neutral_heading(float *heading);
+                if (vr_opt_on(VR_OPT_HUD_GAZE) || !vr_neutral_heading(&heading)) {
+                    hudq.space = g.view;
+                    hudq.pose = (XrPosef){{0, 0, 0, 1}, {0, -0.05f, -dist}};
+                } else {
+                    const XrVector3f *a = &views[0].pose.position, *b = &views[1].pose.position;
+                    vr_quat q = vr_quat_yaw(heading);
+                    vr_vec3 ahead = vr_quat_rotate(q, vr_v3(0, -0.05f - 0.15f, -dist));   // (a little lower: below the gaze)
+                    hudq.space = g.local;
+                    hudq.pose = (XrPosef){{q.x, q.y, q.z, q.w}, {(a->x + b->x) / 2 + ahead.x, (a->y + b->y) / 2 + ahead.y,
+                                                                 (a->z + b->z) / 2 + ahead.z}};
+                }
                 hudq.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
                 hudq.subImage.swapchain = g.sc[SC_HUD].h;
                 hudq.subImage.imageRect =
                     (XrRect2Di){{0, 0}, {(int32_t)g.sc[SC_HUD].extent.width, (int32_t)g.sc[SC_HUD].extent.height}};
-                hudq.pose = (XrPosef){{0, 0, 0, 1}, {0, -0.05f, -g.hud_dist}};
-                hudq.size = (XrExtent2Df){g.hud_w, g.hud_w * fr.hud_aspect};
+                hudq.size = (XrExtent2Df){w, w * fr.hud_aspect};
                 layers[n++] = (const XrCompositionLayerBaseHeader *)&hudq;
             }
         } else if (fr.kind == 1) {

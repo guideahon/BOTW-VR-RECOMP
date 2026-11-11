@@ -93,7 +93,12 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
     X(VR_OPT_DROP, "vr_drop_gesture", 1)         /* 0 on */ \
     X(VR_OPT_BOW_AIM, "vr_bow_by_hand", 1)       /* 0 by hand, 1 by the head */ \
     X(VR_OPT_BOW_ARC, "vr_bow_arc", 1)           /* 0 on */ \
-    X(VR_OPT_ROOMSCALE, "vr_roomscale", 1)       /* 0 on: walking in the room walks Link */
+    X(VR_OPT_ROOMSCALE, "vr_roomscale", 1)       /* 0 on: walking in the room walks Link */ \
+    X(VR_OPT_HEIGHT, "vr_height_offset", 0)      /* first person: the eye this many cm higher (- lower) */ \
+    X(VR_OPT_HUD_DISTANCE, "vr_hud_distance", 0) /* cm (0: 140) */ \
+    X(VR_OPT_HUD_SIZE, "vr_hud_size", 0)         /* percent of 1.6 m wide (0: 100) */ \
+    X(VR_OPT_HUD_GAZE, "vr_hud_follows_gaze", 1) /* 0 on: the HUD turns with the head; off: it stays ahead of the body */ \
+    X(VR_OPT_ONE_HIT, "vr_one_hit_per_swing", 1) /* 0 on: a swing hits each enemy once */
 #define VR_OPT_ENUM(id, key, inv) id,
 enum { VR_OPTIONS(VR_OPT_ENUM) VR_OPT_COUNT };
 

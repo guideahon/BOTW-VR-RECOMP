@@ -19,6 +19,9 @@ static int from_env(int id, const char *e) {
     case VR_OPT_LEFT_HANDED: return *e == '1';
     case VR_OPT_RUMBLE_GAIN: return atof(e) > 0 && atof(e) <= 4 ? (int)(atof(e) * 100 + 0.5) : 0;
     case VR_OPT_SWING: return !strcmp(e, "easy");
+    case VR_OPT_HEIGHT: return atoi(e) >= -50 && atoi(e) <= 50 ? atoi(e) : 0;             // (cm)
+    case VR_OPT_HUD_DISTANCE: return atof(e) >= 0.2 && atof(e) <= 20 ? (int)(atof(e) * 100 + 0.5) : 0;  // (m)
+    case VR_OPT_HUD_SIZE: return atoi(e) >= 25 && atoi(e) <= 300 ? atoi(e) : 0;           // (percent)
     case VR_OPT_BOW_AIM: return !strcmp(e, "head");
     default: return *e == '0';   // (the toggles on by default: "0" turns them off)
     }
@@ -34,7 +37,9 @@ static const char *const env_names[VR_OPT_COUNT] = {
     [VR_OPT_WEAPON_HITS] = "SAVAGEWIND_VR_WEAPON_HITS", [VR_OPT_SHIELD] = "SAVAGEWIND_VR_SHIELD",
     [VR_OPT_TWO_HANDS] = "SAVAGEWIND_VR_TWO_HANDS", [VR_OPT_DROP] = "SAVAGEWIND_VR_DROP",
     [VR_OPT_BOW_AIM] = "SAVAGEWIND_VR_BOW_AIM", [VR_OPT_BOW_ARC] = "SAVAGEWIND_VR_BOW_ARC",
-    [VR_OPT_ROOMSCALE] = "SAVAGEWIND_VR_ROOMSCALE",
+    [VR_OPT_ROOMSCALE] = "SAVAGEWIND_VR_ROOMSCALE", [VR_OPT_HEIGHT] = "SAVAGEWIND_VR_HEIGHT_OFFSET",
+    [VR_OPT_HUD_DISTANCE] = "SAVAGEWIND_VR_HUD_DISTANCE", [VR_OPT_HUD_SIZE] = "SAVAGEWIND_VR_HUD_SIZE",
+    [VR_OPT_HUD_GAZE] = "SAVAGEWIND_VR_HUD_FOLLOWS_GAZE", [VR_OPT_ONE_HIT] = "SAVAGEWIND_VR_ONE_HIT",
 };
 
 int vr_opt(int id) {

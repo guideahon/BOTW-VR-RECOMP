@@ -339,6 +339,9 @@ const char *const k_vr_walk[] = {"Where you look", "Where the left hand points"}
 constexpr int k_vr_snap[] = {30, 45, 60, 90};
 constexpr int k_vr_speed[] = {60, 80, 100, 125, 150};
 constexpr int k_vr_rumble[] = {25, 50, 75, 100, 125, 150};
+constexpr int k_vr_height[] = {-30, -20, -10, 0, 10, 20, 30};    // cm
+constexpr int k_vr_hud_dist[] = {80, 100, 120, 140, 160, 185, 220, 250};   // cm
+constexpr int k_vr_hud_size[] = {50, 70, 85, 100, 120, 150};      // %
 
 Item vr_choice(const char *title, const char *desc, int opt, const char *const *names, int n) {
     Item it = choice(P_VR, title, desc, nullptr, nullptr, nullptr, nullptr, 0);
@@ -439,6 +442,50 @@ void build_vr_items(std::vector<Item> &v) {
     v.push_back(vr_toggle("Drop gesture", "Hold the grip at your right hip to drop what that hand holds.", VR_OPT_DROP,
                           false));
     v.push_back(vr_toggle("Aim the bow with your hands", "Off: arrows fly where you look.", VR_OPT_BOW_AIM, false));
+    Item hgt = choice(P_VR, "Height", "Raises or lowers your eyes in first person, for a different height or playing "
+                      "seated.", [](const Item &) { return N(k_vr_height); },
+                      [](const Item &, int x) {
+                          static char b[4][16];
+                          static int k;
+                          char *o = b[k++ & 3];
+                          snprintf(o, sizeof b[0], "%+d cm", k_vr_height[x]);
+                          return (const char *)(k_vr_height[x] ? o : "0 cm");
+                      },
+                      [](const Item &) { return nearest(k_vr_height, N(k_vr_height), (float)g_settings.vr[VR_OPT_HEIGHT]); },
+                      [](const Item &, int x) { g_settings.vr[VR_OPT_HEIGHT] = k_vr_height[x]; }, 3);
+    v.push_back(hgt);
+    Item hd = choice(P_VR, "HUD distance", "How far ahead the hearts, the map and the rest float.",
+                     [](const Item &) { return N(k_vr_hud_dist); },
+                     [](const Item &, int x) {
+                         static char b[4][16];
+                         static int k;
+                         char *o = b[k++ & 3];
+                         snprintf(o, sizeof b[0], "%d.%02d m", k_vr_hud_dist[x] / 100, k_vr_hud_dist[x] % 100);
+                         return (const char *)o;
+                     },
+                     [](const Item &) {
+                         int d = g_settings.vr[VR_OPT_HUD_DISTANCE];
+                         return nearest(k_vr_hud_dist, N(k_vr_hud_dist), (float)(d ? d : 140));
+                     },
+                     [](const Item &, int x) { g_settings.vr[VR_OPT_HUD_DISTANCE] = k_vr_hud_dist[x]; }, 3);
+    v.push_back(hd);
+    Item hz = choice(P_VR, "HUD size", "How big the HUD is. 100% is 1.6 m wide.",
+                     [](const Item &) { return N(k_vr_hud_size); },
+                     [](const Item &, int x) {
+                         static std::string t;
+                         t = pct(k_vr_hud_size[x]);
+                         return t.c_str();
+                     },
+                     [](const Item &) {
+                         int z = g_settings.vr[VR_OPT_HUD_SIZE];
+                         return nearest(k_vr_hud_size, N(k_vr_hud_size), (float)(z ? z : 100));
+                     },
+                     [](const Item &, int x) { g_settings.vr[VR_OPT_HUD_SIZE] = k_vr_hud_size[x]; }, 3);
+    v.push_back(hz);
+    v.push_back(vr_toggle("HUD follows your gaze", "Off: the HUD stays ahead of your body; look down at it.",
+                          VR_OPT_HUD_GAZE, false));
+    v.push_back(vr_toggle("One hit per swing", "Off: a swing can hit the same enemy again while it lasts, each hit "
+                          "half as strong.", VR_OPT_ONE_HIT, false));
     v.push_back(vr_toggle("Roomscale", "Walking in your room walks Link (he catches up with your head). Off: only "
                           "the stick walks him.", VR_OPT_ROOMSCALE, false));
     v.push_back(vr_toggle("Bow trajectory", "Yellow dots show where the arrow will fly while you draw the bow.",

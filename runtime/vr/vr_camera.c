@@ -325,7 +325,8 @@ void vr_camera_lookat(float *f) {
     double lp[3];
     c.fp_now = false;
     if (fp && control_cell_get(&control_cell_player_pos, lp)) {
-        geye = vr_v3((float)lp[0] + sinf(yaw + c.turn) * c.forward, (float)lp[1] + c.eye_height,
+        geye = vr_v3((float)lp[0] + sinf(yaw + c.turn) * c.forward,
+                     (float)lp[1] + c.eye_height + vr_opt(VR_OPT_HEIGHT) / 100.0f,   // (the Options page's height)
                      (float)lp[2] + cosf(yaw + c.turn) * c.forward);
         c.fp_now = true;
     }
@@ -425,6 +426,15 @@ bool vr_tracking_to_world(const vr_pose *in, vr_pose *out) {
     pthread_mutex_lock(&lock);
     bool ok = c.anchor_ok && c.fp_now;
     if (ok) *out = vr_xr_to_game_pose(c.anchor, *in);
+    pthread_mutex_unlock(&lock);
+    return ok;
+}
+
+// xr_vulkan.c: the heading the head had when it was centred (the body's way, for a HUD that does not follow the gaze)
+bool vr_neutral_heading(float *heading) {
+    pthread_mutex_lock(&lock);
+    bool ok = c.have_neutral;
+    if (ok) *heading = vr_quat_heading(c.neutral.q);
     pthread_mutex_unlock(&lock);
     return ok;
 }

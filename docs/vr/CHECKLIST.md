@@ -86,6 +86,15 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4g. Altura, HUD y golpes (nuevo, en Opciones > RV)
+
+- [ ] Altura: subí o bajá tus ojos de a 10 cm (sirve para jugar sentado o si sentís a Link muy alto / bajo).
+- [ ] Distancia y tamaño del HUD: el HUD (corazones, mapa) se aleja / agranda al cambiarlos.
+- [ ] "El HUD sigue tu mirada" apagado: el HUD queda fijo delante de tu cuerpo, un poco abajo; al girar la cabeza no se
+      mueve con vos (como en BetterVR con UiFollowsGaze apagado). Encendido (por defecto): siempre frente a tus ojos.
+- [ ] "Un golpe por tajo" apagado: un tajo largo puede pegarle varias veces al mismo enemigo (cada golpe a la mitad).
+      Esto no lo pude probar con un enemigo real.
+
 ## 4f. Caminar por la habitación (nuevo)
 
 - [ ] En primera persona, dá un paso real hacia un costado o adelante: Link camina hasta quedar debajo tuyo (lo ves

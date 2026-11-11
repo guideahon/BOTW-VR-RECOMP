@@ -169,6 +169,9 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_LEFT_HANDED` | 0 | `1`: the hands' parts swapped |
 | `SAVAGEWIND_VR_WALK` | head | `controller`: the left stick walks the way the left controller points |
 | `SAVAGEWIND_VR_RUMBLE`, `_RUMBLE_GAIN` | 1, 1 | the game's rumble on the controllers (`0`: off); its strength |
+| `SAVAGEWIND_VR_HEIGHT_OFFSET` | 0 | first person: the eye this many cm higher (or lower), for another height or playing seated (BetterVR's PlayerHeightOffset) |
+| `SAVAGEWIND_VR_HUD_FOLLOWS_GAZE` | 1 | `0`: the HUD stays ahead of the body, turned the way the head was when centred (look down at it); else it turns with the head (BetterVR's UiFollowsGaze) |
+| `SAVAGEWIND_VR_ONE_HIT` | 1 | `0`: a swing can hit the same enemy again while it lasts, each hit half as strong (BetterVR's OneHitPerSwing off) |
 | `SAVAGEWIND_VR_ROOMSCALE` | 1 | first person: walking in the room walks Link (the walk stick pushed toward the head while it is more than 10 cm from his eye; the eye stays at the head meanwhile); `0`: off |
 | `SAVAGEWIND_VR_TWO_HANDS` | 1 | both hands on a large sword or a spear by the other hand's grip on it; `0`: off |
 | `SAVAGEWIND_VR_DROP` | 1 | the drop gesture (a grip held at the right hip); `0`: off |
@@ -182,7 +185,7 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_HEIGHT` | 1080 | the eye images' height (the width follows the headset's shape); with Video > Render scale above 100% the game draws them sharper |
 | `SAVAGEWIND_VR_STEREO` | 1 | `0`: one picture for both eyes (lighter, no depth) |
 | `SAVAGEWIND_VR_HUD` | 1 | `0`: the HUD stays in the eyes' pictures |
-| `SAVAGEWIND_VR_HUD_WIDTH`, `_DISTANCE` | 1.6, 1.4 | the HUD's size and distance (m) |
+| `SAVAGEWIND_VR_HUD_WIDTH`, `_DISTANCE` | 1.6, 1.4 | the HUD's size and distance (m; the Options page's HUD size, %, and distance win) |
 | `SAVAGEWIND_VR_SCREEN_WIDTH`, `_DISTANCE` | 3.0, 2.5 | the virtual screen of menus, events and loading (m) |
 | `SAVAGEWIND_VR_EVENTS` | auto | events (cutscenes): `auto` as BetterVR's table says for each (first person or the event's camera in 3D), `first`, `third` (the event's camera), `screen` (the flat virtual screen) |
 | `SAVAGEWIND_VR_CONTROLLERS` | 1 | `0`: the VR controllers are not read (a gamepad only) |
@@ -239,13 +242,13 @@ meant and not otherwise. Needs a headset.
 | What | Needs | State |
 |---|---|---|
 | A vignette while moving or turning | a pass over the eyes' pictures (exec.c, like vr_hud.frag) | not started |
-| Seated or standing height, the floor at its height | nothing from the game | not started |
+| Seated or standing height, the floor at its height | nothing from the game | done as BetterVR's height offset (Options > VR > Height, -30..+30 cm); no floor calibration |
 | Turning with the head only (no stick turn) | nothing from the game | done: `SAVAGEWIND_VR_TURN=head` / Options > VR > Turning > Head only; vertical stick input remains available |
 | First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head | done but his head (the eye at his position, 1.55 m up; `SAVAGEWIND_VR_VIEW`) |
 | Hiding Link's head and hat in first person | nothing more | done (his head bones and head armor squeezed into his chest) |
 | Roomscale: walking in the room walks Link (BetterVR's) | his walking | done the simple way: the walk stick is pushed toward the head (the game walks him, with its collisions) and the neutral head follows him so the eye stays put; BetterVR moves his body itself with its own casts against the world (not ported); option Roomscale |
 | Cutscenes in first person or third (BetterVR's event modes) | the event's name (runtime/hle/framepace.c) | done: `SAVAGEWIND_VR_EVENTS` = `auto` (BetterVR's table of 1497 events, runtime/vr/vr_event_table.h from its patch_Settings_Cutscenes.asm: first person or the event's camera; still and animated hands where it says), `first`, `third` (the event's camera in 3D, the head free), `screen` (the virtual screen, as before); first person needs Link in the world (the new game's opening falls back to the event's camera) |
-| Smooth locomotion relative to the hand instead of the head | nothing from the game | not started |
+| Smooth locomotion relative to the hand instead of the head | nothing from the game | done (Options > VR > Walking direction) |
 
 **Picture and performance (phase 9)**
 
@@ -262,7 +265,7 @@ meant and not otherwise. Needs a headset.
 
 | What | Needs | State |
 |---|---|---|
-| A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | not started (the installer writes them into its launcher) |
+| A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | done (runtime/vr/vr_options.c; the installer writes savagewind.ini) |
 | An installer | nothing more | done: `Install BOTW VR.bat` (tools/vr/installer.py: your folders, the tools, the build, the options, a shortcut) |
 | A release build of this fork (no source build needed) | packaging; the setup screen | not started |
 | Upstream: the generic hooks (projection, present, frame pacing) proposed to Savage Wind | its maintainers' interest | not started |
@@ -323,7 +326,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
 | `python tools/vr/test_vr_roomscale.py --save <scratch save>` | as above | roomscale: the head steps 50 cm right; Link walks about as far (0.52 m), the eye stays where the head put it and ends above him again; with `vr_roomscale` off he stays and the eye moves alone |
 | `python tools/vr/test_vr_head_turn.py --save <scratch save>` | as above | head-only turning: a right-stick push leaves the view's yaw unchanged; turning the tracked head 30 degrees turns the view by 30 degrees |
-| `python tools/vr/test_vr_options.py --save <scratch save>` | as above | the VR options apply at once with no variables set: `set vr_view` 1 / 0 leaves first person and comes back, `vr_rumble` off stops a rumble reaching the controller, `vr_snap_turn` makes one push of the stick turn one 45 deg step (their persistence: `make test-pc-controls`, test_pc_settings) |
+| `python tools/vr/test_vr_options.py --save <scratch save>` | as above | the VR options apply at once with no variables set: `set vr_view` 1 / 0 leaves first person and comes back, `vr_rumble` off stops a rumble reaching the controller, `vr_snap_turn` makes one push of the stick turn one 45 deg step, `vr_height_offset` 20 lifts the eye 20 cm, `vr_hud_distance` / `_size` move and grow the HUD layer, and with `vr_hud_follows_gaze` off it stays ahead of the body when the head turns (fake_xr's `FAKE_XR_LOG_QUADS`) (their persistence: `make test-pc-controls`, test_pc_settings) |
 | `python tools/vr/test_vr_events.py [--modes auto first screen]` | your game files, a `VR=1` build, a GPU | events: a new game from an empty save (its opening, Demo169_0): `auto` gives the headset the eyes in 3D on the event's camera; `first` the same while Link is not in the world yet (first person only with him there); `screen` only the virtual screen |
 | `python tools/vr/test_vr_two_hands.py --save <scratch save>` | as above | both hands on the large sword: a first run reads the sword's line (SAVAGEWIND_VR_TRACE_TWO_HANDS), a second puts the left hand on it: a grip far from it does not take hold, one on it does, and after the left hand moves the drawn model's blade points at it (0 deg) |
 | `python tools/vr/test_vr_drop.py --save <scratch save> [--item bow]` | as above | the drop gesture: the weapon or bow out, its grip held at the right hip; the quick selector's native drop reports the item dropped and done, and its model lies on the ground |

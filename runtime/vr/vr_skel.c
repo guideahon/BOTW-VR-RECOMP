@@ -551,7 +551,12 @@ void vr_weapon_attack(uint64_t weapon) {
         *(uint32_t *)(w + 0xc30) = 2;         // shield break power (2 cuts trees)
         *(float *)(w + 0xc28) = mult;         // the power multiplier, set up...
         *(float *)(w + 0xd04) = mult;         // ... and in use
-        if (!sw.on || sw.actor != weapon || sw.id != id) {   // a new swing: armed again (a new hit list)
+        bool multi = !vr_opt_on(VR_OPT_ONE_HIT);   // (BetterVR's OneHitPerSwing off: armed every update, half power)
+        if (multi) {
+            *(float *)(w + 0xc28) = mult * 0.5f;
+            *(float *)(w + 0xd04) = mult * 0.5f;
+        }
+        if (!sw.on || sw.actor != weapon || sw.id != id || multi) {   // a new swing: armed again (a new hit list)
             w[0xc4c] = 1, w[0xc48] = 0;
             sw.armed++, sw.id = id;
             static bool said;
