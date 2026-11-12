@@ -32,13 +32,20 @@ int main(void) {
     r = vr_ik_two_bone(sh, el, wr, vr_v3(0.2f, 1.4f, -0.4f), vr_v3(1, 0, 0), 0.75f);
     CHECK(r.elbow.x > 0.2f + 0.05f);
 
-    VR_TEST("out of reach: stretched along the reach, mostly the upper arm");
+    VR_TEST("out of reach: stretched along the reach, mostly the upper arm, at most VR_IK_MAX_STRETCH");
     tg = vr_v3(0.2f, 1.4f, -0.8f);
     r = vr_ik_two_bone(sh, el, wr, tg, down, 0.75f);
-    CHECK_NEAR(dist3(r.wrist, tg), 0, 2e-3);
-    CHECK(r.stretch > 0.2f);
+    CHECK_NEAR(r.stretch, VR_IK_MAX_STRETCH, 2e-3);   // (0.25 m short of the 0.55 m arm: only so much)
+    CHECK_NEAR(dist3(r.wrist, tg), 0.25f - VR_IK_MAX_STRETCH, 5e-3);   // (the rest not reached)
     CHECK_NEAR(dist3(r.elbow, sh) - 0.28f, r.stretch * 0.75f, 2e-3);
-    CHECK_NEAR(r.elbow.y, 1.4f, 2e-2);   // (almost straight)
+    CHECK_NEAR(r.elbow.y, 1.4f, 2e-2);   // (almost straight, along the reach)
+    CHECK(r.wrist.z < -0.6f);
+
+    VR_TEST("a little out of reach: reached, stretched");
+    tg = vr_v3(0.2f, 1.4f, -0.62f);
+    r = vr_ik_two_bone(sh, el, wr, tg, down, 0.75f);
+    CHECK_NEAR(dist3(r.wrist, tg), 0, 2e-3);
+    CHECK(r.stretch > 0.05f && r.stretch < VR_IK_MAX_STRETCH);
 
     VR_TEST("degenerate: the target at the shoulder, the pole along the reach");
     r = vr_ik_two_bone(sh, el, wr, sh, down, 0.75f);

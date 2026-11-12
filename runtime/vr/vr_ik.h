@@ -48,6 +48,8 @@ typedef struct {
     float stretch;          // how far the arm was lengthened to reach (m)
 } vr_ik_result;
 
+#define VR_IK_MAX_STRETCH 0.12f   // m
+
 // shoulder, elbow, wrist: the animated joint positions; target: where the wrist should go; pole: the side the elbow
 // bends to (world direction, need not be unit); bias: the upper arm's share of a stretch (BetterVR 0.75)
 static inline vr_ik_result vr_ik_two_bone(vr_vec3 shoulder, vr_vec3 elbow, vr_vec3 wrist, vr_vec3 target, vr_vec3 pole,
@@ -60,7 +62,9 @@ static inline vr_ik_result vr_ik_two_bone(vr_vec3 shoulder, vr_vec3 elbow, vr_ve
     const float eps = 0.001f;
     r.stretch = 0;
     if (dist > l1 + l2 - eps) {
-        float extra = dist - (l1 + l2) + eps;
+        // (at most VR_IK_MAX_STRETCH longer: a controller far out of reach - tracking lost, set down - stretched the arm
+        // into a beam across the view; past that the arm points at it, straight)
+        float extra = fminf(dist - (l1 + l2) + eps, VR_IK_MAX_STRETCH);
         l1 += extra * bias, l2 += extra * (1 - bias);
         r.stretch = extra;
     }
