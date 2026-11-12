@@ -18,7 +18,7 @@
 // Elsewhere the grip is grab / interact (A).
 //
 // BetterVR's buttons (scheme VR_SCHEME_BETTERVR; vr_input_map.h has the earlier one):
-//   right trigger   use what is in hand: the melee weapon attacks (Y), the bow draws (ZR), a rune is used (R); over
+//   right trigger   use what is in hand: the melee weapon attacks (Y), the bow draws (ZR), a rune is used (A); over
 //                   the right shoulder with a weapon out, held: throw (R, let go to throw)
 //   right A         grab / interact (A); held 0.4 s: run (B)          right B   jump (X)
 //   right stick     camera; its click: a tap the inventory (+), held the map (-)
@@ -211,7 +211,7 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
         s->throwing = false;
         if (rt) {
             if (s->held == VR_HELD_BOW) b |= 1ull << VRB_ZR;
-            else if (s->held == VR_HELD_RUNE) b |= 1ull << VRB_R;
+            else if (s->held == VR_HELD_RUNE) b |= 1ull << VRB_A;
             else {
                 b |= 1ull << VRB_Y;
                 s->held = VR_HELD_MELEE;   // (attacking takes the weapon out)

@@ -34,7 +34,7 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 ## 3. Controles de BetterVR
 
-- [ ] Gatillo derecho: ataca con el arma en la mano, tensa el arco si tenés el arco, usa la runa.
+- [ ] Gatillo derecho: ataca con el arma en la mano, tensa el arco si tenés el arco, activa la runa (A del juego).
 - [ ] B derecho: salta. A derecho: agarra / interactúa; mantenido: corre.
 - [ ] Y izquierdo: saca la runa; mantenido: menú de runas.
 - [ ] Clic stick izquierdo: agacharse; mantenido: catalejo. Clic stick derecho: inventario; mantenido: mapa.

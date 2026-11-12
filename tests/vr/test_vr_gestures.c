@@ -246,6 +246,10 @@ int main(void) {
     b = run(&u, in, 0.8, 0.9);
     CHECK(b & BIT(VRB_ZR));
     CHECK(!(b & BIT(VRB_Y)));
+    u.held = VR_HELD_RUNE;
+    b = run(&u, in, 0.9, 1.0);
+    CHECK(b & BIT(VRB_A));
+    CHECK(!(b & (BIT(VRB_R) | BIT(VRB_ZR) | BIT(VRB_Y))));
 
     VR_TEST("buttons: A tap grab / held run, B jump, Y rune / menu, stick clicks");
     vr_gesture_state k = {0};

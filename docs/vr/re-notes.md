@@ -125,6 +125,14 @@ hook_ChangeWeaponMtx: `Weapon_L` / `Weapon_R` of "GameROMPlayer"). On 1.9.0:
 
 ## Runes aimed by the hands (2026-11-12): research, not done
 
+Trigger correction (2026-11-12): the right trigger was sending R while a rune was selected. The game's prompt says
+“E · Paralizar”; Nintendo's [Explorer's Guide](https://zelda.nintendo.com/breath-of-the-wild/assets/pdfs/ExplorersGuide.pdf)
+says L accesses the equipped rune and A activates it. In a fake_xr capture, R removed the targeting prompt and showed
+the equipped weapon; this was not rune activation. `vr_gestures.h` now sends A (`VRB_A`) for the right trigger with a
+rune out. `tests/vr/test_vr_gestures.c` covers this; `tools/vr/test_vr_runes.py` selects a rune with a left-waist
+gesture and checks the trigger sends A (`0x1`) without R (`0x80`) or ZR (`0x200`). This checks button routing, not
+hand-directed rune targeting, which remains below.
+
 Wanted: Stasis / Magnesis / Cryonis target what the main hand points at, not the head's gaze (in first person the
 gaze already aims them, which works). On 1.9.0, with the scratch save (Stasis), `press l` enters the rune's aim
 (reticle, "Paralizar" prompt):
