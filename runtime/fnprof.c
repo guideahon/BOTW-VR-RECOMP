@@ -52,6 +52,74 @@ static uint64_t args_addrs[64];
 static int args_n = -1, args_max = 64, deref_reg = 1, deref_n = 4, args_vec;
 static _Atomic int args_count[64];
 
+// SAVAGEWIND_FNPROF_DISPATCH=<return pc>[,...]: trace selected guest indirect-call sites: resolved target and args;
+// `*` traces the first SAVAGEWIND_FNPROF_DISPATCH_MAX calls. A lifted `blr` reaches rt_dispatch with its return PC
+// in x30 and the target in pc; this exposes the vtable method behind a generic call without instrumenting the method.
+volatile int g_fnprof_dispatch;
+static uint64_t dispatch_addrs[64];
+static int dispatch_n = -1, dispatch_max = 8, dispatch_vec, dispatch_all;
+static _Atomic int dispatch_count[64];
+static _Atomic int dispatch_any_count;
+
+static void dispatch_prof_init(void) {
+    if (dispatch_n >= 0) return;
+    dispatch_n = 0;
+    const char *e = getenv("SAVAGEWIND_FNPROF_DISPATCH");
+    const char *max = getenv("SAVAGEWIND_FNPROF_DISPATCH_MAX");
+    const char *vec = getenv("SAVAGEWIND_FNPROF_DISPATCH_VEC");
+    if (max) dispatch_max = atoi(max);
+    if (dispatch_max < 0) dispatch_max = 0;
+    dispatch_vec = vec && strcmp(vec, "0") != 0;
+    for (const char *p = e; p && *p && dispatch_n < 64;) {
+        while (*p == ',' || *p == ' ') p++;
+        if (!*p) break;
+        if (*p == '*') {
+            dispatch_all = 1;
+            p++;
+            continue;
+        }
+        char *end;
+        uint64_t addr = strtoull(p, &end, 16);
+        if (end == p) {
+            while (*p && *p != ',' && *p != ' ') p++;
+            continue;
+        }
+        dispatch_addrs[dispatch_n++] = addr;
+        p = end;
+    }
+    g_fnprof_dispatch = (dispatch_all || dispatch_n > 0) && dispatch_max > 0;
+}
+
+static void dispatch_log(Cpu *c) {
+    char line[1200];
+    int n = snprintf(line, sizeof line, "[fnprof-dispatch] from %llx to %llx: %llx %llx %llx %llx %llx %llx",
+                     (unsigned long long)c->x[30], (unsigned long long)c->pc,
+                     (unsigned long long)c->x[0], (unsigned long long)c->x[1],
+                     (unsigned long long)c->x[2], (unsigned long long)c->x[3],
+                     (unsigned long long)c->x[4], (unsigned long long)c->x[5]);
+    if (n < 0 || n >= (int)sizeof line) return;
+    size_t used = (size_t)n;
+    if (dispatch_vec)
+        for (int r = 0; r < 8; r++) {
+            float lanes[4];
+            memcpy(lanes, &c->v[r], sizeof lanes);
+            size_t left = sizeof line - used;
+            int wrote = snprintf(line + used, left, " v%d=[%.4g,%.4g,%.4g,%.4g]", r,
+                                 lanes[0], lanes[1], lanes[2], lanes[3]);
+            if (wrote < 0) return;
+            if ((size_t)wrote >= left) { used = sizeof line - 1; break; }
+            used += (size_t)wrote;
+        }
+    fprintf(stderr, "%s\n", line);
+}
+
+void fnprof_dispatch_hit(Cpu *c) {
+    if (dispatch_all && atomic_fetch_add(&dispatch_any_count, 1) < dispatch_max) dispatch_log(c);
+    for (int i = 0; i < dispatch_n; i++)
+        if (dispatch_addrs[i] == c->x[30] && atomic_fetch_add(&dispatch_count[i], 1) < dispatch_max)
+            dispatch_log(c);
+}
+
 static void args_check(uint64_t a, uint64_t lr) {
     if (args_n < 0) {
         args_n = 0;
@@ -291,6 +359,7 @@ int fnprof_stop(const char *path) {
 
 // SAVAGEWIND_FNPROF=0:<to>: profile from process start (threads the game starts before the first frame)
 __attribute__((constructor)) static void fnprof_early(void) {
+    dispatch_prof_init();
     const char *e = getenv("SAVAGEWIND_FNPROF");
     if (e && e[0] == '0' && e[1] == ':') g_fnprof = 1;
 }

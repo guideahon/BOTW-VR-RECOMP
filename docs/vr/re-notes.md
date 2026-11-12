@@ -208,6 +208,22 @@ functions. The one plausible SIMD consumer, `main+0x10575a4`, reads its vector r
 them in the function body, so its entry match is stale. No rune-target candidate was established and no game hook was
 added. Treat these rows only as leads to check against the lifted function and caller before interpreting them.
 
+## Indirect-call dispatch trace (2026-11-12)
+
+`SAVAGEWIND_FNPROF_DISPATCH=<return-pc>[,...]` records selected guest indirect calls while `fnprof` is active: the
+return PC in `x30`, the resolved method in `pc`, and `x0..x5`. `SAVAGEWIND_FNPROF_DISPATCH_VEC=1` adds the low four
+float lanes of `v0..v7`; `_MAX` limits records per selected site (8 by default). `*` records the first `_MAX` indirect
+calls overall and can be combined with selected return PCs. This runs at the shared guest dispatcher and does not patch
+the game method. A scratch-save fake-XR L-aim run verified both wildcard and exact-site filters; the game exited cleanly.
+
+The held-L run entered `main+0x1863d0` 2,725 times in five seconds. Its indirect call at `main+0x18649c` resolved
+mostly to `main+0x17fc5c` and occasionally to `main+0x18901c`. The lifted caller transforms a supplied 3D vector and
+calls the object at `x0+0x28` through vtable slot `+0x50`; the resolved methods perform shape/vector calculations.
+Captures with the head turned 30 degrees and with the left hand turned 60 degrees produced changing inputs across
+several callers, without a repeatable per-callsite change that identifies this as the rune's ray or proves hand-directed
+aim. It remains a geometry lead, not a confirmed target query; no game hook was added. The rune-target search remains
+open.
+
 ## Quick-selector prompt visual check (2026-11-12)
 
 With `quick_drop=1`, the saved Spanish-language game and fake_xr, a 1030x579 selector capture shows the overlay prompts

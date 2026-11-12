@@ -10,6 +10,10 @@
 #include "hle.h"
 #include "kernel.h"
 
+// Optional fnprof hook for selected guest indirect-call sites.
+extern volatile int g_fnprof_dispatch;
+void fnprof_dispatch_hit(Cpu *c);
+
 typedef struct { const uint64_t *addrs; const GuestFn *fns; uint64_t count, lo, hi; } FnTable;
 static FnTable tables[MAX_MODULES];  // one per module of the game code (runtime/gamelib.h)
 static int ntables;
@@ -166,6 +170,7 @@ static GuestFn dispatch_slow(Cpu *c) {
 void rt_dispatch(Cpu *c) {
     KThread *t = c->thread;  // (a better thread waiting for this one's core gets it: kernel.c kernel_preempt)
     if (t && t->core_held >= 0 && __builtin_expect(g_core_best_wait[t->core_held].v < t->prio, 0)) kernel_preempt(t);
+    if (__builtin_expect(g_fnprof && g_fnprof_dispatch, 0)) fnprof_dispatch_hit(c);
     unsigned h = (unsigned)(c->pc >> 2) & (DCACHE - 1);
     GuestFn f = dcache[h].addr == c->pc ? dcache[h].fn : dispatch_slow(c);
     __attribute__((musttail)) return f(c);
