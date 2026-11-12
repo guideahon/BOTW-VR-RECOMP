@@ -464,11 +464,13 @@ def scenario_controllers(args, run_dir):
     """The VR controllers drive the game: the right stick turns the camera, the left stick walks Link."""
     R, L = '/user/hand/right/input/thumbstick', '/user/hand/left/input/thumbstick'
     cycle, lines = 80.0, []
+    # (2 s of walking, every other cycle the other way round: the script runs from boot, and 10 s walks back each
+    # cycle reached the plateau's Demo006_0 trigger before the checks, where the game takes the sticks away)
     for k in range(60):
-        t = k * cycle
+        t, s = k * cycle, 1 if k % 2 == 0 else -1
         lines += ['{} stick {} 0 0'.format(t, R), '{} stick {} 0 0'.format(t, L),
-                  '{} stick {} 1 0'.format(t + 40, R), '{} stick {} 0 0'.format(t + 50, R),
-                  '{} stick {} 0 -1'.format(t + 60, L), '{} stick {} 0 0'.format(t + 70, L)]
+                  '{} stick {} {} 0'.format(t + 40, R, s), '{} stick {} 0 0'.format(t + 50, R),
+                  '{} stick {} 0 {}'.format(t + 60, L, -s), '{} stick {} 0 0'.format(t + 62, L)]
     # (mono: `camera` reads the drawn view from TAA's matrix; fake_xr's time then runs with the game's frames)
     game, proc, log = launch(args, run_dir, lines, frame_rate=0, extra_env={'SAVAGEWIND_VR_STEREO': '0'})
     try:
@@ -493,16 +495,16 @@ def scenario_controllers(args, run_dir):
         cam1 = camera(game)
         wait_until(58)
         pos1 = game.cmd('pos', ok=False)
-        wait_until(65)
+        wait_until(61)
         v_walking = vr_state(game)
         wait_until(75)
         pos2 = game.cmd('pos', ok=False)
     finally:
         perf_routes.stop_game(game, proc, log)
     check(v_turning.get('controllers') is True, 'the controllers are read ({} syncs)'.format(v_turning.get('controller_syncs')))
-    check(v_turning.get('controller_rx', 0) > 0.9, 'right stick right reaches the game ({:.2f})'
+    check(abs(v_turning.get('controller_rx', 0)) > 0.9, 'right stick sideways reaches the game ({:.2f})'
           .format(v_turning.get('controller_rx', 0)))
-    check(v_walking.get('controller_ly', 0) < -0.9, 'left stick back reaches the game ({:.2f})'
+    check(abs(v_walking.get('controller_ly', 0)) > 0.9, 'left stick back or forward reaches the game ({:.2f})'
           .format(v_walking.get('controller_ly', 0)))
     if cam0 and cam1:
         turn = angle_diff(cam1['yaw'], cam0['yaw'])

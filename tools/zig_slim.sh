@@ -32,7 +32,7 @@ $Z/zig.exe cc "${flags[@]}" -Iruntime '-DGAMELIB_ID="0"' -c tools/gamelib_entry.
 [ ${#flags2[@]} = 0 ] ||
     $Z/zig.exe cc "${flags2[@]}" -Iruntime -c $W/probe.c -o $W/probe2.o -MD -MF $W/probe2.d
 n=0
-for h in $(cat $W/probe.d $W/probe2.d $W/entry.d | tr ' ' '\n' | tr -d '\r' | sed -n 's|^build/zig/lib/|lib/|p' | sort -u); do
+for h in $(cat $W/probe.d $W/probe2.d $W/entry.d | tr ' ' '\n' | tr -d '\r' | sed -n 's|^.*build/zig/lib/|lib/|p' | sort -u); do
     mkdir -p "$O/$(dirname "$h")"
     cp "$Z/$h" "$O/$h"
     n=$((n + 1))
@@ -46,8 +46,8 @@ cp $Z/lib/std/std.zig $O/lib/std/
 printf 'LIBRARY savagewind.exe\nEXPORTS\nprobe_host\n' > $W/host.def
 printf '#include <setjmp.h>\nvoid probe_host(void);\nstatic jmp_buf jb;\n__declspec(dllexport) void probe(void) { if (!setjmp(jb)) probe_host(); }\n' > $W/dll.c
 ZA=$PWD/$Z/zig.exe
-(cd $W && $ZA dlltool -d host.def -l host.a -m i386:x86-64 && $ZA cc "${flags[@]}" -c dll.c -o dll.o &&
-    $ZA cc -mcpu=x86_64 -shared -o probe.dll dll.o host.a -v 2> link.log) || { echo "tools/zig_slim.sh: probe link failed ($W/link.log)"; exit 1; }
+(cd $W && "$ZA" dlltool -d host.def -l host.a -m i386:x86-64 && "$ZA" cc "${flags[@]}" -c dll.c -o dll.o &&
+    "$ZA" cc -mcpu=x86_64 -shared -o probe.dll dll.o host.a -v 2> link.log) || { echo "tools/zig_slim.sh: probe link failed ($W/link.log)"; exit 1; }
 line=$(grep '^lld-link ' $W/link.log | tail -1 | tr -d '\r')
 [ -n "$line" ] || { echo "tools/zig_slim.sh: no lld-link line in $W/link.log"; exit 1; }
 : > $O/rt/link.rsp

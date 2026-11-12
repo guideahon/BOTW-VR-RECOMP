@@ -290,6 +290,24 @@ SAVAGEWIND_VR=1 build/savagewind.exe extracted --play
 
 `OPENXR_LIB` points at another loader (`make VR=1 OPENXR_LIB="-L/path -lopenxr_loader"`).
 
+### Release package (Windows)
+
+`make dist VR=1` is the upstream release (`make dist`, docs/BUILD-windows.md: `make deps-windows`,
+`tools/fetch_zig.sh`, `make gen-helper` first) with VR built in. Its zip, `build/dist/SavageWind-VR-<version>-windows.zip`,
+holds no game code (the player's own dump is set up and the game code built on their PC at the first start, as
+upstream) and adds:
+- `Savage Wind VR.exe` (tools/vr/vr_launcher.c): the game started from its own folder with `SAVAGEWIND_VR=1`; it
+  waits for the game and returns its exit code (a Steam / Virtual Desktop shortcut sees the game's run);
+- `libopenxr_loader.dll` (the ucrt64 one, found as the game's other DLLs are);
+- `VR/`: this file, the setup guides and the checklist.
+It ships no SW Update: an upstream update would replace the VR build with the flat one.
+
+Checked from a clean folder: the zip extracted to `D:\SW VR test` (a path with a space), its first start set up from
+a dump (`SAVAGEWIND_LAUNCHER_EXTRACT=<dump>`: copy, game code built with the bundled zig, shaders precompiled), then
+`tools/vr/test_vr_game.py --exe "<folder>\Savage Wind VR.exe"` against fake_xr (an absolute `--out`: the launcher
+starts the game in its own folder). A checkout path with a space broke `make dist` (DEPS passed as an absolute path,
+tools/zig_slim.sh reading zig's dependency lists): both fixed.
+
 ## How it hooks in
 
 | Where | What |

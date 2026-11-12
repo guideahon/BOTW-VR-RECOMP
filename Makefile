@@ -393,6 +393,11 @@ $(B)/sw-update.exe: $(B)/rt/platform/windows_update.o $(B)/rt/platform/sw_update
 
 VERSION  := $(shell sed -n 's/^\#define SAVAGEWIND_VERSION "\(.*\)"/\1/p' runtime/ui/launcher.mm)
 
+# VR=1 (Windows): Savage Wind VR.exe, the game started with SAVAGEWIND_VR=1 from its own folder (tools/vr/vr_launcher.c)
+$(B)/savagewind-vr.exe: tools/vr/vr_launcher.c
+	@mkdir -p $(B)
+	$(CC) -O2 -municode -mwindows -o $@ $<
+
 # macOS: build/Savage Wind.app, runs on macOS $(APP_MIN)+: the game rebuilt for that in build/mac15 against build/deps
 # (`make deps`: SDL3, LGPL FFmpeg, Python, from pinned sources), the generator helper when built
 # (`make gen-helper` after `make deps`), packaged by tools/bundle_macos.sh. No game files or fonts.
@@ -419,6 +424,7 @@ dmg: app
 # out: every Vulkan driver installs the loader in System32. Saves and game files go next to the exe at run time.
 # Needs: Windows 10+ x64, a Vulkan 1.3 driver, an SSE4.2 CPU (GENARCH_COMPAT x86-64-v2; checked at startup).
 DIST     := build/dist/Savage Wind
+DIST_ZIP := SavageWind-$(if $(filter 1,$(VR)),VR-)$(VERSION)-windows.zip
 WIN_B    := build/win-release
 deps-windows:
 	tools/build_deps_windows.sh
@@ -428,12 +434,14 @@ dist:
 	@! find tools -maxdepth 1 -name '*.py' -newer build/helper/swgen/swgen.exe | grep -q . || \
 	    { echo "make gen-helper first: tools/*.py changed since build/helper/swgen was frozen"; exit 1; }
 	@[ -x build/zig/zig.exe ] || { echo "tools/fetch_zig.sh first (the compiler)"; exit 1; }
-	$(MAKE) B=$(WIN_B) DEPS=$(CURDIR)/build/deps-win RELEASE=1 $(WIN_B)/savagewind.exe $(WIN_B)/savagewind-config.exe $(WIN_B)/sw-update.exe
+	$(MAKE) B=$(WIN_B) DEPS=build/deps-win RELEASE=1 $(WIN_B)/savagewind.exe $(WIN_B)/savagewind-config.exe \
+	    $(if $(filter 1,$(VR)),$(WIN_B)/savagewind-vr.exe,$(WIN_B)/sw-update.exe)
 	! nm $(WIN_B)/savagewind.exe | grep ' f_70' >/dev/null  # (no game code inside)
 	rm -rf build/dist && mkdir -p "$(DIST)/gamelib-src"
 	cp $(WIN_B)/savagewind.exe $(WIN_B)/savagewind.dll.a "$(DIST)/"
 	cp $(WIN_B)/savagewind-config.exe "$(DIST)/Savage Wind Configuration.exe"
-	cp $(WIN_B)/sw-update.exe "$(DIST)/SW Update.exe"
+	$(if $(filter 1,$(VR)),cp $(WIN_B)/savagewind-vr.exe "$(DIST)/Savage Wind VR.exe",cp $(WIN_B)/sw-update.exe "$(DIST)/SW Update.exe")
+	$(if $(filter 1,$(VR)),mkdir -p "$(DIST)/VR" && cp docs/VR.md docs/vr/SETUP.md docs/vr/SETUP.es.md docs/vr/CHECKLIST.md "$(DIST)/VR/")  # (VR=1: the VR docs)
 	tools/zig_slim.sh $(strip $(filter-out -Iruntime,$(GENFLAGS))) \
 	    $(if $(GENFLAGS_COMPAT),-- $(strip $(filter-out -Iruntime,$(GENFLAGS_COMPAT))))  # (zig, its runtime built ahead of time)
 	cp -R build/helper/swgen "$(DIST)/"
@@ -461,10 +469,10 @@ dist:
 	    xargs -I{} cp -u {} "$(DIST)/"
 	! ls "$(DIST)" | grep -iE 'x264|x265|xvid|postproc'  # (no GPL codec libraries in the release)
 	! ls "$(DIST)" | grep -i splash  # (no start screen picture: the player's own, never shipped)
-	python3 tools/make_update_manifest.py "$(DIST)" "$(VERSION)"  # (what SW Update checks and replaces: this list, nothing else)
-	cd build/dist && if command -v zip >/dev/null; then zip -qr "SavageWind-$(VERSION)-windows.zip" "Savage Wind"; \
-	    else /c/Windows/System32/tar.exe -a -cf "SavageWind-$(VERSION)-windows.zip" "Savage Wind"; fi
-	@echo "build/dist/SavageWind-$(VERSION)-windows.zip"
+	$(if $(filter 1,$(VR)),,python3 tools/make_update_manifest.py "$(DIST)" "$(VERSION)")  # (what SW Update checks and replaces: this list, nothing else; VR=1 ships no SW Update)
+	cd build/dist && if command -v zip >/dev/null; then zip -qr "$(DIST_ZIP)" "Savage Wind"; \
+	    else /c/Windows/System32/tar.exe -a -cf "$(DIST_ZIP)" "Savage Wind"; fi
+	@echo "build/dist/$(DIST_ZIP)"
 
 # The game code generator as a standalone helper, so players need no Python: build/helper/swgen/ (swgen[.exe] +
 # _internal/), frozen by PyInstaller from tools/swgen.spec in its own venv (build/gen-venv). Shipped as swgen/ next to
