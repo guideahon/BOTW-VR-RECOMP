@@ -277,7 +277,7 @@ meant and not otherwise. Needs a headset.
 |---|---|---|
 | A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | done (runtime/vr/vr_options.c; the installer writes savagewind.ini) |
 | An installer | nothing more | done: `Install BOTW VR.bat` (tools/vr/installer.py: your folders, the tools, the build, the options, a shortcut) |
-| A release build of this fork (no source build needed) | packaging; the setup screen | done: `make dist VR=1` (see Building), checked from a clean folder; not published |
+| A release build of this fork (no source build needed) | packaging; the setup screen | done: `make dist VR=1` (see Building), checked from a clean folder; published as a pre-release on GitHub (vr-2026.11.12) |
 | Upstream: the generic hooks (projection, present, frame pacing) proposed to Savage Wind | its maintainers' interest | not started |
 | macOS | no OpenXR runtime there | not planned |
 
