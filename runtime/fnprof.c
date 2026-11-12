@@ -89,7 +89,39 @@ static void args_check(uint64_t a, uint64_t lr) {
         }
 }
 
+// `fnprof start <x> <y> <z> <r>` (reverse engineering): also which functions get, in x0..x7, a pointer to three floats
+// within r of that point (at most 0x60 bytes in): (function, register, offset) counted, written to <file>.near
+static float near_p[3], near_r;
+static volatile int near_on;
+static struct { _Atomic uint64_t key; _Atomic uint64_t count; } nslots[1 << 14];
+
+static void near_check(uint64_t a) {
+    Cpu *c = kernel_current_cpu();
+    if (!c) return;
+    for (int r = 0; r < 8; r++) {
+        uint64_t p = c->x[r];
+        extern bool kernel_guest_mapped(uint64_t a, uint64_t n);
+        if (p < GUEST_LO || p > GUEST_HI - 0x6c || (p & 3) || !kernel_guest_mapped(p, 0x6c)) continue;   // (no wrap)
+        const float *f = (const float *)(uintptr_t)p;
+        for (int k = 0; k < 0x60 / 4; k++) {
+            float dx = f[k] - near_p[0], dy = f[k + 1] - near_p[1], dz = f[k + 2] - near_p[2];
+            if (!(dx * dx + dy * dy + dz * dz <= near_r * near_r)) continue;
+            uint64_t key = a | ((uint64_t)(r * 256 + k * 4) << 48);
+            uint32_t h = (uint32_t)((key >> 2) * 0x9E3779B1u) & ((1 << 14) - 1);
+            for (int n = 0; n < (1 << 14); n++, h = (h + 1) & ((1 << 14) - 1)) {
+                uint64_t cur = atomic_load(&nslots[h].key);
+                if (cur == key || (cur == 0 && atomic_compare_exchange_strong(&nslots[h].key, &cur, key)) || cur == key) {
+                    atomic_fetch_add(&nslots[h].count, 1);
+                    break;
+                }
+            }
+            break;
+        }
+    }
+}
+
 void fnprof_hit(uint64_t a, uint64_t lr, uint64_t x0) {
+    if (near_on) near_check(a);
     if (bt_n) bt_check(a, lr, x0);
     if (args_n) args_check(a, lr);
     uint32_t h = (uint32_t)((a >> 2) * 0x9E3779B1u) & (NSLOT - 1);
@@ -133,13 +165,29 @@ void fnprof_frame(uint64_t frame) {
 }
 
 // the `fnprof` command (control_prof.c): counting turned on (the counts cleared) and off (written to path) at any time
-void fnprof_start(void) {
+void fnprof_start(const float *near, float r) {
     for (int i = 0; i < NSLOT; i++) atomic_store(&slots[i].addr, 0), atomic_store(&slots[i].count, 0);
+    for (int i = 0; i < (1 << 14); i++) atomic_store(&nslots[i].key, 0), atomic_store(&nslots[i].count, 0);
+    near_on = near != NULL;
+    if (near) memcpy(near_p, near, sizeof near_p), near_r = r;
     g_fnprof = 1;
 }
 
 int fnprof_stop(const char *path) {
     g_fnprof = 0;
+    if (near_on) {
+        near_on = 0;
+        char np[600];
+        snprintf(np, sizeof np, "%s.near", path);
+        FILE *nf = fopen(np, "w");
+        for (int i = 0; nf && i < (1 << 14); i++)
+            if (nslots[i].key) {
+                uint64_t k = nslots[i].key;
+                fprintf(nf, "%llx x%d +%#x %llu\n", (unsigned long long)(k & 0xffffffffffffull), (int)(k >> 56),
+                        (unsigned)((k >> 48) & 0xff), (unsigned long long)nslots[i].count);
+            }
+        if (nf) fclose(nf);
+    }
     uint64_t (*rows)[2] = malloc(sizeof(uint64_t[2]) * NSLOT);
     int n = 0;
     for (int i = 0; i < NSLOT; i++)

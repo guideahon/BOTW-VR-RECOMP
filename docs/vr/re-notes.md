@@ -141,6 +141,18 @@ gaze already aims them, which works). On 1.9.0, with the scratch save (Stasis), 
 - `MagnetAim2DPosOffsetY` (a Magnesis parameter, main+0x14e7074 sets it up at obj + 0xb30) suggests a 2D aim point,
   but no screen-centre pair (640, 360 or 0.5, 0.5) appears or changes in memory when aiming.
 
+Second round (`fnprof start <x> <y> <z> <r>`: also which functions get, in x0..x7, a pointer to three floats within r
+of a point; `<file>.near` lists function, register, offset):
+- Given the drawn eye while aiming, the only aim-only function is main+0x1546450 (an angle wrap) with x1 a ray on the
+  caller's stack: the direction at +0 (the gaze pitched ~15 degrees down while aiming), the eye at +0x10. Its callers
+  (main+0x10e6538, 0x10e7194 from 0x10e68a0, under the actor update 0x1525f3c -> 0x10e753c -> 0x10e5c64) are Link's
+  look-at IK (bone indices at +0x138, angle limits 0.9 / 0.86): the body turning to the aim, fed with the aim ray, not
+  the pick of the target.
+- Given that direction (computed live from `camera`, r 0.03), no aim-only function but that helper: the ray is made by
+  code that runs when not aiming too.
+- Given the game's own orbit camera eye (`cell camera.eye`, which moves closer while aiming), only main+0xc32fb8 (sets
+  flag 0x20 at camera + 0x800) is new: not the ray.
+
 As with the bow before its shot was found, the aim most likely follows the camera's matrix, which is also what is
 drawn; the way on is the ray's own code: the raycast the rune's target search makes (its start at the camera's eye,
 the direction its forward), found among the aim-only functions above with `SAVAGEWIND_FNPROF_ARGS` (x0..x5 at entry:

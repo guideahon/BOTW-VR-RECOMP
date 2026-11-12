@@ -1265,6 +1265,8 @@ static bool guest_mapped(uint64_t a, uint64_t n) {
     return false;
 }
 
+bool kernel_guest_mapped(uint64_t a, uint64_t n) { return guest_mapped(a, n); }   // (fnprof.c)
+
 // The current guest thread's lr and frame-record chain as of its last call boundary (dispatch.c, SAVAGEWIND_WATCH:
 // who called the memcpy that wrote a watched range).
 void kernel_log_guest_chain(void) {
