@@ -90,8 +90,8 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 - [ ] Video > Antialiasing: TAA ahora funciona en el visor (antes se cambiaba solo a SMAA). Bordes más suaves, menos
       parpadeo del pasto; sin imagen doble ni "fantasmas" de un ojo en el otro, también al girar o caminar rápido.
-- [ ] Con TAA cada ojo vuelve al campo simétrico (el propio de cada ojo, 4j, por ahora solo sin TAA): compará cuál te
-      gusta más, TAA o SMAA con el campo propio (más nítido).
+- [ ] TAA y el campo propio de cada ojo (4j) andan juntos: compará TAA (más suave) y SMAA (más definido, más
+      "serrucho" en el pasto) y decime cuál preferís como predeterminado.
 - [ ] Si TAA se ve mal: `SAVAGEWIND_VR_TAA=0` vuelve a SMAA.
 
 ## 4j. Campo de visión propio de cada ojo (nuevo)

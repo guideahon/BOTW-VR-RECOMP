@@ -722,6 +722,15 @@ bool mvec_camera_now(float jitter[2], float *near_, float *far_, float *fov_y) {
     MvecCamera now;
     if (cur < 0 || !camera_compute(&slots[cur], &now)) return false;
     jitter[0] = -now.proj[2], jitter[1] = -now.proj[6];
+#ifdef SW_VR
+    {   // VR: each eye's off-centre frustum is a projection offset too (vr_persp_offset), the same every frame of that
+        // eye: not jitter. In the matrix it is -2 and +2 times its fractions (y the other way round); taken out, TAA's
+        // jitter is the sub-pixel one again (left in, ~125 and ~60 pixels, TAA's picture went black)
+        extern bool vr_offset_now(float *x, float *y);
+        float ox, oy;
+        if (vr_offset_now(&ox, &oy)) jitter[0] -= 2 * ox, jitter[1] += 2 * oy;
+    }
+#endif
     // (OpenGL-style rows: [2][2] = -(f + n) / (f - n), [2][3] = -2fn / (f - n), [1][1] = 1 / tan(fovy / 2))
     float a = now.proj[10], b = now.proj[11];
     *near_ = b / (a - 1), *far_ = b / (a + 1), *fov_y = 2 * atanf(1 / now.proj[5]);
