@@ -24,7 +24,11 @@ def boot(save, out, env=None, script=None):
     e = {'SAVAGEWIND_VR_STEREO': '0'}
     e.update(env or {})
     game, proc, log = T.launch(targs, out, script or ['0 head 0 1.7 0 0 0 0'], frame_rate=0, extra_env=e)
-    T.ready(targs, game, proc)
+    try:
+        T.ready(targs, game, proc)
+    except BaseException:   # (a boot that failed: the game is not left running, it would answer the next test's port)
+        perf_routes.stop_game(game, proc, log)
+        raise
     return game, proc, log
 
 
