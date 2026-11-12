@@ -71,7 +71,10 @@ def best_shift(a, b, r=12):
 
 
 def run(save, out, env_extra):
-    env = {'FAKE_XR_CAPTURE_EVERY': '450', 'SAVAGEWIND_VR_STEREO': '1', 'SAVAGEWIND_VR_ROOMSCALE': '0'}
+    # Compare projection geometry without TAA's per-frame subpixel sample or separate-run history noise. TAA has its
+    # own stereo test (test_vr_taa.py); this test checks only that the asymmetric FOV lands at the right view angles.
+    env = {'FAKE_XR_CAPTURE_EVERY': '450', 'SAVAGEWIND_VR_STEREO': '1', 'SAVAGEWIND_VR_ROOMSCALE': '0',
+           'SAVAGEWIND_JITTER': '0'}
     env.update(env_extra)
     game, proc, log = re_run.boot(save, out, env, ['0 head 0 1.7 0 0 0 0'])
     try:
