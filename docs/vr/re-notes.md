@@ -163,6 +163,14 @@ look empty. It now enables collection after resetting the filters. A 3 s idle / 
 functions; aim added 1,114 unique functions. Those candidates still need to be separated from unrelated frame work before
 patching a target ray.
 
+Candidate filtering (2026-11-12): main+0x165460, reached through a generic geometry helper, looked like a possible ray
+query. Its two input position records were near Link's body, and its call count fell from 8,260 idle to 5,821 while
+aiming, so it is not established as the rune target ray and is not hooked. Another aim-only address, 0x7002746970, first
+looked unclassified because `tools/sym.py` assumed a fixed SDK base and omitted subsdk0. `tools/layout.py` gives the
+actual 1.9.0 layout (main 0x7000000000, subsdk0 0x7001e98000, sdk 0x7002504000); the address resolves to
+`sdk+0x242970`, `nn::audio::server::VoiceContext::UpdateStateByDspShared()`, unrelated audio work. The symbolizer now uses the same
+computed load layout as the runtime, avoiding this false lead. The rune target search remains unlocated.
+
 ## Quick-selector prompt visual check (2026-11-12)
 
 With `quick_drop=1`, the saved Spanish-language game and fake_xr, a 1030x579 selector capture shows the overlay prompts

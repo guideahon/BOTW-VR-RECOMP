@@ -1,19 +1,23 @@
 """Symbolize guest addresses: sym.py <addr>... [--dis N]"""
 import bisect
+import os
 import struct
 import subprocess
 import sys
 
 import capstone
+import layout
 from nso import Nso
 
-MODS = [('main', 0x7000000000), ('sdk', 0x7004000000)]
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+EXEFS_DIR = os.path.join(os.path.dirname(TOOLS_DIR), 'extracted', 'exefs')
+MODS = [(name, base, size) for name, base, size, _ in layout.compute(EXEFS_DIR)]
 _cache = {}
 
 
 def mod(name):
     if name not in _cache:
-        n = Nso(f'../extracted/exefs/{name}')
+        n = Nso(os.path.join(EXEFS_DIR, name))
         syms = sorted((s[3], s[0]) for s in n.syms if s[2] and (s[1] & 0xF) == 2)
         _cache[name] = (n, syms, [a for a, _ in syms])
     return _cache[name]
@@ -24,9 +28,9 @@ def demangle(s):
 
 
 def lookup(addr):
-    for name, base in MODS:
-        n, syms, addrs = mod(name)
-        if base <= addr < base + n.size:
+    for name, base, size in MODS:
+        if base <= addr < base + size:
+            n, syms, addrs = mod(name)
             off = addr - base
             i = bisect.bisect_right(addrs, off) - 1
             if i >= 0:
