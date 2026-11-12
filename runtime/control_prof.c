@@ -267,6 +267,19 @@ static void cmd_gpuprof(int argc, char **argv, ControlReply *r) {
     control_field_str(r, "status", "requested: GPU time per pass of the next frame, as [gpuprof] lines in the log");
     control_field_int(r, "presents", (int64_t)renderer_present_count());
 }
+// (reverse engineering) fnprof start | stop <file>: guest function entries counted between the two (runtime/fnprof.c)
+static void cmd_fnprof(int argc, char **argv, ControlReply *r) {
+    extern void fnprof_start(void);
+    extern int fnprof_stop(const char *path);
+    if (argc == 2 && !strcmp(argv[1], "start")) {
+        fnprof_start();
+        control_field_str(r, "status", "counting");
+    } else if (argc == 3 && !strcmp(argv[1], "stop")) {
+        int n = fnprof_stop(argv[2]);
+        if (n < 0) { control_fail(r, "fnprof: could not write %s", argv[2]); return; }
+        control_field_int(r, "functions", n);
+    } else control_fail(r, "Usage: fnprof start | stop <file>");
+}
 // prof [start | stop | toggle | status | report]: the on-demand profiler (runtime/prof.h; report with tools/swprof.py)
 static void cmd_prof(int argc, char **argv, ControlReply *r) {
     char out[512];
@@ -420,6 +433,7 @@ void control_prof_init(void) {
         {"gpuprof", "", "GPU time per pass of the next frame, to the log", cmd_gpuprof},
         {"threads", "", "CPU time so far of each game thread and the render threads (ms)", cmd_threads},
         {"prof", "[start | stop | toggle | status | report]", "Profiler capture (swprof.py reads the file)", cmd_prof},
+        {"fnprof", "start | stop <file>", "(reverse engineering) Count guest function entries between start and stop", cmd_fnprof},
     };
     ns0 = plat_now_ns();
 #ifdef _WIN32

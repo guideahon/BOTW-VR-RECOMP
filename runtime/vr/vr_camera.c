@@ -286,8 +286,13 @@ static bool near9(const float *a, const float *b) {
     return true;
 }
 
+// (reverse engineering, `vr`) the last view camera given the head: its sead::LookAtCamera (f - 0x38)
+static _Atomic uint64_t last_cam;
+uint64_t vr_lookat_camera(void) { return last_cam; }
+
 // rt_lookat, for a view camera (eye off the origin, up near +y): f = eye[3], at[3], up[3]
 void vr_camera_lookat(float *f) {
+    last_cam = (uint64_t)(uintptr_t)f - 0x38;
     if (!vr_world_view()) {
         c.out_ok = false;
         return;

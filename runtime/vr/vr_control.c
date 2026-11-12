@@ -1,4 +1,5 @@
 // The `vr` control command (docs/CONTROL.md): what the VR mode is doing. Read only, so every player may run it.
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,8 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_int(r, "weapons_moved", (int64_t)vr_weapons_moved());
     control_field_int(r, "swing_hits", (int64_t)vr_swing_hits());
     { extern uint64_t vk_vr_shadow_passes_skipped(void); control_field_int(r, "shadow_passes_skipped", (int64_t)vk_vr_shadow_passes_skipped()); }
+    { extern uint64_t vr_lookat_camera(void); char b[32]; snprintf(b, sizeof b, "0x%llx", (unsigned long long)vr_lookat_camera());
+      control_field_str(r, "lookat_camera", b); }
     { extern uint64_t vr_window_left_frames(void); control_field_int(r, "window_left_frames", (int64_t)vr_window_left_frames()); }
     { extern uint64_t vr_vignette_frames(void); extern float vr_vignette_level(void); extern float vr_stick_motion(void);
       { extern uint64_t vr_marker_frames(void); control_field_int(r, "marker_frames", (int64_t)vr_marker_frames()); }

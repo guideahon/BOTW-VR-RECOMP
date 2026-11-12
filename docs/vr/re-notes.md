@@ -123,6 +123,29 @@ hook_ChangeWeaponMtx: `Weapon_L` / `Weapon_R` of "GameROMPlayer"). On 1.9.0:
 - Checked by tools/vr/test_vr_weapon_hits.py (the hand 0.6 m right: the weapon's matrices 0.72 m from Link with it,
   0.42 m without).
 
+## Runes aimed by the hands (2026-11-12): research, not done
+
+Wanted: Stasis / Magnesis / Cryonis target what the main hand points at, not the head's gaze (in first person the
+gaze already aims them, which works). On 1.9.0, with the scratch save (Stasis), `press l` enters the rune's aim
+(reticle, "Paralizar" prompt):
+
+- `fnprof start` / `fnprof stop <file>` (new control command, runtime/fnprof.c) over 3 s idle and 3 s aiming: 251
+  functions only while aiming. A block at main+0xb9bd78 .. 0xb9cc38 (twice a frame), next to the `MagneCatchCatch`
+  xref (0xb99974), is the rune's UI and state flags (main+0xb94b10 everywhere), not the ray. Others once or a few times
+  a frame: 0x12e1b58 / 0x12e1b64 (type-id checks, 25 a frame, from 0x11846f4 .. 0x11847f0: a candidate's position by
+  its kind), 0xfab840 (from 0x1070968 .. 0x1070a78), 0x1546450 (from 0x10e91c0 .. 0x10e9240), 0x7903b4 (from
+  0x10726f4, 0x1072178, 0x56d970), 0x12d4df0, 0xfabd40, 0x10fa004, 0x10e93c8, 0x573538 (from 0xb93048).
+- The view camera (`vr` now reports `lookat_camera`, the sead::LookAtCamera rt_lookat last gave the head) is read by
+  dozens of functions a frame (`mem watch` on its matrix, eye and at); the ones new while aiming were not told apart
+  from that noise yet.
+- `MagnetAim2DPosOffsetY` (a Magnesis parameter, main+0x14e7074 sets it up at obj + 0xb30) suggests a 2D aim point,
+  but no screen-centre pair (640, 360 or 0.5, 0.5) appears or changes in memory when aiming.
+
+As with the bow before its shot was found, the aim most likely follows the camera's matrix, which is also what is
+drawn; the way on is the ray's own code: the raycast the rune's target search makes (its start at the camera's eye,
+the direction its forward), found among the aim-only functions above with `SAVAGEWIND_FNPROF_ARGS` (x0..x5 at entry:
+a start and end Vec3 near the eye) and then overridden with the hand's ray, as `_arrow_aim` does for arrows.
+
 ## The bow aimed by the hands (2026-11-11): done
 
 **Found.** BetterVR (src/hooking/bow.cpp) overrides two things at the shot: the arrow's launch transform and the

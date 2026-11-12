@@ -132,6 +132,26 @@ void fnprof_frame(uint64_t frame) {
     from = -1;
 }
 
+// the `fnprof` command (control_prof.c): counting turned on (the counts cleared) and off (written to path) at any time
+void fnprof_start(void) {
+    for (int i = 0; i < NSLOT; i++) atomic_store(&slots[i].addr, 0), atomic_store(&slots[i].count, 0);
+    g_fnprof = 1;
+}
+
+int fnprof_stop(const char *path) {
+    g_fnprof = 0;
+    uint64_t (*rows)[2] = malloc(sizeof(uint64_t[2]) * NSLOT);
+    int n = 0;
+    for (int i = 0; i < NSLOT; i++)
+        if (slots[i].addr) { rows[n][0] = slots[i].addr; rows[n][1] = slots[i].count; n++; }
+    qsort(rows, n, sizeof rows[0], cmp);
+    FILE *f = fopen(path, "w");
+    for (int i = 0; f && i < n; i++) fprintf(f, "%llx %llu\n", (unsigned long long)rows[i][0], (unsigned long long)rows[i][1]);
+    if (f) fclose(f);
+    free(rows);
+    return f ? n : -1;
+}
+
 // SAVAGEWIND_FNPROF=0:<to>: profile from process start (threads the game starts before the first frame)
 __attribute__((constructor)) static void fnprof_early(void) {
     const char *e = getenv("SAVAGEWIND_FNPROF");
