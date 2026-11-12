@@ -35,7 +35,7 @@
 #include "vr_options.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_COUNT };
+enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_COUNT };
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -191,6 +191,8 @@ void vr_vk_session_start(VkInstance vk, VkPhysicalDevice pd, VkDevice dev, uint3
 
 // ---- swapchains: the window image's size, in the sRGB twin of its format (its bytes are already gamma-encoded, so
 // they are copied as they are and the runtime reads them as sRGB) ----
+static void vig_dropped(void);
+
 static void drop_swapchain(int i) {
     swapchain *s = &g.sc[i];
     if (s->h == XR_NULL_HANDLE) return;
@@ -200,6 +202,7 @@ static void drop_swapchain(int i) {
     memset(s, 0, sizeof *s);
     if (i < 2) g.eye_ready[i] = false;
     if (i == SC_HUD) g.hud_ready = false;
+    if (i == SC_VIGNETTE) vig_dropped();
 }
 
 static VkFormat srgb_twin(VkFormat f) {
@@ -239,7 +242,7 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     for (uint32_t k = 0; k < s->n; k++) s->images[k] = imgs[k].image;
     s->extent = ext;
     s->format = src;
-    static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD"};
+    static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette"};
     LOG("[vr] %s swapchain %ux%u, %u images\n", names[i], ext.width, ext.height, s->n);
     return true;
 }
@@ -403,6 +406,99 @@ static void arc_draw(VkCommandBuffer cb, VkImage dst, VkExtent2D ext, VkFormat s
     arc.frames++;
 }
 
+// ---- the comfort vignette (Options > VR > Comfort vignette): while the sticks walk or turn Link (vr_input.c
+// vr_stick_motion), the edges of the view go dark: a quad in the head's space over the eyes' pictures. Its image is
+// black with an alpha ring; VIG_LEVELS of them (the ring closing in) are made once in a buffer, and the swapchain gets
+// another only when the level changes ----
+#define VIG_SIZE 128
+#define VIG_LEVELS 12
+#define VIG_SPAN 2.0f     // the quad's half-width, in tangents (1 m away, 4 m across: past a Quest's field)
+static struct {
+    VkBuffer buf;          // VIG_LEVELS images, RGBA
+    VmaAllocation mem;
+    bool failed;
+    float level;           // smoothed, 0..1
+    int shown;             // the level whose image the swapchain has (0, -1: none)
+    bool ready;            // ... released
+    uint64_t frames;       // headset frames it was shown in
+} vig = {.shown = -1};
+
+float vr_stick_motion(void);   // vr_input.c
+uint64_t vr_vignette_frames(void) { return vig.frames; }
+float vr_vignette_level(void) { return vig.level; }
+
+static void vig_dropped(void) { vig.shown = -1, vig.ready = false; }
+
+static bool vig_buffer(void) {
+    if (vig.buf) return true;
+    if (vig.failed) return false;
+    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = (VkDeviceSize)VIG_LEVELS * VIG_SIZE * VIG_SIZE * 4,
+                             .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO,
+                                  .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
+    VmaAllocationInfo info;
+    if (vmaCreateBuffer(g_vk.vma, &bi, &ai, &vig.buf, &vig.mem, &info) != VK_SUCCESS || !info.pMappedData) {
+        vig.failed = true;
+        vig.buf = VK_NULL_HANDLE;
+        return false;
+    }
+    uint8_t *p = info.pMappedData;
+    for (int l = 0; l < VIG_LEVELS; l++) {
+        // level l + 1: clear within `clear` (tangents: 1.0 is 45 degrees off the line of sight), dark from clear + 0.5;
+        // the strongest leaves about 30 degrees around the gaze clear
+        float s = (float)(l + 1) / VIG_LEVELS, clear = 1.9f - 1.35f * s;
+        for (int y = 0; y < VIG_SIZE; y++)
+            for (int x = 0; x < VIG_SIZE; x++) {
+                float tx = ((x + 0.5f) / VIG_SIZE * 2 - 1) * VIG_SPAN, ty = ((y + 0.5f) / VIG_SIZE * 2 - 1) * VIG_SPAN;
+                float r = sqrtf(tx * tx + ty * ty), t = (r - clear) / 0.5f;
+                t = t < 0 ? 0 : t > 1 ? 1 : t;
+                uint8_t *q = p + 4 * ((size_t)l * VIG_SIZE * VIG_SIZE + (size_t)y * VIG_SIZE + x);
+                q[0] = q[1] = q[2] = 0;
+                q[3] = (uint8_t)(255 * t * t * (3 - 2 * t) + 0.5f);
+            }
+    }
+    vmaFlushAllocation(g_vk.vma, vig.mem, 0, VK_WHOLE_SIZE);
+    return true;
+}
+
+// in a headset frame in play: the level now (from the option and the sticks), and its image into the swapchain when
+// it changed
+static void vignette(VkCommandBuffer cb) {
+    int opt = vr_opt(VR_OPT_VIGNETTE);
+    static const float strength[] = {0, 0.55f, 0.8f, 1.0f};
+    float want = opt > 0 && opt <= 3 ? strength[opt] * vr_stick_motion() : 0;
+    // (in: a time constant of 0.15 s; out: 0.3 s, nearly gone in a second)
+    float dt = g.period > 0 ? (float)g.period / 1e9f : 1 / 90.0f, k = want > vig.level ? dt / 0.15f : dt / 0.3f;
+    vig.level += (want - vig.level) * (k > 1 ? 1 : k);
+    if (vig.level < 0.01f) vig.level = 0;
+    int l = (int)(vig.level * VIG_LEVELS + 0.5f);   // (0: none)
+    if (l > VIG_LEVELS) l = VIG_LEVELS;
+    if (!l) {
+        if (vig.shown > 0) vig.shown = 0;   // (not shown; its image is made again next time)
+        return;
+    }
+    if (l == vig.shown || !vig_buffer()) return;
+    swapchain *s = &g.sc[SC_VIGNETTE];
+    if (s->h == XR_NULL_HANDLE && !make_swapchain(SC_VIGNETTE, (VkExtent2D){VIG_SIZE, VIG_SIZE}, VK_FORMAT_R8G8B8A8_UNORM) &&
+        !make_swapchain(SC_VIGNETTE, (VkExtent2D){VIG_SIZE, VIG_SIZE}, VK_FORMAT_B8G8R8A8_UNORM))   // (black: either order)
+        return;
+    uint32_t idx = 0;
+    if (!vr_xr_ok(xrAcquireSwapchainImage(s->h, NULL, &idx), "xrAcquireSwapchainImage")) return;
+    XrSwapchainImageWaitInfo wi = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO, NULL, XR_INFINITE_DURATION};
+    if (!vr_xr_ok(xrWaitSwapchainImage(s->h, &wi), "xrWaitSwapchainImage")) return;
+    VkImage dst = s->images[idx];
+    barrier(cb, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_NONE, 0,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    VkBufferImageCopy rg = {.bufferOffset = (VkDeviceSize)(l - 1) * VIG_SIZE * VIG_SIZE * 4,
+                            .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {VIG_SIZE, VIG_SIZE, 1}};
+    rec_CmdCopyBufferToImage(cb, vig.buf, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+    barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+    fr.release[SC_VIGNETTE] = true;
+    vig.shown = l;
+}
+
 // src (in layout src_layout: COLOR_ATTACHMENT_OPTIMAL for the window image, GENERAL for exec.c's images) into
 // swapchain i, made at its size in the sRGB twin of its format: acquired and waited here, released after the submission
 static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkExtent2D ext, VkFormat fmt) {
@@ -480,6 +576,7 @@ static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt
     if (!begin_headset_frame()) return;
     if (pres.world) {  // the right frame (stereo) or the only one (mono: both eyes see the left swapchain's picture)
         if (put_into(pres.eye == 1 ? SC_RIGHT : SC_LEFT, cb, scene, sl, sext, scene_fmt)) fr.kind = 2;
+        vignette(cb);
         if (split && put_into(SC_HUD, cb, hud, VK_IMAGE_LAYOUT_GENERAL, sext, hud_fmt)) {
             fr.hud = true;
             fr.hud_aspect = (float)sext.height / (float)sext.width;
@@ -501,12 +598,14 @@ static void end_frame(void *arg) {
             g.eye_ready[i] = true;
         }
         if (i == SC_HUD) g.hud_ready = true;
+        if (i == SC_VIGNETTE) vig.ready = true;
     }
     if (fr.active) {
-        XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD}, hudq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+        XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD}, hudq = {XR_TYPE_COMPOSITION_LAYER_QUAD},
+                               vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
         XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
         XrCompositionLayerProjectionView views[2];
-        const XrCompositionLayerBaseHeader *layers[2];
+        const XrCompositionLayerBaseHeader *layers[3];
         uint32_t n = 0;
         bool mono = fr.view.world && fr.view.eye < 0;
         if (fr.kind == 2 && (mono ? g.eye_ready[0] : g.eye_ready[0] && g.eye_ready[1])) {
@@ -523,6 +622,18 @@ static void end_frame(void *arg) {
             proj.viewCount = 2;
             proj.views = views;
             layers[n++] = (const XrCompositionLayerBaseHeader *)&proj;
+            if (vig.ready && vig.shown > 0) {   // the comfort vignette: over the scene, under the HUD
+                vigq.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                  XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+                vigq.space = g.view;
+                vigq.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+                vigq.pose = (XrPosef){{0, 0, 0, 1}, {0, 0, -1}};
+                vigq.size = (XrExtent2Df){2 * VIG_SPAN, 2 * VIG_SPAN};
+                vigq.subImage.swapchain = g.sc[SC_VIGNETTE].h;
+                vigq.subImage.imageRect = (XrRect2Di){{0, 0}, {VIG_SIZE, VIG_SIZE}};
+                layers[n++] = (const XrCompositionLayerBaseHeader *)&vigq;
+                vig.frames++;
+            }
             if (fr.hud && g.hud_ready) {  // the HUD, with the head, a little below the line of sight
                 hudq.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
                                   XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;

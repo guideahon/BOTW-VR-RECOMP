@@ -100,7 +100,7 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
     X(VR_OPT_HUD_GAZE, "vr_hud_follows_gaze", 1) /* 0 on: the HUD turns with the head; off: it stays ahead of the body */ \
     X(VR_OPT_ONE_HIT, "vr_one_hit_per_swing", 1) /* 0 on: a swing hits each enemy once */ \
     X(VR_OPT_THIRD_DISTANCE, "vr_third_person_distance", 0) /* third person: the camera's distance, % (0: 100) */ \
-    X(VR_OPT_EVENT_BARS, "vr_cutscene_black_bars", 0) /* 1: cutscenes on their camera shown flat, with their black bars */
+    X(VR_OPT_EVENT_BARS, "vr_cutscene_black_bars", 0) /* 1: cutscenes on their camera shown flat, with their black bars */     X(VR_OPT_VIGNETTE, "vr_comfort_vignette", 0) /* the edges darkened while the stick moves or turns: 0 off, 1 low, 2 medium, 3 high */
 #define VR_OPT_ENUM(id, key, inv) id,
 enum { VR_OPTIONS(VR_OPT_ENUM) VR_OPT_COUNT };
 

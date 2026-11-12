@@ -335,6 +335,7 @@ const char *bind_label(const Item &it, int) {
 const char *const k_vr_view[] = {"First person", "Third person"};
 const char *const k_vr_events[] = {"Automatic (as BetterVR)", "First person", "Cutscene camera", "Flat screen"};
 const char *const k_vr_turn[] = {"Smooth", "Snap", "Head only"};
+const char *const k_vr_vignette[] = {"Off", "Low", "Medium", "High"};
 const char *const k_vr_walk[] = {"Where you look", "Where the left hand points"};
 constexpr int k_vr_snap[] = {30, 45, 60, 90};
 constexpr int k_vr_speed[] = {60, 80, 100, 125, 150};
@@ -347,7 +348,9 @@ constexpr int k_vr_third[] = {50, 75, 100, 125, 150, 200};        // %
 Item vr_choice(const char *title, const char *desc, int opt, const char *const *names, int n) {
     Item it = choice(P_VR, title, desc, nullptr, nullptr, nullptr, nullptr, 0);
     it.arg = opt;
-    it.count = [](const Item &i) { return i.arg == VR_OPT_EVENTS ? 4 : i.arg == VR_OPT_TURN ? 3 : 2; };
+    it.count = [](const Item &i) {
+        return i.arg == VR_OPT_EVENTS || i.arg == VR_OPT_VIGNETTE ? 4 : i.arg == VR_OPT_TURN ? 3 : 2;
+    };
     it.get = [](const Item &i) { return g_settings.vr[i.arg]; };
     it.set = [](const Item &i, int x) { g_settings.vr[i.arg] = x; };
     (void)names, (void)n;
@@ -382,6 +385,11 @@ void build_vr_items(std::vector<Item> &v) {
                           "your head; the stick does not turn the view in first person.", VR_OPT_TURN, k_vr_turn, 3);
     turn.label = [](const Item &, int x) { return tr(k_vr_turn[x]); };
     v.push_back(turn);
+    Item vig = vr_choice("Comfort vignette", "Darkens the edges of the view while the sticks walk or turn Link, which "
+                         "eases motion sickness. Walking in your room does not trigger it.", VR_OPT_VIGNETTE,
+                         k_vr_vignette, 4);
+    vig.label = [](const Item &, int x) { return tr(k_vr_vignette[x]); };
+    v.push_back(vig);
     Item snap = choice(P_VR, "Snap angle", "How far one snap turns.", [](const Item &) { return N(k_vr_snap); },
                        [](const Item &, int x) {
                            static char b[4][16];

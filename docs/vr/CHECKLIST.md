@@ -86,6 +86,15 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4l. Viñeta de confort (nuevo, en Opciones > RV)
+
+- [ ] Opciones > RV > Viñeta de confort en Alta: al caminar con el stick o girar con el stick derecho, los bordes de la
+      vista se oscurecen suavemente y se cierran hacia el centro; al soltar, en menos de un segundo desaparecen.
+- [ ] Baja y Media: lo mismo pero menos cerrado. Desactivada (por defecto): nunca aparece.
+- [ ] Con giro por pasos, cada paso hace un "parpadeo" corto de viñeta.
+- [ ] Caminar de verdad en la habitación (roomscale) NO la activa.
+- [ ] El HUD queda por encima de la viñeta (se lee igual). Decime si ayuda con el mareo o si la querés más/menos fuerte.
+
 ## 4k. TAA en estéreo (nuevo)
 
 - [ ] Video > Antialiasing: TAA ahora funciona en el visor (antes se cambiaba solo a SMAA). Bordes más suaves, menos

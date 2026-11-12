@@ -25,6 +25,8 @@ static int from_env(int id, const char *e) {
     case VR_OPT_HUD_SIZE: return atoi(e) >= 25 && atoi(e) <= 300 ? atoi(e) : 0;           // (percent)
     case VR_OPT_BOW_AIM: return !strcmp(e, "head");
     case VR_OPT_EVENT_BARS: return *e == '1';
+    case VR_OPT_VIGNETTE: return !strcmp(e, "low") ? 1 : !strcmp(e, "medium") ? 2 : !strcmp(e, "high") ? 3 :
+                                 *e >= '0' && *e <= '3' && !e[1] ? *e - '0' : 0;
     default: return *e == '0';   // (the toggles on by default: "0" turns them off)
     }
 }
@@ -43,6 +45,7 @@ static const char *const env_names[VR_OPT_COUNT] = {
     [VR_OPT_HUD_DISTANCE] = "SAVAGEWIND_VR_HUD_DISTANCE", [VR_OPT_HUD_SIZE] = "SAVAGEWIND_VR_HUD_SIZE",
     [VR_OPT_HUD_GAZE] = "SAVAGEWIND_VR_HUD_FOLLOWS_GAZE", [VR_OPT_ONE_HIT] = "SAVAGEWIND_VR_ONE_HIT",
     [VR_OPT_THIRD_DISTANCE] = "SAVAGEWIND_VR_THIRD_DISTANCE", [VR_OPT_EVENT_BARS] = "SAVAGEWIND_VR_CUTSCENE_BARS",
+    [VR_OPT_VIGNETTE] = "SAVAGEWIND_VR_VIGNETTE",
 };
 
 int vr_opt(int id) {
