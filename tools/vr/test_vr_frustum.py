@@ -51,17 +51,24 @@ def to_angles(path, fov):
 
 
 def best_shift(a, b, r=12):
-    """the (dx, dy) in grid samples that best lines b up with a, over the sky-free lower 2/3 and the far middle"""
+    """the (dx, dy) in grid samples that best lines b up with a over the central landmark band"""
     best = None
     for dy in range(-r, r + 1, 2):
         for dx in range(-r, r + 1):
             s = n = 0
-            for j in range(len(GY) // 3, len(GY) - r, 3):
+            for j in range(0, len(GY), 3):
+                if not -0.25 <= GY[j] <= 0.25:  # the landmark band around the horizon: less moving sky and foreground
+                    continue
                 ra, rb = a[j], b[j + dy] if 0 <= j + dy < len(GY) else None
                 if rb is None:
                     continue
-                for i in range(r, len(GX) - r, 3):
-                    x, y = ra[i], rb[i + dx]
+                for i in range(0, len(GX), 3):
+                    if not -0.45 <= GX[i] <= 0.25:
+                        continue
+                    ii = i + dx
+                    if not 0 <= ii < len(GX):
+                        continue
+                    x, y = ra[i], rb[ii]
                     if x is not None and y is not None:
                         s += abs(x - y)
                         n += 1
@@ -71,10 +78,10 @@ def best_shift(a, b, r=12):
 
 
 def run(save, out, env_extra):
-    # Compare projection geometry without TAA's per-frame subpixel sample or separate-run history noise. TAA has its
-    # own stereo test (test_vr_taa.py); this test checks only that the asymmetric FOV lands at the right view angles.
+    # Compare projection geometry without TAA's per-frame sample or temporal history. TAA has its own stereo test
+    # (test_vr_taa.py); this test checks only that the asymmetric FOV lands at the right view angles.
     env = {'FAKE_XR_CAPTURE_EVERY': '450', 'SAVAGEWIND_VR_STEREO': '1', 'SAVAGEWIND_VR_ROOMSCALE': '0',
-           'SAVAGEWIND_JITTER': '0'}
+           'SAVAGEWIND_VR_TAA': '0', 'SAVAGEWIND_JITTER': '0'}
     env.update(env_extra)
     game, proc, log = re_run.boot(save, out, env, ['0 head 0 1.7 0 0 0 0'])
     try:
