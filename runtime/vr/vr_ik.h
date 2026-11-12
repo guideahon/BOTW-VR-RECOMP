@@ -83,6 +83,28 @@ static inline vr_ik_result vr_ik_two_bone(vr_vec3 shoulder, vr_vec3 elbow, vr_ve
     return r;
 }
 
+// a bone matrix's rotation (its axes normalized: a scale left out) as a quaternion
+static inline vr_quat vr_bm_rot(const float *m) {
+    vr_vec3 x = vr_v3_normalize(vr_v3(m[0], m[1], m[2])), y = vr_v3_normalize(vr_v3(m[4], m[5], m[6])),
+            z = vr_v3_normalize(vr_v3(m[8], m[9], m[10]));
+    float t = x.x + y.y + z.z;
+    vr_quat q;
+    if (t > 0) {
+        float s = sqrtf(t + 1) * 2;
+        q = (vr_quat){(y.z - z.y) / s, (z.x - x.z) / s, (x.y - y.x) / s, 0.25f * s};
+    } else if (x.x > y.y && x.x > z.z) {
+        float s = sqrtf(1 + x.x - y.y - z.z) * 2;
+        q = (vr_quat){0.25f * s, (y.x + x.y) / s, (z.x + x.z) / s, (y.z - z.y) / s};
+    } else if (y.y > z.z) {
+        float s = sqrtf(1 + y.y - x.x - z.z) * 2;
+        q = (vr_quat){(y.x + x.y) / s, 0.25f * s, (z.y + y.z) / s, (z.x - x.z) / s};
+    } else {
+        float s = sqrtf(1 + z.z - x.x - y.y) * 2;
+        q = (vr_quat){(z.x + x.z) / s, (z.y + y.z) / s, 0.25f * s, (x.y - y.x) / s};
+    }
+    return vr_quat_normalize(q);
+}
+
 // out = a * b, bone matrices as affine transforms (the fourth row taken as 0 0 0 1)
 static inline void vr_bm_mul(const float *a, const float *b, float *out) {
     float r[16];

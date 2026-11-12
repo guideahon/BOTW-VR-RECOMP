@@ -189,6 +189,24 @@ static void squeeze(float *m) {
     if (k.chest_ok) m[12] = k.chest[0], m[13] = k.chest[1], m[14] = k.chest[2];
 }
 
+// the turn from a controller's grip axes (OpenXR: -z ahead through the fist, +y up from it) to Link's wrist bone's, per
+// hand (his skeleton mirrors them): BetterVR's (src/hooking/skeleton.cpp, the same model on the Wii U), its glm
+// products written as ours (a after b)
+static vr_quat wrist_correction(int side) {
+    static vr_quat c[2];
+    static bool made;
+    if (!made) {
+        const float d = 3.14159265f / 180;
+        vr_vec3 X = vr_v3(1, 0, 0), Y = vr_v3(0, 1, 0), Z = vr_v3(0, 0, 1);
+        c[0] = vr_quat_mul(vr_quat_mul(vr_quat_axis_angle(Y, 90 * d), vr_quat_axis_angle(Z, -90 * d)),
+                           vr_quat_axis_angle(Z, 30 * d));
+        c[1] = vr_quat_mul(vr_quat_mul(vr_quat_mul(vr_quat_axis_angle(Z, -90 * d), vr_quat_axis_angle(Y, -180 * d)),
+                                       vr_quat_axis_angle(X, 270 * d)), vr_quat_axis_angle(Z, 30 * d));
+        made = true;
+    }
+    return c[side];
+}
+
 // one arm's solution from Link's skeleton and the controller
 static void solve_arm(uint64_t world, const skel_info *s, int side) {
     k.arm[side].ok = false;
@@ -206,10 +224,22 @@ static void solve_arm(uint64_t world, const skel_info *s, int side) {
     out = ol > 1e-4f ? vr_v3_scale(out, 1 / ol) : vr_v3(0, 0, 0);
     vr_vec3 pole = vr_v3_add(vr_v3(0, -1, 0), vr_v3_scale(out, 0.6f));
     vr_ik_result r = vr_ik_two_bone(sh, el, wr, target, pole, 0.75f);
-    // the hand: from the forearm's direction (after the solve) to where the controller points
-    vr_vec3 fore = vr_v3_normalize(vr_v3_sub(r.wrist, r.elbow));
-    vr_vec3 point = vr_quat_rotate(hw.q, vr_v3(0, 0, -1));
-    vr_quat hand_turn = vr_quat_arc(fore, vr_v3_normalize(point));
+    // the hand: turned as the controller is (BetterVR's skeleton.cpp: the grip's orientation times a fixed turn per hand
+    // that takes the controller's axes to the wrist bone's), from where the arm's turns leave it; SAVAGEWIND_VR_HAND_ROLL
+    // =0: only pointed where the controller points, its roll the animation's (as before)
+    static int roll = -1;
+    if (roll < 0) roll = !(getenv("SAVAGEWIND_VR_HAND_ROLL") && *getenv("SAVAGEWIND_VR_HAND_ROLL") == '0');
+    vr_quat hand_turn;
+    if (roll) {
+        vr_quat q0 = vr_bm_rot(bone_m(world, s->wrist[side]));
+        vr_quat after = vr_quat_mul(r.lower, vr_quat_mul(r.upper, q0));
+        vr_quat target_q = vr_quat_mul(hw.q, wrist_correction(side));
+        hand_turn = vr_quat_normalize(vr_quat_mul(target_q, vr_quat_conj(after)));
+    } else {
+        vr_vec3 fore = vr_v3_normalize(vr_v3_sub(r.wrist, r.elbow));
+        vr_vec3 point = vr_quat_rotate(hw.q, vr_v3(0, 0, -1));
+        hand_turn = vr_quat_arc(fore, vr_v3_normalize(point));
+    }
     k.arm[side].ok = true;
     k.arm[side].shoulder = sh, k.arm[side].elbow = r.elbow, k.arm[side].wrist = r.wrist;
     k.arm[side].upper = r.upper, k.arm[side].lower = r.lower, k.arm[side].hand = hand_turn;
