@@ -179,6 +179,13 @@ actual 1.9.0 layout (main 0x7000000000, subsdk0 0x7001e98000, sdk 0x7002504000);
 `sdk+0x242970`, `nn::audio::server::VoiceContext::UpdateStateByDspShared()`, unrelated audio work. The symbolizer now uses the same
 computed load layout as the runtime, avoiding this false lead. The rune target search remains unlocated.
 
+Proximity helper filtered (2026-11-12): main+0x11848c0 calls main+0x11846c0 to get a shape's centre, measures its distance
+from the Vec3 passed in x1, subtracts a radius and clamps the result to 0..1. Its caller main+0x13a4e34 stores that scalar;
+the point is passed through main+0x13a4dc8. With `SAVAGEWIND_FNPROF_ARGS` during L-aim, x1's first three floats were
+(-940.35, 225.16, 1879.54). Repeating with fake_xr head yaw 30 degrees left those floats unchanged (the game reported
+Link yaw 33.8 degrees), so this path did not pass the expected view-dependent point in that check. It is not established
+as the rune ray and remains unhooked.
+
 ## Quick-selector prompt visual check (2026-11-12)
 
 With `quick_drop=1`, the saved Spanish-language game and fake_xr, a 1030x579 selector capture shows the overlay prompts
