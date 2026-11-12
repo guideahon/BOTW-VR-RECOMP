@@ -187,6 +187,15 @@ int framepace_target(void) {
     if (event == -2) event = env_int("SAVAGEWIND_EVENT_FPS", 0);
     int fps = forced >= 0 ? forced : g_settings.fps_limit;
     if (fps < 0) fps = FPS_DEFAULT;
+#ifdef SW_VR
+    // VR: the headset paces the frames (xrWaitFrame), two game frames a headset frame in stereo: Video > Frame rate
+    // (60 by default: 30 a second in each eye) and the cutscenes' 30 would hold it back. A movie keeps its own rate.
+    extern bool vr_paces(void);
+    if (vr_paces() && forced < 0) {
+        if (movie != 0 && __atomic_load_n(&g_movie_playing, __ATOMIC_RELAXED) > 0) return movie > 0 ? movie : g_movie_fps;
+        return 0;
+    }
+#endif
     if (movie != 0 && __atomic_load_n(&g_movie_playing, __ATOMIC_RELAXED) > 0) {
         int cap = movie > 0 ? movie : g_movie_fps;
         if (fps == 0 || fps > cap) fps = cap;
@@ -208,6 +217,10 @@ int framepace_target(void) {
 // frame rate stays under it there, at refresh - refresh^2 / 3600 (NVIDIA Reflex's cap: 59 fps at 60 Hz, 138 at 144,
 // 224 at 240). Fast (MAILBOX) and Off (IMMEDIATE) never wait for the display: no cap.
 static double vsync_cap(void) {
+#ifdef SW_VR
+    extern bool vr_paces(void);
+    if (vr_paces()) return 0;   // (the window's present does not wait for the display in VR: wanted_present_mode)
+#endif
     if (g_settings.vsync != VSYNC_ON && g_settings.vsync != VSYNC_ADAPTIVE) return 0;
     double hz = winsize_refresh_rate();
     // SAVAGEWIND_VSYNC_MARGIN=0: the cap at the refresh rate itself. The margin is for VRR; on a fixed-rate display (the

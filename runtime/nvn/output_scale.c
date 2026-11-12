@@ -114,7 +114,18 @@ void output_scale(double dw, double dh, bool reshape_allowed, OutScale *o) {
     // (#125); the HUD keeps its 16:9 layout in the middle either way. The start screen and its menus, a 16:9 layout
     // over 16:9 pictures with no world to show more of, keep the 16:9 picture with bars, and so does the loading screen
     // (#98: widened, its tip went to the window's edges and its logo stayed in the 16:9 middle).
-    bool reshape = reshape_allowed && fabs(shape - 1.0) > 0.005 && !framepace_title_ui() && !framepace_loading_ui();
+    // Nor before Link is in the world: the boot's logos come before the start screen is seen as such, and its layout
+    // keeps the projection it is made with there (widened then, the start screen stayed squeezed into the window's
+    // shape on a taller window: a band with black above and below)
+    extern bool output_player_exists(void);
+    bool reshape = reshape_allowed && fabs(shape - 1.0) > 0.005 && !framepace_title_ui() && !framepace_loading_ui() &&
+                   output_player_exists();
+    {   // (debugging) SAVAGEWIND_LOG_SHAPE=1: each change of the reshape decision
+        static int lg = -1, last = -1;
+        if (lg < 0) lg = getenv("SAVAGEWIND_LOG_SHAPE") != NULL;
+        int now = reshape | framepace_title_ui() << 1 | framepace_loading_ui() << 2 | reshape_allowed << 3;
+        if (lg && now != last) last = now, LOG("[shape] reshape %d title %d loading %d allowed %d shape %.3f (%.0fx%.0f)\n", now & 1, now >> 1 & 1, now >> 2 & 1, now >> 3 & 1, shape, dw, dh);
+    }
     if (!reshape) shape = 1.0;
     // render height in units of the Switch's 1080 lines: the window's (Metal: divided by the upscaler's factor)
 #ifdef __APPLE__
@@ -180,6 +191,13 @@ void output_scale(double dw, double dh, bool reshape_allowed, OutScale *o) {
 }
 
 float output_view_shape(void) { return g_view_shape; }
+
+// Link is in the world (his position can be read): output_scale reshapes only then
+#include "../control_cells.h"
+bool output_player_exists(void) {
+    double p[3];
+    return control_cell_get(&control_cell_player_pos, p);
+}
 
 // The game's perspective views, as each one's matrix is built (tools/patches.py _persp_matrix: sead's
 // PerspectiveProjection; tan_fovy = tan(fovy / 2) at +0xac, aspect at +0xb0, as float bits; near at +0x98). Every 16:9

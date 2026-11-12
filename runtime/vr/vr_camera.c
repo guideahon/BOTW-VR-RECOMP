@@ -211,6 +211,9 @@ bool vr_event_anim_hands(void) {
     return event_now(&fp, &still, &hands) && hands;
 }
 
+// framepace.c: the headset paces the game's frames (in VR with a session going)
+bool vr_paces(void) { return vr_enabled() && vr_session_running(); }
+
 bool vr_world_view(void) {
     if (!vr_enabled() || !vr_session_running()) return false;
     if (framepace_in_event()) {
@@ -300,6 +303,7 @@ void vr_camera_lookat(float *f) {
     last_cam = (uint64_t)(uintptr_t)f - 0x38;
     if (!vr_world_view()) {
         c.out_ok = false;
+        c.fp_now = false;   // (menus: Link's model as the game has it, the inventory's too)
         return;
     }
     pthread_mutex_lock(&lock);

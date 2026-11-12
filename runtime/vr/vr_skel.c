@@ -272,7 +272,9 @@ void vr_skel_calc(uint64_t model) {
         k.arms = a ? atoi(a) : 2;
         k.log_arms = l ? atoi(l) : 0;
     }
-    bool fp = vr_enabled() && vr_first_person_now();
+    // first person in play only: not in menus (the inventory shows Link as he is), not in third person or an event on
+    // its own camera
+    bool fp = vr_enabled() && vr_world_view() && vr_first_person_now();
     bool hide = k.hide == 1 || (k.hide == 2 && fp), arms = k.arms && fp && !vr_event_anim_hands();   // (an event may leave his hands to its animation)
     if (!hide && !arms && !vr_enabled()) return;   // (in VR the weapons are watched even when nothing is changed)
     uint64_t skel = rd64(model + 0x118);
@@ -290,6 +292,13 @@ void vr_skel_calc(uint64_t model) {
             m[13], m[14]);
     }
     if (!strcmp(n, "Link")) {
+        // the player's Link only: another (a picture's, a menu's) is far from where the player is
+        double lp[3];
+        if (control_cell_get(&control_cell_player_pos, lp)) {
+            const float *r = bone_m(world, 0);
+            float dx = r[12] - (float)lp[0], dy = r[13] - (float)lp[1], dz = r[14] - (float)lp[2];
+            if (dx * dx + dy * dy + dz * dz > 9.0f) return;
+        }
         bool first = model != k.model;
         k.model = model;
         link_seen_ns = plat_now_ns();

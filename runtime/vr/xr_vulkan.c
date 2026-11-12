@@ -424,6 +424,11 @@ static void arc_draw(VkCommandBuffer cb, VkImage dst, VkExtent2D ext, VkFormat s
     arc.frames++;
 }
 
+// ---- the virtual screen shows the game's picture where it is in the window (device.c: the 16:9 box on the VR
+// window, the headset eyes' shape), not the bars around it ----
+static int screen_box[4];
+void vr_screen_box(int x, int y, int w, int h) { screen_box[0] = x, screen_box[1] = y, screen_box[2] = w, screen_box[3] = h; }
+
 // ---- the comfort vignette (Options > VR > Comfort vignette): while the sticks walk or turn Link (vr_input.c
 // vr_stick_motion), the edges of the view go dark: a quad in the head's space over the eyes' pictures. Its image is
 // black with an alpha ring; VIG_LEVELS of them (the ring closing in) are made once in a buffer, and the swapchain gets
@@ -803,10 +808,12 @@ static void end_frame(void *arg) {
             quad.space = g.local;
             quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
             quad.subImage.swapchain = g.sc[SC_SCREEN].h;
-            quad.subImage.imageRect = (XrRect2Di){
-                {0, 0}, {(int32_t)g.sc[SC_SCREEN].extent.width, (int32_t)g.sc[SC_SCREEN].extent.height}};
+            int32_t W = (int32_t)g.sc[SC_SCREEN].extent.width, H = (int32_t)g.sc[SC_SCREEN].extent.height;
+            int32_t bx = screen_box[0], by = screen_box[1], bw = screen_box[2], bh = screen_box[3];
+            if (bw < 16 || bh < 16 || bx < 0 || by < 0 || bx + bw > W || by + bh > H) bx = 0, by = 0, bw = W, bh = H;
+            quad.subImage.imageRect = (XrRect2Di){{bx, by}, {bw, bh}};
             quad.pose = (XrPosef){{0, 0, 0, 1}, {0, 0, -g.screen_dist}};
-            quad.size = (XrExtent2Df){g.screen_w, g.screen_w * fr.aspect};
+            quad.size = (XrExtent2Df){g.screen_w, g.screen_w * (float)bh / (float)bw};
             layers[n++] = (const XrCompositionLayerBaseHeader *)&quad;
         }
         if (fr.kind == 2 && fr.perf) {   // the performance overlay: with the head, up and to the right, 1 m away

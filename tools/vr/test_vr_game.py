@@ -99,8 +99,8 @@ def launch(args, run_dir, script_lines, frame_rate=60, extra_env=None):
         shutil.copytree(args.save, save)
     ini = os.path.join(run_dir, 'settings.ini')
     with open(ini, 'w') as f:
-        f.write('window_size = 1280x720\nframe_rate = {}\nvsync = off\nperf_overlay = off\nframe_generation = 0\n'
-                'fullscreen = 0\nantialias = taa\n'.format(frame_rate))  # (TAA: `camera` reads the drawn view)
+        f.write('window_size = {}\nframe_rate = {}\nvsync = off\nperf_overlay = off\nframe_generation = 0\n'
+                'fullscreen = 0\nantialias = taa\n'.format(os.environ.get('SAVAGEWIND_TEST_WINDOW', '1280x720'), frame_rate))  # (TAA: `camera` reads the drawn view)
     script = os.path.join(run_dir, 'fake_xr_script.txt')
     with open(script, 'w') as f:
         f.write('\n'.join(script_lines) + '\n')

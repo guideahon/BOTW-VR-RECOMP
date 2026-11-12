@@ -1335,8 +1335,13 @@ static void rom_index(void) {
         static char text[64];
         const char *v = rt_version(), *dot = strchr(v, '.');
         int n = dot ? (int)strcspn(dot + 1, ".-") + (int)(dot - v) + 1 : (int)strlen(v);  // (up to the second '.')
+#ifdef SW_VR
+        snprintf(text, sizeof text, "BOTW VR %.*s", n, v);   // (the VR build: runtime/app_name.h)
+        if (strlen(text) > 15) snprintf(text, sizeof text, "BOTW VR");
+#else
         snprintf(text, sizeof text, "Savage Wind %.*s", n, v);
         if (strlen(text) > 15) snprintf(text, sizeof text, "Savage Wind");
+#endif
         meta_copy(fmeta, foff, fsz);
         uint64_t rel = R->ov_end - R->rom_data_off, size = strlen(text);
         memcpy(R->ov_meta + R->rom_files[i].meta + 8, &rel, 8);

@@ -99,7 +99,7 @@ void vr_init(void) {
     if (!env_on("SAVAGEWIND_VR")) return;
 
     XrInstanceCreateInfo ci = {XR_TYPE_INSTANCE_CREATE_INFO};
-    snprintf(ci.applicationInfo.applicationName, sizeof ci.applicationInfo.applicationName, "Savage Wind");
+    snprintf(ci.applicationInfo.applicationName, sizeof ci.applicationInfo.applicationName, "BOTW VR");
     snprintf(ci.applicationInfo.engineName, sizeof ci.applicationInfo.engineName, "Savage Wind");
     ci.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
     bool vulkan = runtime_has(VULKAN_ENABLE2);

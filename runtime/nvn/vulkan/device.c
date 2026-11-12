@@ -126,7 +126,7 @@ static void create_instance(void) {
     uint32_t ver = VK_MAKE_API_VERSION(0, vmaj, vmin, vpatch * 100 + vpre);
     char engine[64];  // (the release in the engine's name too: whichever of the two a driver keys its cache on)
     snprintf(engine, sizeof engine, "Savage Wind %s", rt_version());
-    VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "Savage Wind",
+    VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = APP_NAME,
                              .applicationVersion = ver, .pEngineName = engine, .engineVersion = ver,
                              .apiVersion = VK_API_VERSION_1_3};
     LOG("[vk] application version %u.%u.%u (Savage Wind %s)\n", vmaj, vmin, vpatch * 100 + vpre, rt_version());
@@ -1391,6 +1391,10 @@ static VkPresentModeKHR present_mode(char *have, size_t cap) {
     VkPresentModeKHR forced = wanted_present_mode();
     const VkPresentModeKHR one_shot[2] = {forced, NONE};  // the env override is a single mode, FIFO behind it
     int v = g_settings.vsync;
+#ifdef SW_VR
+    // VR: the desktop window must not hold the game to the monitor's refresh (the headset paces it): Off's ladder
+    { extern bool vr_enabled(void); if (vr_enabled() && !(env && *env)) v = VSYNC_OFF; }
+#endif
     const VkPresentModeKHR *ladder = (env && *env) ? one_shot : pref[v >= 0 && v < VSYNC_COUNT ? v : VSYNC_DEFAULT];
     for (int j = 0; ladder[j] != NONE; j++)
         for (uint32_t i = 0; i < n; i++)
@@ -2448,13 +2452,23 @@ static void present_locked(NvnTexture *t) {
         // Fullscreen on a size the display has no mode for (runtime/window_size.c): that size, scaled to the screen.
         OutScale os;
         int iw, ih;
+        bool wide = g_settings.wide_view;
+#ifdef SW_VR
+        // VR: the window has the headset eyes' shape; the world fills it (whatever Fill wide screens says), the rest
+        // (the boot, the start screen, loading, menus: the virtual screen) is the game's 16:9 picture. The start
+        // screen's layout keeps the projection it was made with at boot: widened then, it stayed squeezed
+        { extern bool vr_enabled(void), vr_world_view(void); if (vr_enabled()) wide = vr_world_view(); }
+#endif
         if (winsize_virtual(&iw, &ih) && (iw != (int)dw || ih != (int)dh)) {
-            output_scale(iw, ih, g_settings.wide_view, &os);
+            output_scale(iw, ih, wide, &os);
             output_scale_screen(dw, dh, iw, ih, &os);
         } else {
-            output_scale(dw, dh, g_settings.wide_view, &os);
+            output_scale(dw, dh, wide, &os);
         }
         double sx = os.sx, sy = os.sy, vx = os.vx, vy = os.vy, vw = os.vw, vh = os.vh;
+#ifdef SW_VR
+        { extern void vr_screen_box(int x, int y, int w, int h); vr_screen_box((int)vx, (int)vy, (int)vw, (int)vh); }
+#endif
         float crop[4] = {(float)os.crop[0], (float)os.crop[1], (float)os.crop[2], (float)os.crop[3]};  // (uv origin, size)
         renderer_set_scale((float)sx, (float)sy);
         renderer_set_scene_scale((float)os.scene_sx, (float)os.scene_sy);
