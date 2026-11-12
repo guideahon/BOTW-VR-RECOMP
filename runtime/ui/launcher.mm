@@ -14,6 +14,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #endif
+#include "../app_name.h"
 #include <SDL3/SDL.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -1386,7 +1387,7 @@ extern "C" void boot_splash_draw(void *cmd, uint32_t w, uint32_t h, float alpha)
     float fs = ImGui::GetFontSize();
     ImGui::PopFont();
     text_fx(bg, g_boot_font, fs, ImVec2(90 * s, 120 * s), IM_COL32(255, 232, 120, 255), IM_COL32(255, 138, 48, 255),
-            "Savage Wind", 3 * s);
+            APP_NAME, 3 * s);
     if (alpha < 1) {  // (all of it at once: every vertex's alpha)
         int a = (int)(alpha * 256);
         for (ImDrawVert &v : bg->VtxBuffer) {
@@ -1423,7 +1424,7 @@ extern "C" void launcher_run(const char *root, int mode) {
     ui_window_init();
     SDL_Window *win = ui_window();
     g_launcher_win = win;
-    SDL_SetWindowTitle(win, g_setup_only ? "Savage Wind" : "Savage Wind Configuration");
+    SDL_SetWindowTitle(win, g_setup_only ? APP_NAME : APP_NAME " Configuration");
 #ifdef __APPLE__
     CAMetalLayer *layer = (__bridge CAMetalLayer *)ui_metal_layer();
     id<MTLDevice> dev = (__bridge id<MTLDevice>)ui_metal_device();
@@ -1627,7 +1628,7 @@ extern "C" void launcher_run(const char *root, int mode) {
             ImGui::SetCursorPos(ImVec2(x0, 120 * s));
             ImGui::PushFont(g_font_title);
             if (page == MAIN) {  // gold to orange, shadowed (not behind the Settings / Game Files windows)
-                const char *t = "Savage Wind";
+                const char *t = APP_NAME;
                 ImVec2 p = ImGui::GetCursorScreenPos();
                 text_fx(ImGui::GetWindowDrawList(), ImGui::GetFont(), ImGui::GetFontSize(), p, IM_COL32(255, 232, 120, 255),
                         IM_COL32(255, 138, 48, 255), t, 3 * s);
@@ -1779,7 +1780,7 @@ extern "C" void launcher_run(const char *root, int mode) {
                 bool welcome = g_setup_only && status == "No game files";
                 ImGui::PushFont(g_font_small);
                 ImGui::PushFont(g_font_menu);
-                ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", tr(welcome ? "Welcome to Savage Wind" : "Game Files"));
+                ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", tr(welcome ? "Welcome to " APP_NAME : "Game Files"));
                 ImGui::PopFont();
                 bool back = false;
                 if (!busy) {  // close: the drawn X in the corner, as Settings (B / Esc too; setup mode: the X quits)
@@ -2243,7 +2244,7 @@ extern "C" void launcher_run(const char *root, int mode) {
     // play: cancel the size traversal before handing the window to the game
     g_file_size.stop();
     settings_save();
-    SDL_SetWindowTitle(win, "Savage Wind");
+    SDL_SetWindowTitle(win, APP_NAME);
     splash_unload();
     saves_tab_unload();
 #ifdef __APPLE__

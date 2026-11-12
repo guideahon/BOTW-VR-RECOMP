@@ -386,8 +386,42 @@ static void forest_art(ImDrawList *dl, ImVec2 sz, float t) {
     dl->AddRectFilledMultiColor(ImVec2(0, H * 0.82f), sz, z, z, v, v);
 }
 
+#ifdef SW_VR
+// BOTW VR's: a dusk sky over dark hills, a glow on the horizon and its light breathing slowly (plain shapes: nothing of
+// the game's art)
+static void vr_art(ImDrawList *dl, ImVec2 sz, float t) {
+    float W = sz.x, H = sz.y;
+    ImU32 top = IM_COL32(10, 16, 38, 255), mid = IM_COL32(28, 52, 92, 255), low = IM_COL32(96, 120, 150, 255);
+    dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(W, H * 0.45f), top, top, mid, mid);
+    dl->AddRectFilledMultiColor(ImVec2(0, H * 0.45f), ImVec2(W, H * 0.66f), mid, mid, low, low);
+    float glow = 0.75f + 0.25f * sinf(t * 0.6f);
+    for (int i = 32; i >= 1; i--)   // the light on the horizon, wide and soft (many faint discs: no rings)
+        dl->AddCircleFilled(ImVec2(W * 0.68f, H * 0.66f), H * 0.017f * i, IM_COL32(255, 200, 130, (int)(4 * glow)), 64);
+    // hills, far to near, darker each
+    const ImU32 hill[3] = {IM_COL32(44, 58, 84, 255), IM_COL32(26, 36, 56, 255), IM_COL32(12, 18, 30, 255)};
+    for (int k = 0; k < 3; k++) {
+        float base = H * (0.64f + 0.09f * k), amp = H * (0.05f + 0.025f * k);
+        for (int x = 0; x < 96; x++) {
+            float x0 = W * x / 96, x1 = W * (x + 1) / 96;
+            float y0 = base - amp * (0.6f * sinf(x0 / W * (5 + 2 * k) + k) + 0.4f * sinf(x0 / W * (13 + 3 * k) + 2 * k));
+            float y1 = base - amp * (0.6f * sinf(x1 / W * (5 + 2 * k) + k) + 0.4f * sinf(x1 / W * (13 + 3 * k) + 2 * k));
+            dl->AddQuadFilled(ImVec2(x0, y0), ImVec2(x1, y1), ImVec2(x1, H), ImVec2(x0, H), hill[k]);
+        }
+    }
+    for (int i = 0; i < 70; i++) {   // a few stars, twinkling
+        float x = fmodf(i * 0.6180339f, 1) * W, y = fmodf(i * 0.3819660f * 1.7f, 1) * H * 0.42f;
+        int a = (int)(120 + 100 * sinf(t * 1.3f + i));
+        dl->AddCircleFilled(ImVec2(x, y), 1.2f + (i % 3) * 0.5f, IM_COL32(230, 236, 255, a < 0 ? 0 : a), 8);
+    }
+}
+#endif
+
 void splash_draw(ImDrawList *dl, ImVec2 sz, float t) {
+#ifdef SW_VR
+    if (!g_tex) { vr_art(dl, sz, t); return; }
+#else
     if (!g_tex) { forest_art(dl, sz, t); return; }
+#endif
     // the picture fills the window (cropped to its shape, centred)
     float ia = (float)g_tex_w / g_tex_h, da = sz.x / sz.y;
     ImVec2 uv0(0, 0), uv1(1, 1);
