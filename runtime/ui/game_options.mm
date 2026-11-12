@@ -514,6 +514,8 @@ void build_vr_items(std::vector<Item> &v) {
                           "the stick walks him.", VR_OPT_ROOMSCALE, false));
     v.push_back(vr_toggle("Bow trajectory", "Yellow dots show where the arrow will fly while you draw the bow.",
                           VR_OPT_BOW_ARC, false));
+    v.push_back(vr_toggle("Show the controllers", "A marker at each controller in menus, on the flat screen and in "
+                          "third person, where Link's arms are not your hands.", VR_OPT_HAND_MARKERS, false));
 }
 #endif
 

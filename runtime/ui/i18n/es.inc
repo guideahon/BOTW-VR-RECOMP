@@ -1039,6 +1039,8 @@ T("Hold the grip at your right hip to drop what that hand holds.", "Mantené el 
 T("Aim the bow with your hands", "Apuntar el arco con las manos")
 T("Off: arrows fly where you look.", "Apagado: las flechas van hacia donde mirás.")
 T("Bow trajectory", "Trayectoria del arco")
+T("Show the controllers", "Mostrar los controles")
+T("A marker at each controller in menus, on the flat screen and in third person, where Link's arms are not your hands.", "Una marca en cada control en los menús, en la pantalla plana y en tercera persona, donde los brazos de Link no son tus manos.")
 T("Comfort vignette", "Viñeta de confort")
 T("Darkens the edges of the view while the sticks walk or turn Link, which eases motion sickness. Walking in your room does not trigger it.", "Oscurece los bordes de la vista mientras los sticks hacen caminar o girar a Link, lo que reduce el mareo. Caminar en tu habitación no la activa.")
 T("Low", "Baja")

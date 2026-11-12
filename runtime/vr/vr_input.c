@@ -540,6 +540,9 @@ bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs) {
     return ok;
 }
 
+// xr_vulkan.c: a hand's grip space (0 left, 1 right), for what is drawn at the controller
+XrSpace vr_hand_space(int hand) { return in.ready && hand >= 0 && hand < 2 ? in.hand[hand] : XR_NULL_HANDLE; }
+
 // vr_skel.c: a hand's grip pose now (tracking space), 0 left 1 right (the left-handed swap not applied: the real hand)
 bool vr_hand_pose(int hand, vr_pose *out) {
     if (!in.ready || !in.hand[hand]) return false;

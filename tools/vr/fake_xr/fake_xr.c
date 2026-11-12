@@ -651,7 +651,8 @@ static XrResult XRAPI_CALL fx_EndFrame(XrSession h, const XrFrameEndInfo *ei) {
                             {q->pose.position.x, q->pose.position.y, q->pose.position.z}};
         vr_pose room = vr_pose_mul(space_at(sp, ei->displayTime), in_space);
         logf_(s->inst, "quad %u space %s at %.3f %.3f %.3f size %.3f %.3f\n", i,
-              sp->type == XR_REFERENCE_SPACE_TYPE_VIEW && !sp->hand ? "view" : "local", room.p.x, room.p.y, room.p.z,
+              sp->hand == 1 ? "left_hand" : sp->hand == 2 ? "right_hand" :
+              sp->type == XR_REFERENCE_SPACE_TYPE_VIEW ? "view" : "local", room.p.x, room.p.y, room.p.z,
               q->size.width, q->size.height);
     }
     if (!s->synced && s->state == XR_SESSION_STATE_READY) {  // the first frame: the session comes to the front

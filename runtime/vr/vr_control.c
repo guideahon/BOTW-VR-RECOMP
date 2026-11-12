@@ -93,6 +93,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     { extern uint64_t vk_vr_shadow_passes_skipped(void); control_field_int(r, "shadow_passes_skipped", (int64_t)vk_vr_shadow_passes_skipped()); }
     { extern uint64_t vr_window_left_frames(void); control_field_int(r, "window_left_frames", (int64_t)vr_window_left_frames()); }
     { extern uint64_t vr_vignette_frames(void); extern float vr_vignette_level(void); extern float vr_stick_motion(void);
+      { extern uint64_t vr_marker_frames(void); control_field_int(r, "marker_frames", (int64_t)vr_marker_frames()); }
       control_field_int(r, "vignette_frames", (int64_t)vr_vignette_frames());
       control_field_num(r, "vignette_level", vr_vignette_level()); control_field_num(r, "stick_motion", vr_stick_motion()); }
     { extern uint64_t vr_roomscale_frames(void); control_field_int(r, "roomscale_frames", (int64_t)vr_roomscale_frames()); }

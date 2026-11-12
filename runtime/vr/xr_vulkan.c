@@ -35,7 +35,7 @@
 #include "vr_options.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_COUNT };
+enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_COUNT };
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -192,6 +192,7 @@ void vr_vk_session_start(VkInstance vk, VkPhysicalDevice pd, VkDevice dev, uint3
 // ---- swapchains: the window image's size, in the sRGB twin of its format (its bytes are already gamma-encoded, so
 // they are copied as they are and the runtime reads them as sRGB) ----
 static void vig_dropped(void);
+static void marker_dropped(void);
 
 static void drop_swapchain(int i) {
     swapchain *s = &g.sc[i];
@@ -203,6 +204,7 @@ static void drop_swapchain(int i) {
     if (i < 2) g.eye_ready[i] = false;
     if (i == SC_HUD) g.hud_ready = false;
     if (i == SC_VIGNETTE) vig_dropped();
+    if (i == SC_MARKER) marker_dropped();
 }
 
 static VkFormat srgb_twin(VkFormat f) {
@@ -242,7 +244,8 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     for (uint32_t k = 0; k < s->n; k++) s->images[k] = imgs[k].image;
     s->extent = ext;
     s->format = src;
-    static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette"};
+    static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette",
+                                        "controller marker"};
     LOG("[vr] %s swapchain %ux%u, %u images\n", names[i], ext.width, ext.height, s->n);
     return true;
 }
@@ -499,6 +502,89 @@ static void vignette(VkCommandBuffer cb) {
     vig.shown = l;
 }
 
+// ---- the controllers shown where Link's arms are not the player's hands (menus, the virtual screen, loading, third
+// person; Options > VR > Show the controllers): a small disc in each hand's grip space, a quad over the other layers.
+// Its image (a pale blue disc with a white rim) is made once into a static swapchain ----
+#define MARKER_SIZE 64
+#define MARKER_M 0.06f    // its width (m)
+static struct {
+    VkBuffer buf;
+    VmaAllocation mem;
+    bool failed, made, ready;
+    uint64_t frames;      // headset frames they were in
+} mk;
+
+XrSpace vr_hand_space(int hand);   // vr_input.c
+bool vr_first_person_now(void);    // vr_camera.c
+uint64_t vr_marker_frames(void) { return mk.frames; }
+
+static void marker_dropped(void) { mk.made = mk.ready = false; }
+
+static bool markers_wanted(void) {
+    if (!vr_opt_on(VR_OPT_HAND_MARKERS) || !mk.ready || g.sc[SC_MARKER].h == XR_NULL_HANDLE) return false;
+    return !fr.view.world || !vr_first_person_now();   // (in first person play his arms follow the controllers)
+}
+
+static void marker_image(VkCommandBuffer cb) {
+    if (mk.made || mk.failed || !vr_opt_on(VR_OPT_HAND_MARKERS)) return;
+    if (!mk.buf) {
+        VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = MARKER_SIZE * MARKER_SIZE * 4,
+                                 .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
+        VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO,
+                                      .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
+        VmaAllocationInfo info;
+        if (vmaCreateBuffer(g_vk.vma, &bi, &ai, &mk.buf, &mk.mem, &info) != VK_SUCCESS || !info.pMappedData) {
+            mk.failed = true;
+            mk.buf = VK_NULL_HANDLE;
+            return;
+        }
+        uint8_t *p = info.pMappedData;
+        for (int y = 0; y < MARKER_SIZE; y++)
+            for (int x = 0; x < MARKER_SIZE; x++) {
+                float dx = (x + 0.5f) / MARKER_SIZE * 2 - 1, dy = (y + 0.5f) / MARKER_SIZE * 2 - 1, r = sqrtf(dx * dx + dy * dy);
+                uint8_t *q = p + 4 * (y * MARKER_SIZE + x);
+                float edge = (1 - r) * MARKER_SIZE / 2;   // pixels inside the rim (anti-aliased by one)
+                float a = edge < 0 ? 0 : edge > 1 ? 1 : edge;
+                bool rim = r > 0.78f;
+                // (the same bytes in R G B A and B G R A: pale blue fill is (150, 200, 255), so the order is set below)
+                q[0] = rim ? 255 : 150, q[1] = rim ? 255 : 200, q[2] = 255;
+                q[3] = (uint8_t)(a * (rim ? 255 : 170) + 0.5f);
+            }
+        vmaFlushAllocation(g_vk.vma, mk.mem, 0, VK_WHOLE_SIZE);
+    }
+    swapchain *s = &g.sc[SC_MARKER];
+    if (s->h == XR_NULL_HANDLE && !make_swapchain(SC_MARKER, (VkExtent2D){MARKER_SIZE, MARKER_SIZE}, VK_FORMAT_R8G8B8A8_UNORM)) {
+        // (only B G R A offered: the fill's red and blue swapped into place)
+        if (!make_swapchain(SC_MARKER, (VkExtent2D){MARKER_SIZE, MARKER_SIZE}, VK_FORMAT_B8G8R8A8_UNORM)) {
+            mk.failed = true;
+            return;
+        }
+        uint8_t *p = NULL;
+        VmaAllocationInfo info;
+        vmaGetAllocationInfo(g_vk.vma, mk.mem, &info);
+        p = info.pMappedData;
+        for (int k = 0; k < MARKER_SIZE * MARKER_SIZE; k++) {
+            uint8_t t = p[4 * k];
+            p[4 * k] = p[4 * k + 2], p[4 * k + 2] = t;
+        }
+        vmaFlushAllocation(g_vk.vma, mk.mem, 0, VK_WHOLE_SIZE);
+    }
+    uint32_t idx = 0;
+    if (!vr_xr_ok(xrAcquireSwapchainImage(s->h, NULL, &idx), "xrAcquireSwapchainImage")) return;
+    XrSwapchainImageWaitInfo wi = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO, NULL, XR_INFINITE_DURATION};
+    if (!vr_xr_ok(xrWaitSwapchainImage(s->h, &wi), "xrWaitSwapchainImage")) return;
+    VkImage dst = s->images[idx];
+    barrier(cb, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_NONE, 0,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    VkBufferImageCopy rg = {.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {MARKER_SIZE, MARKER_SIZE, 1}};
+    rec_CmdCopyBufferToImage(cb, mk.buf, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+    barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+    fr.release[SC_MARKER] = true;
+    mk.made = true;
+}
+
 // src (in layout src_layout: COLOR_ATTACHMENT_OPTIMAL for the window image, GENERAL for exec.c's images) into
 // swapchain i, made at its size in the sRGB twin of its format: acquired and waited here, released after the submission
 static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkExtent2D ext, VkFormat fmt) {
@@ -574,6 +660,7 @@ static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt
         return;
     }
     if (!begin_headset_frame()) return;
+    marker_image(cb);
     if (pres.world) {  // the right frame (stereo) or the only one (mono: both eyes see the left swapchain's picture)
         if (put_into(pres.eye == 1 ? SC_RIGHT : SC_LEFT, cb, scene, sl, sext, scene_fmt)) fr.kind = 2;
         vignette(cb);
@@ -599,13 +686,14 @@ static void end_frame(void *arg) {
         }
         if (i == SC_HUD) g.hud_ready = true;
         if (i == SC_VIGNETTE) vig.ready = true;
+        if (i == SC_MARKER) mk.ready = true;
     }
     if (fr.active) {
         XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD}, hudq = {XR_TYPE_COMPOSITION_LAYER_QUAD},
-                               vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+                               vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD}, mkq[2];
         XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
         XrCompositionLayerProjectionView views[2];
-        const XrCompositionLayerBaseHeader *layers[3];
+        const XrCompositionLayerBaseHeader *layers[5];
         uint32_t n = 0;
         bool mono = fr.view.world && fr.view.eye < 0;
         if (fr.kind == 2 && (mono ? g.eye_ready[0] : g.eye_ready[0] && g.eye_ready[1])) {
@@ -670,6 +758,24 @@ static void end_frame(void *arg) {
             quad.pose = (XrPosef){{0, 0, 0, 1}, {0, 0, -g.screen_dist}};
             quad.size = (XrExtent2Df){g.screen_w, g.screen_w * fr.aspect};
             layers[n++] = (const XrCompositionLayerBaseHeader *)&quad;
+        }
+        if (n && markers_wanted()) {   // the controllers, over everything
+            for (int h = 0; h < 2; h++) {
+                XrSpace sp = vr_hand_space(h);
+                if (sp == XR_NULL_HANDLE) continue;
+                mkq[h] = (XrCompositionLayerQuad){XR_TYPE_COMPOSITION_LAYER_QUAD};
+                mkq[h].layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                    XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+                mkq[h].space = sp;
+                mkq[h].eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+                // (facing back along the controller, toward the player; a little ahead of the grip, over the knuckles)
+                mkq[h].pose = (XrPosef){{0, 0, 0, 1}, {0, 0, -0.03f}};
+                mkq[h].size = (XrExtent2Df){MARKER_M, MARKER_M};
+                mkq[h].subImage.swapchain = g.sc[SC_MARKER].h;
+                mkq[h].subImage.imageRect = (XrRect2Di){{0, 0}, {MARKER_SIZE, MARKER_SIZE}};
+                layers[n++] = (const XrCompositionLayerBaseHeader *)&mkq[h];
+            }
+            mk.frames++;
         }
         XrFrameEndInfo ei = {XR_TYPE_FRAME_END_INFO, NULL, fr.display, XR_ENVIRONMENT_BLEND_MODE_OPAQUE, n, layers};
         vr_xr_ok(xrEndFrame(g.session, &ei), "xrEndFrame");

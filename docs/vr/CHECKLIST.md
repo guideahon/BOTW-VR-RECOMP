@@ -86,6 +86,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4m. Marcas en los controles (nuevo, en Opciones > RV)
+
+- [ ] En el menú de título, en los menús (pantalla plana) y durante la carga ves un disco celeste chico (6 cm) con borde
+      blanco sobre cada control, siguiéndolo sin retraso.
+- [ ] En primera persona jugando NO aparecen (tus manos son las de Link). En tercera persona sí.
+- [ ] Opciones > RV > Mostrar los controles apagado: nunca aparecen. Decime si preferís otro tamaño/color o una mano.
+
 ## 4l. Viñeta de confort (nuevo, en Opciones > RV)
 
 - [ ] Opciones > RV > Viñeta de confort en Alta: al caminar con el stick o girar con el stick derecho, los bordes de la
