@@ -9,24 +9,26 @@ Estado de cada fase y cómo correr los tests: [VR.md](VR.md).
 
 ---
 
-## Estado al 2026-11-10
+## Estado al 2026-11-12
 
 | Fase | Estado |
 |---|---|
-| 0. Base y tooling | hecha: flag `VR=1`, loader OpenXR, `vr_math.h`, fake_xr, CI en Linux y Windows |
+| 0. Base y tooling | hecha: flag `VR=1`, loader OpenXR, `vr_math.h`, fake_xr y CI en Linux y Windows |
 | 1. OpenXR + cine virtual | hecha: sesión sobre el Vulkan del juego, pantalla virtual para menús, eventos y cargas |
-| 2. Head tracking | hecha: la cabeza sobre la cámara del juego, el frustum del headset, recentrar |
-| 3. Estéreo | hecha, con otro método que el del plan: un frame del juego por ojo y el reloj del juego una vez por par (no "un tick, dos renders"); TAA reemplazado por SMAA |
-| 4. HUD, menús, UI | hecha: el HUD separado de la escena, en una capa delante de la vista; pausa y mapa en la pantalla virtual |
-| 5. Controles VR | hecha: Touch, Index, WMR, Vive, simple |
-| 6. Confort | en parte: giro por pasos; falta viñeta, altura, primera persona |
-| 7. Manos y brazos | sin hacer: hace falta encontrar el código de los huesos en 1.9.0 (`docs/vr/re-notes.md`) |
-| 8. Combate con movimiento | en parte: tajos, estocadas y escudo por gesto (análisis de BetterVR) disparan los botones del juego; falta el golpe del arma por su posición, arco, agarrar y lanzar |
-| 9. Rendimiento | sin hacer: medido 106-112 pares/s en una RTX 3090 a 1030x1080 por ojo |
+| 2. Head tracking | hecha: cabeza sobre la cámara, frustum del headset y recentrado; fake_xr verifica giro y traslación |
+| 3. Estéreo | hecha: un frame del juego por ojo y reloj una vez por par; TAA mantiene un historial por ojo |
+| 4. HUD, menús, UI | hecha: HUD separado en una capa delante de la vista; pausa, mapa y overlay en la pantalla virtual |
+| 5. Controles VR | hecha: bindings para Touch, Index, WMR, Vive y control simple; falta validar el mapeo con un visor físico |
+| 6. Confort | implementada: giro suave, por pasos o solo cabeza, roomscale, altura, HUD, cinemáticas y viñeta; falta juzgar comodidad con visor |
+| 7. Manos y brazos | hecha en primera persona: IK de ambos brazos, muñeca corregida por mano y cabeza oculta; orientación y aspecto aún requieren Quest |
+| 8. Combate con movimiento | hecha en software: tajos, estocadas, guardia, golpes donde se mueve el arma y arco apuntado con las manos; runas apuntadas con la mano siguen en investigación |
+| 9. Rendimiento | en curso: sombras del sol una vez por par y TAA por ojo; mediciones fake_xr de 106-112 pares/s en RTX 3090 a 1030x1080 por ojo |
 | 10. Release | sin hacer |
 
-Todo está probado contra fake_xr (unitarios, CI, y el juego real en 10 escenarios); **nada todavía con un visor
-real**. La lista completa de pendientes, con qué necesita cada uno: `docs/VR.md`, "Not done yet".
+La cobertura sintética y sus resultados están detallados en `docs/VR.md`, sección "Tests". La validación física sigue
+pendiente: el único reporte de Quest 3 disponible es de `0.5.0-alpha.5`; el probe local más reciente encontró
+VirtualDesktopXR, pero no un headset conectado. La lista de pendientes y qué necesita cada uno está en `docs/VR.md`,
+sección "Not done yet".
 
 ---
 

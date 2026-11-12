@@ -218,6 +218,10 @@ fake_xr on an RTX 3090 (Great Plateau, uncapped, an eye about as wide as high): 
 about 110 stereo pairs a second, 1440 about 100, 1800 about 90; heavier places run about a quarter slower, so 72 or
 80 Hz in Virtual Desktop leaves room. These are fake_xr measurements, not Quest measurements.
 
+On 2026-11-12, a local OpenXR initialization probe again found VirtualDesktopXR 1.1.0 but `xrGetSystem` returned
+`-35` (no headset). The probe stopped before creating a session; it confirms runtime availability, not current Quest
+rendering or controller poses.
+
 The `savagewind.log` received on 2026-11-12 records an earlier, modified `0.5.0-alpha.5` build (`b7ef7a9`, game
 1.9.0). OpenXR reached state 5 (FOCUSED), the runtime identified the headset as Meta Quest 3, and both 1324x1440 eye
 swapchains were created for 2112x2296 headset eye images. The log's game frame statistics are mostly 60 fps. This
