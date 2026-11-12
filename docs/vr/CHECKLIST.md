@@ -24,8 +24,10 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 - [ ] Los brazos de Link siguen tus controles; las manos quedan donde están tus manos.
 - [ ] El codo dobla hacia abajo y afuera de forma natural (no hacia adentro ni hacia arriba).
-- [ ] La mano apunta hacia donde apunta el control. **Probable ajuste:** el giro de la muñeca sobre su eje lo pone la
-      animación; decime si la mano queda torcida.
+- [ ] Con los controles en agarre natural frente al cuerpo, las muñecas de Link quedan derechas (pulgares hacia arriba,
+      palmas enfrentadas) y cada mano sigue la orientación de su control. La corrección ahora es fija y distinta por
+      mano; si alguna queda torcida, mandame `savagewind.log` y una captura de la ventana del juego. Durante el primer
+      minuto con los brazos activos, el log incluye la orientación real de ambos controles cada ~5 segundos (`[vr-hands]`).
 - [ ] Con un arma desenvainada, el arma está en la mano derecha y la sigue.
 - [ ] Mangas y guantes de la armadura siguen al brazo.
 - [ ] Con los brazos estirados al máximo no se rompe nada (se estiran un poco, como en BetterVR).
@@ -85,6 +87,9 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Con la runa activa, el mismo gesto no descarta la Sheikah Slate.
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
+- [ ] Con el selector rápido abierto, “Descartar” y “Cancelar/Volver” aparecen una sola vez y en la misma fila. En fakeXR
+      ambos rótulos del overlay quedaron alineados; si en Quest aparece el texto duplicado, mandame una captura del visor
+      y otra de la ventana del juego.
 
 ## 4r. Overlay de rendimiento en el visor (nuevo)
 

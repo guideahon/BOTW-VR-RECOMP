@@ -158,6 +158,18 @@ drawn; the way on is the ray's own code: the raycast the rune's target search ma
 the direction its forward), found among the aim-only functions above with `SAVAGEWIND_FNPROF_ARGS` (x0..x5 at entry:
 a start and end Vec3 near the eye) and then overridden with the hand's ray, as `_arrow_aim` does for arrows.
 
+Retest note (2026-11-12): `fnprof_start()` cleared its counters but did not enable `g_fnprof`, so a manual capture could
+look empty. It now enables collection after resetting the filters. A 3 s idle / 4 s aim capture reported 12,976 / 13,621
+functions; aim added 1,114 unique functions. Those candidates still need to be separated from unrelated frame work before
+patching a target ray.
+
+## Quick-selector prompt visual check (2026-11-12)
+
+With `quick_drop=1`, the saved Spanish-language game and fake_xr, a 1030x579 selector capture shows the overlay prompts
+“Tirar” and “Atrás” once each, side by side on one baseline. The “Cancelar” below “Descartar” report did not reproduce
+in this capture. It confirms the fake runtime/window layer only; a Quest capture is still needed to tell whether the headset
+renders an extra copy or uses a different language/layout.
+
 ## The bow aimed by the hands (2026-11-11): done
 
 **Found.** BetterVR (src/hooking/bow.cpp) overrides two things at the shot: the arrow's launch transform and the

@@ -182,8 +182,9 @@ void fnprof_frame(uint64_t frame) {
     from = -1;
 }
 
-// the `fnprof` command (control_prof.c): counting turned on (the counts cleared) and off (written to path) at any time
-void fnprof_start(const float *near, float r) {
+// the `fnprof` command (control_prof.c): reset the counters and optional pointer filter while collection is stopped
+static void fnprof_reset(const float *near, float r) {
+    g_fnprof = 0;
     for (int i = 0; i < NSLOT; i++) atomic_store(&slots[i].addr, 0), atomic_store(&slots[i].count, 0);
     for (int i = 0; i < (1 << 14); i++) atomic_store(&nslots[i].key, 0), atomic_store(&nslots[i].count, 0);
     near_on = near != NULL;
@@ -191,8 +192,14 @@ void fnprof_start(const float *near, float r) {
     if (near) memcpy(near_p, near, sizeof near_p), near_r = r;
 }
 
+// The `fnprof` command: count guest function entries from now until `stop` writes them.
+void fnprof_start(const float *near, float r) {
+    fnprof_reset(near, r);
+    g_fnprof = 1;
+}
+
 void fnprof_start_ptr(uint64_t lo, uint64_t hi) {
-    fnprof_start(NULL, 0);
+    fnprof_reset(NULL, 0);
     ptr_lo = lo, ptr_hi = hi;
     near_on = 1;
     g_fnprof = 1;

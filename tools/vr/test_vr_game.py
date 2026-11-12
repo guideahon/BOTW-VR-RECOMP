@@ -659,6 +659,8 @@ def scenario_arms(args, run_dir):
         os.replace(os.path.join('build', 'vr', 'arms.png'), os.path.join(run_dir, 'arms.png'))
     glog = open(os.path.join(run_dir, 'game.log'), errors='replace').read()
     check("[vr] Link's arms follow the controllers" in glog, 'Link\'s arms follow the controllers')
+    check('[vr-hands] left grip q ' in glog, 'the left controller orientation is recorded for headset calibration')
+    check('[vr-hands] right grip q ' in glog, 'the right controller orientation is recorded for headset calibration')
     misses = [(float(a), float(b)) for a, b in re.findall(r'\[vr-arms\] left ok ([\d.]+) m, right ok ([\d.]+) m', glog)]
     check(len(misses) >= 5, '{} frames with both arms solved'.format(len(misses)))
     worst = max((max(m) for m in misses), default=9)

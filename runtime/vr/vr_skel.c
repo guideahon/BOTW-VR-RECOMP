@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../hle.h"
 #include "../rt.h"
 #include "../control_cells.h"
 #include "vr.h"
@@ -161,6 +162,13 @@ enum { VR_SKEL_NONE, VR_SKEL_MELEE, VR_SKEL_BOW, VR_SKEL_SHIELD, VR_SKEL_OTHER }
 // vr_input.c: what Link holds in a hand (0 left, 1 right), as seen on the last frames: VR_SKEL_*
 // (-1: unknown, Link's skeleton not seen in the last half second)
 static uint64_t link_seen_ns;
+static uint64_t hand_log_started_ns, hand_log_at_ns[2];
+
+RT_ON_RESET(vr_skel_hand_log_reset) {
+    hand_log_started_ns = 0;
+    memset(hand_log_at_ns, 0, sizeof hand_log_at_ns);
+}
+
 int vr_skel_held(int hand) {
     if (!link_seen_ns || plat_now_ns() - link_seen_ns > 500000000ull) return -1;
     return k.hand[hand].held_frame + 8 >= k.frames ? k.hand[hand].held : VR_SKEL_NONE;
@@ -240,11 +248,14 @@ static void solve_arm(uint64_t world, const skel_info *s, int side) {
         vr_vec3 point = vr_quat_rotate(hw.q, vr_v3(0, 0, -1));
         hand_turn = vr_quat_arc(fore, vr_v3_normalize(point));
     }
-    {   // (for a headset's first runs) the first minute in play, every ~5 s: each controller as the runtime gives it, so a
-        // hand turned the wrong way can be told from the log
-        static uint64_t said[2];
-        if (k.frames < 6000 && k.frames >= said[side] + 450) {
-            said[side] = k.frames;
+    {   // (for a headset's first runs) the first minute with the arms active, every ~5 s: each controller as the runtime
+        // gives it, so a hand turned the wrong way can be told from the log. Use wall time: guest frames include pauses,
+        // loading and reboots, and are not a reliable measure of how long the player has had to collect a pose.
+        uint64_t now = plat_now_ns();
+        if (!hand_log_started_ns) hand_log_started_ns = now;
+        if (now >= hand_log_started_ns && now - hand_log_started_ns < 60000000000ull &&
+            (!hand_log_at_ns[side] || now - hand_log_at_ns[side] >= 5000000000ull)) {
+            hand_log_at_ns[side] = now;
             vr_vec3 ahead = vr_quat_rotate(hand.q, vr_v3(0, 0, -1)), up = vr_quat_rotate(hand.q, vr_v3(0, 1, 0));
             LOG("[vr-hands] %s grip q %.3f %.3f %.3f %.3f (room: ahead %.2f %.2f %.2f, up %.2f %.2f %.2f) at %.2f %.2f %.2f\n",
                 side ? "right" : "left", hand.q.x, hand.q.y, hand.q.z, hand.q.w, ahead.x, ahead.y, ahead.z, up.x, up.y, up.z,

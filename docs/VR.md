@@ -14,7 +14,7 @@ The full plan, phase by phase with its tests (in Spanish): [VR-PLAN.md](VR-PLAN.
 | 3 | Stereo: a frame per eye, the game's clock once a pair | done |
 | 4 | HUD apart from the scene, menus on the virtual screen | done |
 | 5 | VR controllers as the game's controller | done |
-| 6 | Comfort: snap / smooth / head-only turning, its speed, roomscale, height, HUD placement, cutscene modes | done (a vignette: not yet) |
+| 6 | Comfort: snap / smooth / head-only turning, its speed, roomscale, height, HUD placement, cutscene modes, vignette | done |
 | 7 | Link's arms follow the hands | done in first person: two-bone IK on his skeleton (and his armor's); his head hidden |
 | 8 | Motion combat | done: slashes, stabs and the shield by gesture (BetterVR's analysis); the weapon hits where the hand holds it, whenever it is swung, harder the faster; both hands on large swords and spears; the bow aimed by hand with its arc |
 | 9 | Performance | first part: the sun's shadow maps drawn once a pair (the right eye reuses the left one's) |
@@ -38,8 +38,9 @@ First person (`SAVAGEWIND_VR_VIEW=first`, the default, as in BetterVR): in play 
 there, the right stick still turns the heading and the left stick walks Link the way the view looks (the game walks him
 relative to the view it draws). His head is hidden (face, hair, hat: `runtime/vr/vr_skel.c`, as BetterVR's
 skeleton.cpp) and his arms follow the controllers: each wrist is solved onto its controller's grip by two-bone IK from
-his shoulder (`runtime/vr/vr_ik.h`), the elbow bending down and out, the hand turned to point where the controller
-points; sleeves and gloves (his armor's own models) follow. Both act on his skeleton's world matrices right before the
+his shoulder (`runtime/vr/vr_ik.h`), the elbow bending down and out, the hand turned to the controller with a separate
+fixed wrist correction for each side; sleeves and gloves (his armor's own models) follow. Set
+`SAVAGEWIND_VR_HAND_ROLL=0` to keep only pointing direction and leave wrist roll to the animation. Both act on his skeleton's world matrices right before the
 game makes the skinning matrices (main+0xf978e8; how it was found: [vr/re-notes.md](vr/re-notes.md)).
 `SAVAGEWIND_VR_HIDE_HEAD`, `SAVAGEWIND_VR_ARMS` (0: off). `third` keeps the view on the game's camera, as below.
 
@@ -115,16 +116,17 @@ What Link holds is read from the game: the weapon models at his hands (runtime/v
 hand's Weapon_ bone); a rune out is still tracked from the gestures. With a rune out, a grip held away from the slots
 works Magnesis by hand: the hand's rise and fall moves the held object up and down, a push or pull moves it away or
 near (BetterVR's magnesis gestures). The game's rumble reaches the controllers (runtime/hle/vibration.c, each Joy-Con
-on its hand). What to check in a headset: [vr/CHECKLIST.md](vr/CHECKLIST.md).
+on its hand). During the first minute with Link's arms active, the log records each controller's grip orientation about
+every five seconds as `[vr-hands]` lines; attach `savagewind.log` and a game-window capture if a wrist still looks
+twisted. What to check in a headset: [vr/CHECKLIST.md](vr/CHECKLIST.md).
 
 (Index: the left A / B are X / Y and the left trackpad pressed is the menu; WMR and Vive: the touchpads pressed are A
 and X, the right menu B, and on the Vive the touchpads are the sticks.)
 
 Phase 8, motion combat (`runtime/vr/vr_melee.h`, `vr_input.c`): the right hand's slashes and stabs are told apart from
 the rest of its motion by BetterVR's swing analysis (by Acudofy, ported to C, MIT: `third_party/BetterVR`), and each
-one beginning presses the game's attack (Y); the left hand raised in front of the face holds the guard (ZL, the
-shield up). The game plays its own attack: the weapon does not yet follow the hand or hit where it moves (that needs
-the game's bone and attack-sensor code: [vr/re-notes.md](vr/re-notes.md)). The buttons keep working.
+one beginning presses the game's attack (Y); the held weapon's actor and hit sensor follow the hand during the swing.
+The left hand raised in front of the face holds the guard (ZL, the shield up). The attack button also remains available.
 
 Phase 6, comfort: `SAVAGEWIND_VR_TURN=snap` makes the right stick's sideways push turn the view one step at once
 (`SAVAGEWIND_VR_SNAP_DEGREES`, 45) instead of the game's smooth camera turn; the turn sits on top of the game camera's
@@ -182,6 +184,7 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_BOW_ARC` | 1 | `0`: no arc of the shot while the bow is drawn |
 | `SAVAGEWIND_VR_BOW_AIM` | hand | first person: arrows fly along the line from the string hand to the bow hand; `head`: where the view looks (the game's aim) |
 | `SAVAGEWIND_VR_ARMS`, `SAVAGEWIND_VR_HIDE_HEAD` | on in first person | `0`: Link's arms not moved / his head shown |
+| `SAVAGEWIND_VR_HAND_ROLL` | 1 | `0`: keep only the controller's pointing direction; leave wrist roll to the animation |
 | `SAVAGEWIND_VR_SNAP_DEGREES` | 45 | the step |
 | `SAVAGEWIND_VR_HEIGHT` | 1080 | the eye images' height (the width follows the headset's shape); with Video > Render scale above 100% the game draws them sharper |
 | `SAVAGEWIND_VR_ASYMMETRIC` | 1 | `0`: each eye's picture covers a symmetric field (the wider side mirrored) instead of the eye's own off-centre one |
@@ -213,8 +216,11 @@ one; connect the headset in Virtual Desktop first, then start the game from its 
 second, 1440 about 100, 1800 about 90; heavier places run about a quarter slower, so 72 or 80 Hz in Virtual Desktop
 leaves room.
 
-None of this has been tried on a real headset yet: every test so far runs against `fake_xr`. Reports from real
-headsets (which one, which runtime, what the log says) are what is needed next.
+The 2026-11-12 `savagewind.log` records a Quest 3 run through VirtualDesktopXR 1.1.0: OpenXR reached state 5 (FOCUSED),
+both 1324x1440 eye swapchains were created, and the game rendered in first person with Link's arms enabled. This
+confirms session startup and stereo rendering, but the log cannot establish whether the eyes looked correct, the view
+felt comfortable, or the hands looked natural in the headset. The controller-orientation logging is now covered by the
+`fake_xr` arms scenario; a new headset log and a window capture can resolve the remaining visual check.
 
 ## Not done yet
 
@@ -222,17 +228,17 @@ In the order they matter, with what each needs. "Needs the game's code" means fu
 found (reverse engineering, [vr/re-notes.md](vr/re-notes.md)); "needs a headset" means it can only be judged wearing
 one.
 
-**First: a real headset.** Everything above is tested against `fake_xr` only. Wanted from a first run (a Meta Quest 3
-through Virtual Desktop, VDXR or SteamVR's OpenXR, is the first target): does the session start, are the eyes right
-(not swapped, not crossed), does the world keep its speed, how many dropped frames at which `SAVAGEWIND_VR_HEIGHT` and
-refresh rate, does the HUD sit well, do the Touch controllers map as the table says, do slashes and stabs fire when
-meant and not otherwise. Needs a headset.
+**Next: visual validation in a headset.** A Meta Quest 3 through Virtual Desktop's OpenXR runtime has started the
+session and rendered both eyes. Still to confirm while wearing it: eye order and depth, head response and comfort,
+world speed and dropped frames at different `SAVAGEWIND_VR_HEIGHT` values and refresh rates, HUD placement, Touch
+controller mapping, and whether slashes and stabs fire when intended. The hand-orientation lines in the first minute
+of active arms plus a window capture will make the wrist calibration reviewable. Needs a headset.
 
 **Interaction (phases 7 and 8)**
 
 | What | Needs | State |
 |---|---|---|
-| Link's arms follow the hands (two-bone IK from the shoulders, BetterVR's skeleton.cpp) | nothing more | done in first person (vr_skel.c, vr_ik.h); the hand's roll about its pointing axis is the animation's |
+| Link's arms follow the hands (two-bone IK from the shoulders, BetterVR's skeleton.cpp) | nothing more | done in first person (vr_skel.c, vr_ik.h); each wrist has a fixed per-hand correction; `SAVAGEWIND_VR_HAND_ROLL=0` restores animation roll |
 | The weapon in the hand, following it | nothing more: it hangs from Weapon_R, which follows the hand | done with the arms (to be checked in a headset) |
 | The weapon hits where it moves, scaled by the swing's power | the game's code: the weapon's attack sensor | where it is: done (the held weapon's actor, so its physics and attack sensor, follows the hand: main+0x1525fb8, `SAVAGEWIND_VR_WEAPON_HITS=0` leaves it to the animation); when: done too, the sensor turns on while the motion analysis sees a swing (main+0x7b1690, armed once a swing, the damage x0.2 for a brush to x1.35 for a full swing, trees cut), off after it; `SAVAGEWIND_VR_SWING_HITS=0` leaves it to the game's attacks |
 | Grabbing weapons from the back, throwing, whistling, parrying by gesture | nothing more | done (vr_gestures.h; what is in hand tracked, not read) |
@@ -351,7 +357,7 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `make test-vr` | nothing | `test_vr_math` (the math against values worked out by hand), `test_vr_pair` (the stereo pair's state machine in every order of clock and cameras: eyes alternate, a left frame takes the pair's time, a right one none), `test_vr_input_map` (each controller input's game button or stick: dead zone, d-pad chord, menu tap and hold, snap turning), `test_vr_melee` (slashes and stabs against slow turns, reaches, twists, returns to guard, tracking loss; the easy profile; the shield gesture), `test_vr_gestures` (BetterVR's body slots with the head turned or pitched, equip and put away, quick menus held, grab, whistle, throw, the trigger's use, run, the rune's menu, stick clicks, parry), `test_vr_ik` (two-bone IK: targets met, lengths kept, the elbow toward the pole, stretching out of reach, bone matrices turned) and `test_fake_xr_session` (fake_xr's lifecycle and its errors, driven like the loader does) |
 | `make test-vr-vulkan` | a Vulkan driver (any GPU; Mesa's lavapipe in CI) | `test_fake_xr_vulkan`: the instance and device through XR_KHR_vulkan_enable2, a swapchain, frames cleared to known colours and checked in fake_xr's captures. Says "skipped" without a Vulkan driver |
 | `make test-vr-loader` | the system's OpenXR loader | `test_fake_xr_loader` (a whole session through the loader) and `test_vr_init` (VR off, a runtime, no runtime) |
-| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart; compared as the headset shows them, each placed by the field it was submitted with), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
+| `python tools/vr/test_vr_game.py --save <scratch save> --out <dir>` | your game files, a `VR=1` build, a GPU | the game against fake_xr: `cinema` (session focused, frames keep coming, the window and swapchain in the headset's shape, the headset image lit and within a few levels of the window's own screenshot), `headtrack` (mono: fake_xr turns the head 30 deg, looks up 20 deg, steps 50 cm right; the drawn view, read by `camera` from the TAA matrix, follows each to within 2 deg / 10 cm and comes back), `stereo` (one headset frame a pair; the right eye's picture is the left one moved left, never up or down, with eyes 25 cm apart; compared as the headset shows them, each placed by the field it was submitted with), `hud` (the headset gets the eyes and a HUD layer; the HUD layer is see-through but for the HUD, and where it has the HUD the eyes' pictures show the world), `menus` (the pause menu opened and closed 20 times, `--menu-rounds`: each time the eyes come back), `controllers` (fake_xr's Touch right stick turns the game's camera, its left stick walks Link), `firstperson` (the eye in Link's head, his head hidden; with the head turned 90 deg the left stick walks the view's way), `arms` (fake_xr's hands held ahead and moved: each wrist solved onto its controller within 2 cm; a picture from the eye; both controller grip orientations must be logged), `weapon` (the shoulder grab puts a melee weapon in the right hand, read from the game; it follows the controller; a picture), `walkdir` (`SAVAGEWIND_VR_WALK=controller`: the controller turned left walks Link left), `gestures` (third person: the right grip at the right shoulder takes the weapon out and puts it away, the controller vibrates; pictures of each), `snap` (a push right turns the view 45 deg, one step however long it is held), `motion` (fake_xr's hands: a cut is one slash, a thrust one stab, the slow returns none, the left hand raised guards), `lost` and `exit` (VR stops, the game goes on flat) |
 | `python tools/vr/test_vr_frustum.py --save <scratch save>` | as above | each eye's own frustum: the left eye's picture, mapped to view angles by the field it was submitted with (fake_xr's `capture ... fov` lines), lines up with the symmetric one's (best match at 0, 0; with the offset's sign flipped it is 8 and 12 samples off), and covers 35% less angle |
 | `python tools/vr/test_vr_taa.py --save <scratch save>` | as above | TAA in stereo with each eye's own off-centre frustum, eyes 25 cm apart: with each eye's history the eyes' pictures are lit (TAA's, smooth) and line up as well as SMAA's; one shared history (`SAVAGEWIND_VR_TAA_SHARED=1`) is reported alongside (a still scene looks alike) |
 | `python tools/vr/test_vr_shadows.py --save <scratch save>` | as above | the shadows once a pair: 6 shadow passes a pair left out (3 cascades, 3 copies), none with `SAVAGEWIND_VR_SHADOWS_ONCE=0`, the frame rate not lower (+2% at Console); the right-eye captures kept to compare with the left (same shadows) |
