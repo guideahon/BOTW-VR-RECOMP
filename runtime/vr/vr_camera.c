@@ -61,6 +61,7 @@ static struct {
     uint64_t updates;
     int first;             // -1 not read yet: SAVAGEWIND_VR_VIEW (first, the default, or third)
     float eye_height, forward;  // first person: the eye above Link's feet, and ahead of his head's centre (m)
+    float eye_used;             // ... the height used last (Standing: the player's own)
     bool fp_now;           // the last camera was set in first person
     int events;            // -1 not read yet: SAVAGEWIND_VR_EVENTS (EV_*)
     bool in_event;         // the last camera was set in an event
@@ -337,8 +338,17 @@ void vr_camera_lookat(float *f) {
     double lp[3];
     c.fp_now = false;
     if (fp && control_cell_get(&control_cell_player_pos, lp)) {
+        // Seated: the centred head at Link's eyes. Standing (BetterVR's): the centred head's real height above the floor
+        // (LOCAL's origin above STAGE's, plus the head's height in LOCAL), so a shorter or crouching player sees lower
+        float h = c.eye_height, ly;
+        extern bool vr_local_height(float *y);
+        if (vr_opt(VR_OPT_PLAY_POSITION) == 1 && vr_local_height(&ly)) {
+            h = c.neutral.p.y + ly;
+            h = h < 0.4f ? 0.4f : h > 2.4f ? 2.4f : h;
+        }
+        c.eye_used = h;
         geye = vr_v3((float)lp[0] + sinf(yaw + c.turn) * c.forward,
-                     (float)lp[1] + c.eye_height + vr_opt(VR_OPT_HEIGHT) / 100.0f,   // (the Options page's height)
+                     (float)lp[1] + h + vr_opt(VR_OPT_HEIGHT) / 100.0f,   // (the Options page's height)
                      (float)lp[2] + cosf(yaw + c.turn) * c.forward);
         c.fp_now = true;
     } else if (!ev && control_cell_get(&control_cell_player_pos, lp)) {
@@ -465,6 +475,7 @@ uint64_t vr_stereo_pairs(void) { return c.pair.pairs; }
 
 // vr_skel.c: the last camera was set in first person (the eye in Link's head)
 bool vr_first_person_now(void) { return c.fp_now; }
+float vr_eye_height_used(void) { return c.eye_used; }
 
 // vr_skel.c: a tracking-space pose in the game's world, with the anchor the last camera used (false before one)
 bool vr_tracking_to_world(const vr_pose *in, vr_pose *out) {

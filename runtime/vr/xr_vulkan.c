@@ -53,6 +53,9 @@ typedef struct {
 static struct {
     XrSession session;
     XrSpace local, view;          // the room (LOCAL) and the head (VIEW: the HUD goes with it)
+    XrSpace stage;                // the floor (STAGE; none if the runtime has no such space)
+    float local_y;                // LOCAL's origin above STAGE's (m), when known
+    bool local_y_ok;
     XrSessionState state;
     bool running;
     swapchain sc[SC_COUNT];
@@ -176,6 +179,8 @@ void vr_vk_session_start(VkInstance vk, VkPhysicalDevice pd, VkDevice dev, uint3
         vr_disable("no VIEW space");
         return;
     }
+    rci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;   // (the floor: Options > VR > Play position > Standing)
+    if (XR_FAILED(xrCreateReferenceSpace(g.session, &rci, &g.stage))) g.stage = XR_NULL_HANDLE;
     // the virtual screen (SAVAGEWIND_VR_SCREEN_WIDTH / _DISTANCE, metres): 3 m wide, 2.5 m ahead, at eye height
     g.screen_w = env_float("SAVAGEWIND_VR_SCREEN_WIDTH", 3.0f, 0.2f, 50.0f);
     g.screen_dist = env_float("SAVAGEWIND_VR_SCREEN_DISTANCE", 2.5f, 0.3f, 50.0f);
@@ -255,6 +260,8 @@ static void end_session(const char *why) {
     for (int i = 0; i < SC_COUNT; i++) drop_swapchain(i);
     if (g.local != XR_NULL_HANDLE) xrDestroySpace(g.local);
     if (g.view != XR_NULL_HANDLE) xrDestroySpace(g.view);
+    if (g.stage != XR_NULL_HANDLE) xrDestroySpace(g.stage);
+    g.stage = XR_NULL_HANDLE, g.local_y_ok = false;
     if (g.session != XR_NULL_HANDLE) xrDestroySession(g.session);
     g.local = g.view = XR_NULL_HANDLE;
     g.session = XR_NULL_HANDLE;
@@ -801,6 +808,17 @@ bool vr_session_running(void) { return g.running && g.session != XR_NULL_HANDLE;
 XrSession vr_xr_session(void) { return g.session; }
 XrSpace vr_xr_local(void) { return g.local; }
 XrSpace vr_xr_view(void) { return g.view; }
+
+// how high LOCAL's origin is above the floor (STAGE), for Standing (vr_camera.c); false while the runtime does not
+// know (no STAGE space, or not tracked yet). Asked again each time: the floor can be set up while playing
+bool vr_local_height(float *y) {
+    if (g.stage == XR_NULL_HANDLE || g.local == XR_NULL_HANDLE || !g.last_display) return g.local_y_ok && (*y = g.local_y, true);
+    XrSpaceLocation l = {XR_TYPE_SPACE_LOCATION};
+    if (XR_SUCCEEDED(xrLocateSpace(g.local, g.stage, g.last_display, &l)) && (l.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT))
+        g.local_y = l.pose.position.y, g.local_y_ok = true;
+    if (g.local_y_ok) *y = g.local_y;
+    return g.local_y_ok;
+}
 
 // when the frame the game makes now should be shown: two periods after the last one begun (one being drawn, one shown)
 XrTime vr_next_display_time(void) { return g.last_display ? g.last_display + 2 * g.period : 0; }

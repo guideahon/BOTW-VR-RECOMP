@@ -725,10 +725,27 @@ static vr_pose hand_at(session *s, int h, XrTime t) {
     return r;
 }
 
-// where a space is in STAGE space at time t (LOCAL is the same in this runtime: the floor at the origin)
+// where a space is in STAGE space at time t. LOCAL is STAGE raised by FAKE_XR_LOCAL_HEIGHT (m, default 0: the floor
+// at the origin; a headset's LOCAL is at about the head's height when it starts); the script's poses are LOCAL ones
+static float local_height(void) {
+    static float h = -1;
+    if (h < 0) h = getenv("FAKE_XR_LOCAL_HEIGHT") ? (float)atof(getenv("FAKE_XR_LOCAL_HEIGHT")) : 0;
+    return h;
+}
+
+// the head (the script's pose, in LOCAL) in STAGE space
+static vr_pose head_in_stage(session *s) {
+    vr_pose lift = vr_pose_identity();
+    lift.p.y = local_height();
+    return vr_pose_mul(lift, s->head);
+}
+
 static vr_pose space_at(space *sp, XrTime t) {
-    vr_pose ref = sp->hand ? hand_at(sp->s, sp->hand - 1, t)
-                : sp->type == XR_REFERENCE_SPACE_TYPE_VIEW ? sp->s->head : vr_pose_identity();
+    vr_pose lift = vr_pose_identity();
+    lift.p.y = local_height();
+    vr_pose ref = sp->hand ? vr_pose_mul(lift, hand_at(sp->s, sp->hand - 1, t))
+                : sp->type == XR_REFERENCE_SPACE_TYPE_VIEW ? vr_pose_mul(lift, sp->s->head)
+                : sp->type == XR_REFERENCE_SPACE_TYPE_LOCAL ? lift : vr_pose_identity();
     return vr_pose_mul(ref, sp->pose);
 }
 
@@ -787,7 +804,7 @@ static XrResult XRAPI_CALL fx_LocateViews(XrSession h, const XrViewLocateInfo *l
     float half = s->inst->cfg.ipd * 0.5f;
     for (int eye = 0; eye < 2; eye++) {
         vr_pose offset = {vr_quat_identity(), {eye ? half : -half, 0, 0}};
-        views[eye].pose = to_xr(vr_pose_mul(base_inv, vr_pose_mul(s->head, offset)));
+        views[eye].pose = to_xr(vr_pose_mul(base_inv, vr_pose_mul(head_in_stage(s), offset)));
         views[eye].fov.angleLeft = eye ? -FAKE_XR_FOV_RIGHT : FAKE_XR_FOV_LEFT;
         views[eye].fov.angleRight = eye ? -FAKE_XR_FOV_LEFT : FAKE_XR_FOV_RIGHT;
         views[eye].fov.angleUp = FAKE_XR_FOV_UP;

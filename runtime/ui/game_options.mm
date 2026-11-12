@@ -336,6 +336,7 @@ const char *const k_vr_view[] = {"First person", "Third person"};
 const char *const k_vr_events[] = {"Automatic (as BetterVR)", "First person", "Cutscene camera", "Flat screen"};
 const char *const k_vr_turn[] = {"Smooth", "Snap", "Head only"};
 const char *const k_vr_vignette[] = {"Off", "Low", "Medium", "High"};
+const char *const k_vr_position[] = {"Seated", "Standing"};
 const char *const k_vr_walk[] = {"Where you look", "Where the left hand points"};
 constexpr int k_vr_snap[] = {30, 45, 60, 90};
 constexpr int k_vr_speed[] = {60, 80, 100, 125, 150};
@@ -375,6 +376,11 @@ void build_vr_items(std::vector<Item> &v) {
                           "behind him, in 3D.", VR_OPT_VIEW, k_vr_view, 2);
     view.label = [](const Item &, int x) { return tr(k_vr_view[x]); };
     v.push_back(view);
+    Item pos = vr_choice("Play position", "Seated: when centred your head is at Link's eyes. Standing: your real "
+                         "height above the floor is his eyes' (crouch and he sees from lower).", VR_OPT_PLAY_POSITION,
+                         k_vr_position, 2);
+    pos.label = [](const Item &, int x) { return tr(k_vr_position[x]); };
+    v.push_back(pos);
     Item ev = vr_choice("Cutscenes", "Automatic: as BetterVR's list says for each scene, in first person or from the "
                         "scene's camera. Flat screen: on a big screen in front of you.", VR_OPT_EVENTS, k_vr_events, 4);
     ev.label = [](const Item &, int x) { return tr(k_vr_events[x]); };

@@ -86,6 +86,13 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4n. Posición de juego: sentado / de pie (nuevo, en Opciones > RV)
+
+- [ ] Sentado (por defecto): al centrar (`vr recenter`), tu cabeza queda en los ojos de Link, estés como estés.
+- [ ] De pie: parado, ves a la altura de tus propios ojos sobre el piso (si sos más bajo/alto que Link se nota); si te
+      agachás, la vista baja. Requiere que el piso del visor esté bien configurado (Guardian / límites).
+- [ ] Cambiar entre ambos en el menú se aplica al instante. Decime cuál te resulta más cómodo como predeterminado.
+
 ## 4m. Marcas en los controles (nuevo, en Opciones > RV)
 
 - [ ] En el menú de título, en los menús (pantalla plana) y durante la carga ves un disco celeste chico (6 cm) con borde
