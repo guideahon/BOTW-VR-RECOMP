@@ -35,7 +35,10 @@
 #include "vr_options.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_PERF, SC_COUNT };
+enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_PERF, SC_LEFT2, SC_RIGHT2, SC_COUNT };
+// (each eye has two swapchains: its picture comes in two formats, the scene's apart from the HUD and the window's;
+// switching between them used to make the swapchain again, a GPU wait each time, a stutter in the headset)
+static inline int eye_of(int i) { return i == SC_LEFT || i == SC_LEFT2 ? 0 : i == SC_RIGHT || i == SC_RIGHT2 ? 1 : -1; }
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -61,6 +64,7 @@ static struct {
     swapchain sc[SC_COUNT];
     vr_view eye_view[2];          // what each eye's last released image is (a projection view needs one per eye)
     bool eye_ready[2];
+    int eye_sc[2];                // ... and which of its two swapchains has it
     VkPhysicalDevice phys;
     float screen_w, screen_dist;  // the virtual screen: its width and distance (m)
     bool hud_on;                  // phase 4: the HUD apart from the scene, in front of the eyes (SAVAGEWIND_VR_HUD)
@@ -210,7 +214,7 @@ static void drop_swapchain(int i) {
     vkDeviceWaitIdle(g_vk.dev);  // (only on a resize or the end of the session: its images may still be in use)
     xrDestroySwapchain(s->h);
     memset(s, 0, sizeof *s);
-    if (i < 2) g.eye_ready[i] = false;
+    if (eye_of(i) >= 0 && g.eye_sc[eye_of(i)] == i) g.eye_ready[eye_of(i)] = false;
     if (i == SC_HUD) g.hud_ready = false;
     if (i == SC_VIGNETTE) vig_dropped();
     if (i == SC_MARKER) marker_dropped();
@@ -254,8 +258,8 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     s->extent = ext;
     s->format = src;
     static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette",
-                                        "controller marker", "performance overlay"};
-    LOG("[vr] %s swapchain %ux%u, %u images\n", names[i], ext.width, ext.height, s->n);
+                                        "controller marker", "performance overlay", "left eye (2)", "right eye (2)"};
+    LOG("[vr] %s swapchain %ux%u, %u images (format %d)\n", names[i], ext.width, ext.height, s->n, (int)src);
     return true;
 }
 
@@ -607,6 +611,14 @@ static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_l
 // (the same, the part of src at off, of the size ext)
 static bool put_region(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkOffset2D off, VkExtent2D ext,
                        VkFormat fmt) {
+    if (eye_of(i) >= 0) {   // an eye: whichever of its two swapchains is in this format at this size, else the other one
+        int a = eye_of(i) == 0 ? SC_LEFT : SC_RIGHT, b = eye_of(i) == 0 ? SC_LEFT2 : SC_RIGHT2;
+#define FITS(k) (g.sc[k].h != XR_NULL_HANDLE && g.sc[k].format == fmt && g.sc[k].extent.width == ext.width && \
+                 g.sc[k].extent.height == ext.height)
+        i = FITS(a) ? a : FITS(b) ? b : g.sc[a].h == XR_NULL_HANDLE ? a : g.sc[b].h == XR_NULL_HANDLE ? b :
+            g.eye_sc[eye_of(a)] == a ? b : a;   // (neither: the one not shown now is made again)
+#undef FITS
+    }
     swapchain *s = &g.sc[i];
     if (s->h != XR_NULL_HANDLE && (s->extent.width != ext.width || s->extent.height != ext.height || s->format != fmt))
         drop_swapchain(i);
@@ -628,7 +640,7 @@ static bool put_region(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src
     VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffset = {off.x, off.y, 0},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ext.width, ext.height, 1}};
     rec_CmdCopyImage(cb, src, read, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
-    if (i < 2) arc_draw(cb, dst, ext, fmt, &pres);
+    if (eye_of(i) >= 0) arc_draw(cb, dst, ext, fmt, &pres);
     // the runtime takes its images back as colour attachments (XR_KHR_vulkan_enable2)
     barrier(cb, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
@@ -716,9 +728,10 @@ static void end_frame(void *arg) {
         if (!fr.release[i]) continue;
         fr.release[i] = false;
         if (!vr_xr_ok(xrReleaseSwapchainImage(g.sc[i].h, NULL), "xrReleaseSwapchainImage")) continue;
-        if (i < 2) {
-            g.eye_view[i] = fr.view;
-            g.eye_ready[i] = true;
+        if (eye_of(i) >= 0) {
+            g.eye_view[eye_of(i)] = fr.view;
+            g.eye_ready[eye_of(i)] = true;
+            g.eye_sc[eye_of(i)] = i;
         }
         if (i == SC_HUD) g.hud_ready = true;
         if (i == SC_VIGNETTE) vig.ready = true;
@@ -738,9 +751,10 @@ static void end_frame(void *arg) {
                 views[i] = (XrCompositionLayerProjectionView){XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
                 views[i].pose = g.eye_view[sc].pose;
                 views[i].fov = g.eye_view[sc].fov;
-                views[i].subImage.swapchain = g.sc[sc].h;
+                int k = g.eye_sc[sc];
+                views[i].subImage.swapchain = g.sc[k].h;
                 views[i].subImage.imageRect =
-                    (XrRect2Di){{0, 0}, {(int32_t)g.sc[sc].extent.width, (int32_t)g.sc[sc].extent.height}};
+                    (XrRect2Di){{0, 0}, {(int32_t)g.sc[k].extent.width, (int32_t)g.sc[k].extent.height}};
             }
             proj.space = g.local;
             proj.viewCount = 2;
