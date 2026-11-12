@@ -80,3 +80,8 @@ make test-vr      # opcional: tests VR, sin juego ni visor
 
 Recomendado en Quest 3: 72 u 80 Hz en Virtual Desktop, `SAVAGEWIND_VR_HEIGHT=1440`. Controles, confort y pendientes:
 [docs/VR.md](../VR.md).
+
+El límite es la CPU (el hilo de Savage Wind que traduce los dibujos del juego a Vulkan, ~1,6 µs por dibujo), no la GPU:
+cada ojo es un cuadro del juego. Medido en estéreo en la Meseta de los Albores (Ryzen 9 9950X3D, RTX 3090; cuadros del
+juego por segundo, pares de ojos la mitad): antialiasing TAA 177-190 (~90 pares), SMAA ~198 (~99), sin AA ~216 (~108).
+Para 90 Hz usá SMAA o sin antialiasing; a 72 u 80 Hz TAA alcanza.

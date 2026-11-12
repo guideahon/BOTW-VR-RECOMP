@@ -88,3 +88,8 @@ make test-vr      # optional: the VR tests, no game or headset needed
 
 Suggested on a Quest 3: 72 or 80 Hz in Virtual Desktop, `SAVAGEWIND_VR_HEIGHT=1440` (an RTX 3090 holds ~100 frames per
 eye at 1440). Controls, comfort options and what is still missing: [docs/VR.md](../VR.md).
+
+The limit is the CPU (Savage Wind's thread that turns the game's draws into Vulkan, ~1.6 us a draw), not the GPU: each
+eye is a game frame. Measured in stereo on the Great Plateau (Ryzen 9 9950X3D, RTX 3090; game frames per second, eye
+pairs half that): Anti-aliasing TAA 177-190 (~90 pairs), SMAA ~198 (~99), off ~216 (~108). For 90 Hz use SMAA or no
+anti-aliasing; at 72 or 80 Hz TAA keeps up.
