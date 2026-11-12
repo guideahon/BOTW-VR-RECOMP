@@ -23,7 +23,7 @@ Estado de cada fase y cómo correr los tests: [VR.md](VR.md).
 | 7. Manos y brazos | hecha en primera persona: IK de ambos brazos, muñeca corregida por mano y cabeza oculta; orientación y aspecto aún requieren Quest |
 | 8. Combate con movimiento | hecha en software: tajos, estocadas, guardia, golpes donde se mueve el arma y arco apuntado con las manos; runas apuntadas con la mano siguen en investigación |
 | 9. Rendimiento | en curso: sombras del sol una vez por par y TAA por ojo; mediciones fake_xr de 106-112 pares/s en RTX 3090 a 1030x1080 por ojo |
-| 10. Release | sin hacer |
+| 10. Release | paquete e instalador hechos; pre-release `vr-2026.11.12` publicada; falta completar el checklist físico en varios visores |
 
 La cobertura sintética y sus resultados están detallados en `docs/VR.md`, sección "Tests". La validación física sigue
 pendiente: el único reporte de Quest 3 disponible es de `0.5.0-alpha.5`; el probe local más reciente encontró
