@@ -14,10 +14,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import test_vr_game as T  # noqa: E402
 import perf_routes  # noqa: E402
 
+_next_port = 7792
+
 
 def boot(save, out, env=None, script=None):
+    global _next_port
+    port = _next_port
+    _next_port += 1
     targs = argparse.Namespace(save=save, out=out, exe=os.path.join(T.TREE, 'build', 'savagewind.exe'),
-                               runtime_json=os.path.join(T.TREE, 'build', 'vr', 'fake_xr.json'), port=7792,
+                               runtime_json=os.path.join(T.TREE, 'build', 'vr', 'fake_xr.json'), port=port,
                                place='plateau', boot=180.0, settle=8.0, boot_estimate=60.0, capture_every=0,
                                menu_rounds=0)
     os.makedirs(out, exist_ok=True)
