@@ -95,9 +95,27 @@ static float near_p[3], near_r;
 static volatile int near_on;
 static struct { _Atomic uint64_t key; _Atomic uint64_t count; } nslots[1 << 14];
 
+static uint64_t ptr_lo, ptr_hi;   // `fnprof start ptr <lo> <hi>`: a register pointing into [lo, hi) instead
+
+static void near_count(uint64_t key) {
+    uint32_t h = (uint32_t)((key >> 2) * 0x9E3779B1u) & ((1 << 14) - 1);
+    for (int n = 0; n < (1 << 14); n++, h = (h + 1) & ((1 << 14) - 1)) {
+        uint64_t cur = atomic_load(&nslots[h].key);
+        if (cur == key || (cur == 0 && atomic_compare_exchange_strong(&nslots[h].key, &cur, key)) || cur == key) {
+            atomic_fetch_add(&nslots[h].count, 1);
+            return;
+        }
+    }
+}
+
 static void near_check(uint64_t a) {
     Cpu *c = kernel_current_cpu();
     if (!c) return;
+    if (ptr_hi) {
+        for (int r = 0; r < 8; r++)
+            if (c->x[r] >= ptr_lo && c->x[r] < ptr_hi) near_count(a | ((uint64_t)(r * 256 + ((c->x[r] - ptr_lo) & 0xff)) << 48));
+        return;
+    }
     for (int r = 0; r < 8; r++) {
         uint64_t p = c->x[r];
         extern bool kernel_guest_mapped(uint64_t a, uint64_t n);
@@ -169,7 +187,14 @@ void fnprof_start(const float *near, float r) {
     for (int i = 0; i < NSLOT; i++) atomic_store(&slots[i].addr, 0), atomic_store(&slots[i].count, 0);
     for (int i = 0; i < (1 << 14); i++) atomic_store(&nslots[i].key, 0), atomic_store(&nslots[i].count, 0);
     near_on = near != NULL;
+    ptr_lo = ptr_hi = 0;
     if (near) memcpy(near_p, near, sizeof near_p), near_r = r;
+}
+
+void fnprof_start_ptr(uint64_t lo, uint64_t hi) {
+    fnprof_start(NULL, 0);
+    ptr_lo = lo, ptr_hi = hi;
+    near_on = 1;
     g_fnprof = 1;
 }
 

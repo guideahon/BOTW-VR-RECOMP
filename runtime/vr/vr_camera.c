@@ -221,6 +221,10 @@ bool vr_world_view(void) {
     }
     if (framepace_title_ui() || framepace_loading_ui() || framepace_map_ui()) return false;
     if (g_site.pause_state && LD32(g_site.pause_state) != 0) return false;
+    // Savage Wind's own overlay menu (Options, Controls...) is drawn on the window's picture, which the eyes do not get:
+    // while it is open the headset shows that picture on the virtual screen
+    extern bool menu_is_open(void);
+    if (menu_is_open()) return false;
     return true;
 }
 

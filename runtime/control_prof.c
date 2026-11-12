@@ -271,7 +271,11 @@ static void cmd_gpuprof(int argc, char **argv, ControlReply *r) {
 static void cmd_fnprof(int argc, char **argv, ControlReply *r) {
     extern void fnprof_start(const float *near, float r);
     extern int fnprof_stop(const char *path);
-    if ((argc == 2 || argc == 6) && !strcmp(argv[1], "start")) {
+    if (argc == 5 && !strcmp(argv[1], "start") && !strcmp(argv[2], "ptr")) {
+        extern void fnprof_start_ptr(uint64_t lo, uint64_t hi);
+        fnprof_start_ptr(strtoull(argv[3], NULL, 16), strtoull(argv[4], NULL, 16));
+        control_field_str(r, "status", "counting, and the functions given a pointer into that range");
+    } else if ((argc == 2 || argc == 6) && !strcmp(argv[1], "start")) {
         float p[4] = {0};
         for (int i = 0; argc == 6 && i < 4; i++) p[i] = (float)atof(argv[2 + i]);
         fnprof_start(argc == 6 ? p : NULL, p[3]);

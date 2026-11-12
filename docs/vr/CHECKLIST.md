@@ -86,6 +86,11 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4q. Menú de Savage Wind dentro del visor (nuevo)
+
+- [ ] Jugando, abrí el menú propio de Savage Wind (su tecla, o el botón que tenga asignado): en el visor aparece en la
+      pantalla virtual (antes no se veía en el visor, solo en la ventana). Al cerrarlo vuelve el 3D.
+
 ## 4p. Qué ofrece el runtime del visor (para lo próximo)
 
 - [ ] Después de una partida con el visor, mandame la línea `[vr] runtime ... offers N extensions: ...` de

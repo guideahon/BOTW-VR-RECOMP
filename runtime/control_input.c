@@ -259,9 +259,19 @@ static void cmd_input(int argc, char **argv, ControlReply *r) {
         control_field_bool(r, keys[i][2], a >> 32);
     }
 }
+// (test) menu open | close: Savage Wind's overlay menu, as its key opens it
+static void cmd_menu(int argc, char **argv, ControlReply *r) {
+    extern void menu_test_open(void), menu_test_close(void);
+    if (argc == 2 && !strcmp(argv[1], "open")) menu_test_open();
+    else if (argc == 2 && !strcmp(argv[1], "close")) menu_test_close();
+    else { control_fail(r, "Usage: menu open | close"); return; }
+    control_field_str(r, "menu", argv[1]);
+}
+
 void control_input_init(void) {
     static const ControlCmd cmds[] = {
         {"press", "<button> [frames]", "Press a button (3 frames by default)", cmd_button},
+        {"menu", "open | close", "(test) Open or close Savage Wind's overlay menu", cmd_menu},
         {"hold", "<button>", "Hold a button until released", cmd_button},
         {"release", "[<button>|all]", "Release a button, or all input", cmd_release},
         {"stick", "<l|r> <x> <y> [frames]", "Move a stick (axes -1 to 1)", cmd_stick},
