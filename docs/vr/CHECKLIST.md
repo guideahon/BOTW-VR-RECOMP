@@ -86,6 +86,16 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4o. Paquete de release (nuevo)
+
+- [ ] Descomprimí `build/dist/SavageWind-VR-0.5.0-alpha.5-windows.zip` en una carpeta nueva (puede tener espacios).
+- [ ] Abrí `savagewind.exe` una vez: elegí tu carpeta de BOTW (exefs/romfs), espera la copia y la compilación (varios
+      minutos la primera vez). Lo probé así desde `D:\SW VR test`: funcionó.
+- [ ] Con el visor conectado (Virtual Desktop), abrí `Savage Wind VR.exe`: arranca directo en RV.
+- [ ] Un acceso directo de Steam / Virtual Desktop a `Savage Wind VR.exe` muestra el juego como corriendo hasta que lo
+      cerrás (el lanzador espera al juego).
+- [ ] En la carpeta `VR/` están esta guía, la de instalación y esta lista.
+
 ## 4n. Posición de juego: sentado / de pie (nuevo, en Opciones > RV)
 
 - [ ] Sentado (por defecto): al centrar (`vr recenter`), tu cabeza queda en los ojos de Link, estés como estés.
