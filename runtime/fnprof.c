@@ -74,16 +74,30 @@ static void args_check(uint64_t a, uint64_t lr) {
                              (unsigned long long)a, (unsigned long long)lr, (unsigned long long)c->x[0],
                              (unsigned long long)c->x[1], (unsigned long long)c->x[2], (unsigned long long)c->x[3],
                              (unsigned long long)c->x[4], (unsigned long long)c->x[5], deref_reg);
+            if (n < 0 || n >= (int)sizeof line) return;
+            extern bool kernel_guest_mapped(uint64_t a, uint64_t n);
+            size_t used = (size_t)n;
             uint64_t p = c->x[deref_reg];
-            for (int k = 0; k < deref_n && p >= GUEST_LO && p + 8 * (k + 1) <= GUEST_HI; k++) {
-                uint64_t v = ((uint64_t *)(uintptr_t)p)[k];
-                n += snprintf(line + n, sizeof line - n, " %llx", (unsigned long long)v);
+            for (int k = 0; k < deref_n; k++) {
+                uint64_t off = (uint64_t)k * 8;
+                if (p < GUEST_LO || p > GUEST_HI - off - 8 || !kernel_guest_mapped(p + off, 8)) break;
+                uint64_t v = *(uint64_t *)(uintptr_t)(p + off);
+                size_t left = sizeof line - used;
+                int wrote = snprintf(line + used, left, " %llx", (unsigned long long)v);
+                if (wrote < 0) break;
+                if ((size_t)wrote >= left) { used = sizeof line - 1; break; }
+                used += (size_t)wrote;
                 const char *s = (const char *)(uintptr_t)v;  // a pointer to text (a name): show it
                 int len = 0;
-                if (v >= GUEST_LO && v + 64 <= GUEST_HI)
+                if (v >= GUEST_LO && v <= GUEST_HI - 64 && kernel_guest_mapped(v, 64))
                     while (len < 64 && s[len] >= 0x20 && s[len] < 0x7f) len++;
-                if (len >= 4 && (len == 64 || !s[len]) && n < (int)sizeof line - 80)
-                    n += snprintf(line + n, sizeof line - n, "=\"%.*s\"", len, s);
+                if (len >= 4 && (len == 64 || !s[len]) && used < sizeof line - 80) {
+                    left = sizeof line - used;
+                    wrote = snprintf(line + used, left, "=\"%.*s\"", len, s);
+                    if (wrote < 0) break;
+                    if ((size_t)wrote >= left) { used = sizeof line - 1; break; }
+                    used += (size_t)wrote;
+                }
             }
             fprintf(stderr, "%s]\n", line);
         }

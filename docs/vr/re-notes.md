@@ -171,6 +171,12 @@ look empty. It now enables collection after resetting the filters. A 3 s idle / 
 functions; aim added 1,114 unique functions. Those candidates still need to be separated from unrelated frame work before
 patching a target ray.
 
+Trace safety (2026-11-12): optional `SAVAGEWIND_FNPROF_ARGS` dumps now check that each guest range is mapped before
+reading register pointers or scanning a possible string, and bound the formatted line. Rune profiling previously hit an
+invalid guest pointer (`0xffffffffffffffff`) and stopped the game; the guarded capture completed a full idle/aim run and
+reported over 13,000 functions without an access violation. This keeps candidate searches usable; it does not locate
+the target ray.
+
 Candidate filtering (2026-11-12): main+0x165460, reached through a generic geometry helper, looked like a possible ray
 query. Its two input position records were near Link's body, and its call count fell from 8,260 idle to 5,821 while
 aiming, so it is not established as the rune target ray and is not hooked. Another aim-only address, 0x7002746970, first
