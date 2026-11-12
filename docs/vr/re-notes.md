@@ -177,6 +177,13 @@ invalid guest pointer (`0xffffffffffffffff`) and stopped the game; the guarded c
 reported over 13,000 functions without an access violation. This keeps candidate searches usable; it does not locate
 the target ray.
 
+SIMD argument capture (2026-11-12): `SAVAGEWIND_FNPROF_ARGS_VEC=1` prints the four float lanes of `v0-v7` for the
+selected functions. The guarded fake-XR L-aim capture completed with the option enabled. It exposed Link's body matrix
+in `main+0x10e7050` / `main+0x10e7194`. The `main+0x13a4dc8` / `main+0x11848c0` proximity path receives a nearby
+world-space point, but this stationary-pose capture does not distinguish camera/player geometry from a controller
+target. `main+0xb7d9c` computes a geometric distance test and is entered from `main+0x15df48`; that alone does not
+establish a rune target query. No hook was added; the target search remains open.
+
 Candidate filtering (2026-11-12): main+0x165460, reached through a generic geometry helper, looked like a possible ray
 query. Its two input position records were near Link's body, and its call count fell from 8,260 idle to 5,821 while
 aiming, so it is not established as the rune target ray and is not hooked. Another aim-only address, 0x7002746970, first

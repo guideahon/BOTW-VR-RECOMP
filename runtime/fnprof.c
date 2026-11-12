@@ -47,15 +47,17 @@ static void bt_check(uint64_t a, uint64_t lr, uint64_t x0) {
 // SAVAGEWIND_FNPROF_ARGS=<hex addr>[,...]: log x0-x5 and the caller on each entry of those functions (the first
 // SAVAGEWIND_FNPROF_ARGS_MAX entries each, default 64) - what a function is called with, without a debugger - and
 // what one register points to: SAVAGEWIND_FNPROF_DEREF=<reg>:<qwords> (default 1:4, x1: often a descriptor or out
-// argument).
+// argument). SAVAGEWIND_FNPROF_ARGS_VEC=1 additionally dumps the low four float lanes of v0-v7.
 static uint64_t args_addrs[64];
-static int args_n = -1, args_max = 64, deref_reg = 1, deref_n = 4;
+static int args_n = -1, args_max = 64, deref_reg = 1, deref_n = 4, args_vec;
 static _Atomic int args_count[64];
 
 static void args_check(uint64_t a, uint64_t lr) {
     if (args_n < 0) {
         args_n = 0;
         const char *e = getenv("SAVAGEWIND_FNPROF_ARGS");
+        const char *vec = getenv("SAVAGEWIND_FNPROF_ARGS_VEC");
+        args_vec = vec && strcmp(vec, "0") != 0;
         if (getenv("SAVAGEWIND_FNPROF_ARGS_MAX")) args_max = atoi(getenv("SAVAGEWIND_FNPROF_ARGS_MAX"));
         if (getenv("SAVAGEWIND_FNPROF_DEREF")) sscanf(getenv("SAVAGEWIND_FNPROF_DEREF"), "%d:%d", &deref_reg, &deref_n);
         if (deref_reg < 0 || deref_reg > 30) deref_reg = 1;
@@ -77,6 +79,18 @@ static void args_check(uint64_t a, uint64_t lr) {
             if (n < 0 || n >= (int)sizeof line) return;
             extern bool kernel_guest_mapped(uint64_t a, uint64_t n);
             size_t used = (size_t)n;
+            if (args_vec) {
+                for (int r = 0; r < 8; r++) {
+                    float lanes[4];
+                    memcpy(lanes, &c->v[r], sizeof lanes);
+                    int wrote = snprintf(line + used, sizeof line - used,
+                                         " v%d=[%.4g,%.4g,%.4g,%.4g]", r,
+                                         lanes[0], lanes[1], lanes[2], lanes[3]);
+                    if (wrote < 0) return;
+                    if ((size_t)wrote >= sizeof line - used) { used = sizeof line - 1; break; }
+                    used += (size_t)wrote;
+                }
+            }
             uint64_t p = c->x[deref_reg];
             for (int k = 0; k < deref_n; k++) {
                 uint64_t off = (uint64_t)k * 8;
