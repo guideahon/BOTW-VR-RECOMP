@@ -248,7 +248,7 @@ meant and not otherwise. Needs a headset.
 
 | What | Needs | State |
 |---|---|---|
-| A vignette while moving or turning | a pass over the eyes' pictures (exec.c, like vr_hud.frag) | not started |
+| A vignette while moving or turning | nothing from the game | done: Options > VR > Comfort vignette (off, low, medium, high; `SAVAGEWIND_VR_VIGNETTE`): while a stick walks or turns Link, or a snap turn, the edges darken (a quad in the head's space over the eyes' pictures, runtime/vr/xr_vulkan.c `vignette`); roomscale walking does not trigger it |
 | Seated or standing height, the floor at its height | nothing from the game | done as BetterVR's height offset (Options > VR > Height, -30..+30 cm); no floor calibration |
 | Turning with the head only (no stick turn) | nothing from the game | done: `SAVAGEWIND_VR_TURN=head` / Options > VR > Turning > Head only; vertical stick input remains available |
 | First person (BetterVR's FirstPersonMode) | the game's code: hiding Link's head | done but his head (the eye at his position, 1.55 m up; `SAVAGEWIND_VR_VIEW`) |
@@ -275,7 +275,7 @@ meant and not otherwise. Needs a headset.
 |---|---|---|
 | A VR page in the game's Options (in place of environment variables) | the options table (runtime/ui) and the translations | done (runtime/vr/vr_options.c; the installer writes savagewind.ini) |
 | An installer | nothing more | done: `Install BOTW VR.bat` (tools/vr/installer.py: your folders, the tools, the build, the options, a shortcut) |
-| A release build of this fork (no source build needed) | packaging; the setup screen | not started |
+| A release build of this fork (no source build needed) | packaging; the setup screen | done: `make dist VR=1` (see Building), checked from a clean folder; not published |
 | Upstream: the generic hooks (projection, present, frame pacing) proposed to Savage Wind | its maintainers' interest | not started |
 | macOS | no OpenXR runtime there | not planned |
 
