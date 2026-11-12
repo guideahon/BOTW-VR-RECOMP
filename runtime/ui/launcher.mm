@@ -15,6 +15,13 @@
 #import <QuartzCore/CAMetalLayer.h>
 #endif
 #include "../app_name.h"
+#ifdef SW_VR
+#define WELCOME_TEXT "Welcome to BOTW VR"
+#define CONFIG_TITLE "BOTW VR Configuration"
+#else
+#define WELCOME_TEXT "Welcome to Savage Wind"
+#define CONFIG_TITLE "Savage Wind Configuration"
+#endif
 #include <SDL3/SDL.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -1424,7 +1431,7 @@ extern "C" void launcher_run(const char *root, int mode) {
     ui_window_init();
     SDL_Window *win = ui_window();
     g_launcher_win = win;
-    SDL_SetWindowTitle(win, g_setup_only ? APP_NAME : APP_NAME " Configuration");
+    SDL_SetWindowTitle(win, g_setup_only ? APP_NAME : CONFIG_TITLE);
 #ifdef __APPLE__
     CAMetalLayer *layer = (__bridge CAMetalLayer *)ui_metal_layer();
     id<MTLDevice> dev = (__bridge id<MTLDevice>)ui_metal_device();
@@ -1780,7 +1787,7 @@ extern "C" void launcher_run(const char *root, int mode) {
                 bool welcome = g_setup_only && status == "No game files";
                 ImGui::PushFont(g_font_small);
                 ImGui::PushFont(g_font_menu);
-                ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", tr(welcome ? "Welcome to " APP_NAME : "Game Files"));
+                ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", tr(welcome ? WELCOME_TEXT : "Game Files"));
                 ImGui::PopFont();
                 bool back = false;
                 if (!busy) {  // close: the drawn X in the corner, as Settings (B / Esc too; setup mode: the X quits)
