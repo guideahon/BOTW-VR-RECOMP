@@ -871,7 +871,8 @@ def main(argv=None):
     ap.add_argument('--scenario', nargs='+', default=['cinema', 'headtrack', 'firstperson', 'stereo', 'hud', 'menus', 'controllers', 'gestures', 'arms', 'weapon', 'walkdir', 'snap', 'motion', 'lost', 'exit'])
     ap.add_argument('--exe', default=os.path.join(TREE, 'build', 'savagewind.exe' if os.name == 'nt' else 'savagewind'))
     ap.add_argument('--runtime-json', default=os.path.join(TREE, 'build', 'vr', 'fake_xr.json'))
-    ap.add_argument('--port', type=int, default=7792)
+    ap.add_argument('--port', type=int, default=7792,
+                    help='first control port (each scenario gets the next port)')
     ap.add_argument('--place', default='plateau')
     ap.add_argument('--boot', type=float, default=180)
     ap.add_argument('--settle', type=float, default=8)
@@ -880,7 +881,11 @@ def main(argv=None):
     ap.add_argument('--capture-every', type=int, default=240)
     ap.add_argument('--menu-rounds', type=int, default=20)
     args = ap.parse_args(argv)
-    for sc in args.scenario:
+    first_port = args.port
+    for index, sc in enumerate(args.scenario):
+        # A fresh TCP port per boot keeps a delayed control request from a stopped
+        # game from reaching the next scenario after the OS reuses its old port.
+        args.port = first_port + index
         run_dir = os.path.join(args.out, sc)
         os.makedirs(run_dir, exist_ok=True)
         print('== ' + sc)
