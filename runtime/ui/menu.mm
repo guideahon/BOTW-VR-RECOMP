@@ -1514,6 +1514,23 @@ static void photo_overlay_draw(ImGuiIO &io, float scale) {
     dl->AddText(ImVec2(a.x + pad, a.y + ih + 2 * pad), IM_COL32(240, 240, 230, alpha), msg);
 }
 
+// where the performance overlay was drawn last, in the window image's pixels (VR: runtime/vr/xr_vulkan.c shows that
+// part of the picture in the headset); the frame it was drawn in
+static int g_perf_rect[4];
+static std::atomic<uint64_t> g_perf_frame{0};
+static uint64_t g_render_count;
+extern "C" bool menu_perf_rect(int r[4]) {
+    if (!g_perf_frame.load() || g_perf_frame.load() + 2 < g_render_count) return false;
+    memcpy(r, g_perf_rect, sizeof g_perf_rect);
+    return r[2] > 0 && r[3] > 0;
+}
+
+static void perf_rect_note(void) {
+    ImVec2 p = ImGui::GetWindowPos(), z = ImGui::GetWindowSize();
+    g_perf_rect[0] = (int)p.x, g_perf_rect[1] = (int)p.y, g_perf_rect[2] = (int)(z.x + 0.5f), g_perf_rect[3] = (int)(z.y + 0.5f);
+    g_perf_frame.store(g_render_count);
+}
+
 static void perf_overlay_draw(ImGuiIO &io, float scale) {
     PerfStats s;
     perfmon_snapshot(&s);
@@ -1528,6 +1545,7 @@ static void perf_overlay_draw(ImGuiIO &io, float scale) {
     if (g_settings.perf_overlay == PERF_FPS) {
         // (frame generation: the presented frames, generated ones included)
         ImGui::TextColored(fps_c, "%.0f FPS  %.1f ms", s.fps + s.fps_generated, s.frame_ms_avg);
+        perf_rect_note();
         ImGui::End();
         return;
     }
@@ -1590,6 +1608,7 @@ static void perf_overlay_draw(ImGuiIO &io, float scale) {
     // Axis letters are not translated.
     float pos[3];
     if (perfmon_position(pos)) ImGui::Text("X %.1f  Y %.1f  Z %.1f", pos[0], pos[1], pos[2]);
+    perf_rect_note();
     ImGui::End();
 }
 
@@ -2020,6 +2039,7 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
     if (!g_inited) init();
 #endif
     ImGui::SetCurrentContext(g_ctx);
+    g_render_count++;
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)tw, (float)th);
     io.DisplayFramebufferScale = ImVec2(1, 1);

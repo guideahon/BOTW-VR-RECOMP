@@ -35,7 +35,7 @@
 #include "vr_options.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_COUNT };
+enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_PERF, SC_COUNT };
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -83,7 +83,11 @@ static struct {
     float hud_aspect;        // ... of the HUD's
     int kind;                // the headset frame's layer: 0 none, 1 the screen (quad), 2 the eyes (projection)
     bool hud;                // ... and the HUD in front of them
+    bool perf;               // ... and the performance overlay
+    float perf_aspect;
 } fr;
+static uint64_t perf_frames;   // headset frames with the performance overlay
+uint64_t vr_perf_frames(void) { return perf_frames; }
 static pthread_mutex_t end_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t end_done = PTHREAD_COND_INITIALIZER;
 static bool end_pending;
@@ -250,7 +254,7 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     s->extent = ext;
     s->format = src;
     static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette",
-                                        "controller marker"};
+                                        "controller marker", "performance overlay"};
     LOG("[vr] %s swapchain %ux%u, %u images\n", names[i], ext.width, ext.height, s->n);
     return true;
 }
@@ -594,7 +598,15 @@ static void marker_image(VkCommandBuffer cb) {
 
 // src (in layout src_layout: COLOR_ATTACHMENT_OPTIMAL for the window image, GENERAL for exec.c's images) into
 // swapchain i, made at its size in the sRGB twin of its format: acquired and waited here, released after the submission
+static bool put_region(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkOffset2D off, VkExtent2D ext,
+                       VkFormat fmt);
 static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkExtent2D ext, VkFormat fmt) {
+    return put_region(i, cb, src, src_layout, (VkOffset2D){0, 0}, ext, fmt);
+}
+
+// (the same, the part of src at off, of the size ext)
+static bool put_region(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_layout, VkOffset2D off, VkExtent2D ext,
+                       VkFormat fmt) {
     swapchain *s = &g.sc[i];
     if (s->h != XR_NULL_HANDLE && (s->extent.width != ext.width || s->extent.height != ext.height || s->format != fmt))
         drop_swapchain(i);
@@ -613,7 +625,7 @@ static bool put_into(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src_l
                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
     barrier(cb, dst, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_NONE, 0,
             VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
-    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffset = {off.x, off.y, 0},
                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {ext.width, ext.height, 1}};
     rec_CmdCopyImage(cb, src, read, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
     if (i < 2) arc_draw(cb, dst, ext, fmt, &pres);
@@ -675,6 +687,23 @@ static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt
             fr.hud = true;
             fr.hud_aspect = (float)sext.height / (float)sext.width;
         }
+        // the performance overlay (drawn on the window's picture, which the eyes do not get): that part of it, apart
+        extern bool menu_perf_rect(int r[4]);
+        int pr[4];
+        fr.perf = false;
+        bool have_perf = menu_perf_rect(pr);
+        if (have_perf) {   // (rounded up, kept at its right edge: its width moves with its digits, the swapchain not)
+            int right = pr[0] + pr[2];
+            pr[2] = (pr[2] + 63) / 64 * 64, pr[3] = (pr[3] + 31) / 32 * 32;
+            pr[0] = right - pr[2];
+        }
+        if (have_perf && pr[0] >= 0 && pr[1] >= 0 && pr[0] + pr[2] <= (int)ext.width && pr[1] + pr[3] <= (int)ext.height &&
+            put_region(SC_PERF, cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, (VkOffset2D){pr[0], pr[1]},
+                       (VkExtent2D){(uint32_t)pr[2], (uint32_t)pr[3]}, fmt)) {
+            fr.perf = true;
+            fr.perf_aspect = (float)pr[3] / (float)pr[2];
+            perf_frames++;
+        }
         g.world_frames++;
     } else if (put_into(SC_SCREEN, cb, src, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, ext, fmt)) {
         fr.kind = 1;
@@ -697,10 +726,10 @@ static void end_frame(void *arg) {
     }
     if (fr.active) {
         XrCompositionLayerQuad quad = {XR_TYPE_COMPOSITION_LAYER_QUAD}, hudq = {XR_TYPE_COMPOSITION_LAYER_QUAD},
-                               vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD}, mkq[2];
+                               vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD}, mkq[2], perfq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
         XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
         XrCompositionLayerProjectionView views[2];
-        const XrCompositionLayerBaseHeader *layers[5];
+        const XrCompositionLayerBaseHeader *layers[6];
         uint32_t n = 0;
         bool mono = fr.view.world && fr.view.eye < 0;
         if (fr.kind == 2 && (mono ? g.eye_ready[0] : g.eye_ready[0] && g.eye_ready[1])) {
@@ -765,6 +794,15 @@ static void end_frame(void *arg) {
             quad.pose = (XrPosef){{0, 0, 0, 1}, {0, 0, -g.screen_dist}};
             quad.size = (XrExtent2Df){g.screen_w, g.screen_w * fr.aspect};
             layers[n++] = (const XrCompositionLayerBaseHeader *)&quad;
+        }
+        if (fr.kind == 2 && fr.perf) {   // the performance overlay: with the head, up and to the right, 1 m away
+            perfq.space = g.view;
+            perfq.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            perfq.pose = (XrPosef){{0, 0, 0, 1}, {0.42f, 0.30f, -1.0f}};
+            perfq.size = (XrExtent2Df){0.36f, 0.36f * fr.perf_aspect};
+            perfq.subImage.swapchain = g.sc[SC_PERF].h;
+            perfq.subImage.imageRect = (XrRect2Di){{0, 0}, {(int32_t)g.sc[SC_PERF].extent.width, (int32_t)g.sc[SC_PERF].extent.height}};
+            layers[n++] = (const XrCompositionLayerBaseHeader *)&perfq;
         }
         if (n && markers_wanted()) {   // the controllers, over everything
             for (int h = 0; h < 2; h++) {

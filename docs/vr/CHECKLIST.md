@@ -86,6 +86,11 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4r. Overlay de rendimiento en el visor (nuevo)
+
+- [ ] Video > Overlay de rendimiento (FPS o completo): jugando, el panel aparece en el visor arriba a la derecha,
+      siguiendo la cabeza, legible. Decime si lo querés en otro lugar o más chico.
+
 ## 4q. Menú de Savage Wind dentro del visor (nuevo)
 
 - [ ] Jugando, abrí el menú propio de Savage Wind (su tecla, o el botón que tenga asignado): en el visor aparece en la
