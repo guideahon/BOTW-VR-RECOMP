@@ -103,9 +103,11 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 
 ## 4p. Qué ofrece el runtime del visor (para lo próximo)
 
-- [ ] Después de una partida con el visor, mandame la línea `[vr] runtime ... offers N extensions: ...` de
-      `savagewind.log`: dice si Virtual Desktop ofrece space warp (`XR_FB_space_warp`), foveación (`XR_FB_foveation`),
-      capas de profundidad (`XR_KHR_composition_layer_depth`), etc. Con eso sé qué se puede agregar.
+- [x] Recibido en el `savagewind.log` del 2026-11-12: VirtualDesktopXR 1.1.0 en Quest 3 lista 34 extensiones;
+      incluye `XR_KHR_composition_layer_depth` y no incluye `XR_FB_space_warp` ni `XR_FB_foveation`. La extensión de
+      profundidad está disponible, pero el juego todavía no la usa.
+- [ ] Repetir el registro con la build actual si cambia el runtime. El log recibido es de la build modificada
+      `0.5.0-alpha.5` (`b7ef7a9`), anterior a los cambios recientes de manos y ritmo estéreo; no verifica esos cambios.
 
 ## 4o. Paquete de release (nuevo)
 

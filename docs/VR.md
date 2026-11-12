@@ -209,18 +209,23 @@ Stereo needs the game at about twice the headset's rate (180 fps for 90 Hz): low
 distance or the shadows if the headset's runtime reports dropped frames, or run the headset at 72 Hz.
 
 Meta Quest 3 through Virtual Desktop: Virtual Desktop Streamer registers its own OpenXR runtime (VDXR) as the active
-one; connect the headset in Virtual Desktop first, then start the game from its desktop view. VDXR 1.1.0 offers
-`XR_KHR_vulkan_enable2`, and with the headset not connected the game says so and stays flat (`found no headset
-(xrGetSystem -35)`). The Quest's controllers are read through the Touch bindings. Measured against fake_xr on an RTX 3090
-(Great Plateau, uncapped, an eye about as wide as high): `SAVAGEWIND_VR_HEIGHT` 1080 gives about 110 stereo pairs a
-second, 1440 about 100, 1800 about 90; heavier places run about a quarter slower, so 72 or 80 Hz in Virtual Desktop
-leaves room.
+one; connect the headset in Virtual Desktop first, then start the game from its desktop view. A captured
+VirtualDesktopXR 1.1.0 session on Quest 3 offered `XR_KHR_vulkan_enable2` and `XR_KHR_composition_layer_depth`, but did
+not list `XR_FB_space_warp` or `XR_FB_foveation`. The runtime listed 34 extensions in total. The depth extension is
+available to investigate; this build does not use it. With the headset not connected the game says so and stays flat
+(`found no headset (xrGetSystem -35)`). The Quest's controllers are read through the Touch bindings. Measured against
+fake_xr on an RTX 3090 (Great Plateau, uncapped, an eye about as wide as high): `SAVAGEWIND_VR_HEIGHT` 1080 gives
+about 110 stereo pairs a second, 1440 about 100, 1800 about 90; heavier places run about a quarter slower, so 72 or
+80 Hz in Virtual Desktop leaves room. These are fake_xr measurements, not Quest measurements.
 
-The 2026-11-12 `savagewind.log` records a Quest 3 run through VirtualDesktopXR 1.1.0: OpenXR reached state 5 (FOCUSED),
-both 1324x1440 eye swapchains were created, and the game rendered in first person with Link's arms enabled. This
-confirms session startup and stereo rendering, but the log cannot establish whether the eyes looked correct, the view
-felt comfortable, or the hands looked natural in the headset. The controller-orientation logging is now covered by the
-`fake_xr` arms scenario; a new headset log and a window capture can resolve the remaining visual check.
+The `savagewind.log` received on 2026-11-12 records an earlier, modified `0.5.0-alpha.5` build (`b7ef7a9`, game
+1.9.0). OpenXR reached state 5 (FOCUSED), the runtime identified the headset as Meta Quest 3, and both 1324x1440 eye
+swapchains were created for 2112x2296 headset eye images. The log's game frame statistics are mostly 60 fps. This
+predates the current stereo frame-pacing changes, so it does not measure current-branch performance. It confirms
+session startup and stereo rendering; it cannot establish eye order, depth, comfort, natural hand pose, or the current
+build's frame rate. It contains no `[vr-hands]` samples, so it cannot calibrate the current wrist corrections either.
+A current-build log with one minute of first-person play and a desktop capture is still needed for those checks and to
+recheck the reported duplicate “Cancelar” label.
 
 ## Not done yet
 
@@ -273,7 +278,7 @@ of active arms plus a window capture will make the wrist calibration reviewable.
 | Shadows and other passes that do not depend on the eye drawn once a pair | exec.c: knowing which passes those are | the sun's shadows done: the right eye's passes into the cascades and their half-size copy are not begun (exec.c begin_pass, `SAVAGEWIND_VR_SHADOWS_ONCE=0` to draw them twice): with Video > Shadow resolution at Savage the GPU time a frame went from 5.29 to 4.38 ms (-17%; the right eye's frames from ~5 to ~3 ms), at Console ~0.3 ms a pair; other passes still twice: a stereo profile (`gpuprof` on two frames, 2026-11-12) leaves the main scene per eye and only small one-draw passes (512x512, 3 x 448x448, 96x96: ~0.3 ms) that might not depend on the eye, unchecked; the costly 64x64 pass of 411 draws (2.4 ms) runs now and then, not each eye |
 | An asymmetric frustum per eye (about 15% fewer pixels) | rt_persp_offset's sign and scale worked out | done in stereo: each eye's own off-centre field, widened to the window's shape about its centre (vr_camera.c; the game's projection gets the half-size, output_scale.c rt_persp_offset the centre, vr_persp_offset); against fake_xr's Quest-like eyes the angle each picture covers is 35% smaller, so the same pixels are that much denser (sharper); `SAVAGEWIND_VR_ASYMMETRIC=0`: symmetric |
 | Multiview (both eyes in one pass) | the Maxwell shader translator and the passes made view-aware | research |
-| Fixed foveation, the runtime's reprojection with motion vectors (XR_FB_space_warp) | exec.c, mvec.c; a headset whose runtime offers the extensions | not started: first see on the Quest which extensions Virtual Desktop's runtime lists (the startup log's `[vr]` lines name the runtime); the motion vectors TAA uses (mvec.c) would be the space warp's |
+| Fixed foveation, the runtime's reprojection with motion vectors (XR_FB_space_warp) | exec.c, mvec.c; a headset whose runtime offers the extensions | not started: the captured Quest 3 / VirtualDesktopXR 1.1.0 session did not offer `XR_FB_foveation` or `XR_FB_space_warp`; revisit if a runtime that offers them is tested. That session did offer `XR_KHR_composition_layer_depth`, which is not implemented. The motion vectors TAA uses (mvec.c) could be relevant to space warp on a supporting runtime |
 | TAA in stereo (per-eye history) | mvec.c: a history per eye | done: Anti-aliasing TAA now works in stereo (it was replaced by SMAA): each eye keeps its own history (exec.c mvec_taa, its alternating images 37-44 for the right eye) and its previous frame is its own, two back (mvec.c), the jitter sequence advancing once a pair, and each eye's off-centre offset taken out of the jitter TAA reads from the projection (mvec.c mvec_camera_now: left in, ~125 and ~60 pixels of "jitter" turned TAA's picture black); `SAVAGEWIND_VR_TAA=0`: SMAA as before |
 | The desktop window showing one eye, not both in turn (it flickers) | the window image before it is presented | done: each right frame, once copied to the headset, gets the left frame's picture (runtime/vr/xr_vulkan.c window_eye); `SAVAGEWIND_VR_WINDOW=both`: as before |
 
