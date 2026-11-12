@@ -199,6 +199,15 @@ the point is passed through main+0x13a4dc8. With `SAVAGEWIND_FNPROF_ARGS` during
 Link yaw 33.8 degrees), so this path did not pass the expected view-dependent point in that check. It is not established
 as the rune ray and remains unhooked.
 
+SIMD near-point filter (2026-11-12): `SAVAGEWIND_FNPROF_NEAR_VEC=1` extends the live `fnprof start <x> <y> <z> <r>`
+filter to snapshot low-lane scalar HFA triples (`s0..s2` through `s5..s7`) and three-float windows in `v0..v7` at
+function entry. This is an entry-register pattern scan, not proof that a function received or used those coordinates;
+lifted code can overwrite SIMD registers before reading them, and dispatch stubs commonly leave matching values behind.
+The guarded fake-XR idle/L-aim capture ran without a crash, but the strongest changing hits were dispatch/control-flow
+functions. The one plausible SIMD consumer, `main+0x10575a4`, reads its vector registers only after loading/replacing
+them in the function body, so its entry match is stale. No rune-target candidate was established and no game hook was
+added. Treat these rows only as leads to check against the lifted function and caller before interpreting them.
+
 ## Quick-selector prompt visual check (2026-11-12)
 
 With `quick_drop=1`, the saved Spanish-language game and fake_xr, a 1030x579 selector capture shows the overlay prompts

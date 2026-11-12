@@ -118,9 +118,11 @@ static void args_check(uint64_t a, uint64_t lr) {
 }
 
 // `fnprof start <x> <y> <z> <r>` (reverse engineering): also which functions get, in x0..x7, a pointer to three floats
-// within r of that point (at most 0x60 bytes in): (function, register, offset) counted, written to <file>.near
+// within r of that point (at most 0x60 bytes in): (function, register, offset) counted, written to <file>.near.
+// SAVAGEWIND_FNPROF_NEAR_VEC=1 also checks scalar HFA triples and float triples in v0-v7.
 static float near_p[3], near_r;
 static volatile int near_on;
+static int near_vec;
 static struct { _Atomic uint64_t key; _Atomic uint64_t count; } nslots[1 << 14];
 
 static uint64_t ptr_lo, ptr_hi;   // `fnprof start ptr <lo> <hi>`: a register pointing into [lo, hi) instead
@@ -162,6 +164,23 @@ static void near_check(uint64_t a) {
                 }
             }
             break;
+        }
+    }
+    if (!near_vec) return;
+    float scalars[8];
+    for (int r = 0; r < 8; r++) memcpy(&scalars[r], &c->v[r], sizeof scalars[r]);
+    for (int r = 0; r < 6; r++) {
+        float dx = scalars[r] - near_p[0], dy = scalars[r + 1] - near_p[1], dz = scalars[r + 2] - near_p[2];
+        if (dx * dx + dy * dy + dz * dz <= near_r * near_r)
+            near_count(a | ((uint64_t)((40 + r) * 256) << 48));  // scalar HFA: sN, sN+1, sN+2
+    }
+    for (int r = 0; r < 8; r++) {
+        float lanes[4];
+        memcpy(lanes, &c->v[r], sizeof lanes);
+        for (int lane = 0; lane < 2; lane++) {
+            float dx = lanes[lane] - near_p[0], dy = lanes[lane + 1] - near_p[1], dz = lanes[lane + 2] - near_p[2];
+            if (dx * dx + dy * dy + dz * dz <= near_r * near_r)
+                near_count(a | ((uint64_t)((32 + r) * 256 + lane * 4) << 48));
         }
     }
 }
@@ -216,6 +235,8 @@ static void fnprof_reset(const float *near, float r) {
     for (int i = 0; i < NSLOT; i++) atomic_store(&slots[i].addr, 0), atomic_store(&slots[i].count, 0);
     for (int i = 0; i < (1 << 14); i++) atomic_store(&nslots[i].key, 0), atomic_store(&nslots[i].count, 0);
     near_on = near != NULL;
+    const char *vec = getenv("SAVAGEWIND_FNPROF_NEAR_VEC");
+    near_vec = near && vec && strcmp(vec, "0") != 0;
     ptr_lo = ptr_hi = 0;
     if (near) memcpy(near_p, near, sizeof near_p), near_r = r;
 }
@@ -243,8 +264,16 @@ int fnprof_stop(const char *path) {
         for (int i = 0; nf && i < (1 << 14); i++)
             if (nslots[i].key) {
                 uint64_t k = nslots[i].key;
-                fprintf(nf, "%llx x%d +%#x %llu\n", (unsigned long long)(k & 0xffffffffffffull), (int)(k >> 56),
-                        (unsigned)((k >> 48) & 0xff), (unsigned long long)nslots[i].count);
+                unsigned reg = (unsigned)(k >> 56), off = (unsigned)((k >> 48) & 0xff);
+                if (reg >= 40 && reg < 46)
+                    fprintf(nf, "%llx s%d..s%d %llu\n", (unsigned long long)(k & 0xffffffffffffull), reg - 40,
+                            reg - 38, (unsigned long long)nslots[i].count);
+                else if (reg >= 32 && reg < 40)
+                    fprintf(nf, "%llx v%d +%#x %llu\n", (unsigned long long)(k & 0xffffffffffffull), reg - 32,
+                            off, (unsigned long long)nslots[i].count);
+                else
+                    fprintf(nf, "%llx x%d +%#x %llu\n", (unsigned long long)(k & 0xffffffffffffull), reg, off,
+                            (unsigned long long)nslots[i].count);
             }
         if (nf) fclose(nf);
     }
