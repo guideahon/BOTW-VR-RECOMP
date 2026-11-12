@@ -240,6 +240,17 @@ static void solve_arm(uint64_t world, const skel_info *s, int side) {
         vr_vec3 point = vr_quat_rotate(hw.q, vr_v3(0, 0, -1));
         hand_turn = vr_quat_arc(fore, vr_v3_normalize(point));
     }
+    {   // (for a headset's first runs) the first minute in play, every ~5 s: each controller as the runtime gives it, so a
+        // hand turned the wrong way can be told from the log
+        static uint64_t said[2];
+        if (k.frames < 6000 && k.frames >= said[side] + 450) {
+            said[side] = k.frames;
+            vr_vec3 ahead = vr_quat_rotate(hand.q, vr_v3(0, 0, -1)), up = vr_quat_rotate(hand.q, vr_v3(0, 1, 0));
+            LOG("[vr-hands] %s grip q %.3f %.3f %.3f %.3f (room: ahead %.2f %.2f %.2f, up %.2f %.2f %.2f) at %.2f %.2f %.2f\n",
+                side ? "right" : "left", hand.q.x, hand.q.y, hand.q.z, hand.q.w, ahead.x, ahead.y, ahead.z, up.x, up.y, up.z,
+                hand.p.x, hand.p.y, hand.p.z);
+        }
+    }
     k.arm[side].ok = true;
     k.arm[side].shoulder = sh, k.arm[side].elbow = r.elbow, k.arm[side].wrist = r.wrist;
     k.arm[side].upper = r.upper, k.arm[side].lower = r.lower, k.arm[side].hand = hand_turn;
