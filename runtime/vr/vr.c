@@ -119,6 +119,21 @@ void vr_init(void) {
     char runtime[160];
     snprintf(runtime, sizeof runtime, "%s %u.%u.%u", ip.runtimeName, XR_VERSION_MAJOR(ip.runtimeVersion),
              XR_VERSION_MINOR(ip.runtimeVersion), XR_VERSION_PATCH(ip.runtimeVersion));
+    {   // what the runtime offers (what a headset's first run tells: space warp, foveation, depth layers...)
+        uint32_t n = 0;
+        if (XR_SUCCEEDED(xrEnumerateInstanceExtensionProperties(NULL, 0, &n, NULL)) && n) {
+            XrExtensionProperties *p = calloc(n, sizeof *p);
+            for (uint32_t i = 0; i < n; i++) p[i].type = XR_TYPE_EXTENSION_PROPERTIES;
+            if (XR_SUCCEEDED(xrEnumerateInstanceExtensionProperties(NULL, n, &n, p))) {
+                char line[2048];
+                int k = 0;
+                for (uint32_t i = 0; i < n && k < (int)sizeof line - 80; i++)
+                    k += snprintf(line + k, sizeof line - k, "%s%s", i ? " " : "", p[i].extensionName);
+                LOG("[vr] runtime %s offers %u extensions: %s\n", runtime, n, line);
+            }
+            free(p);
+        }
+    }
     if (!vulkan) {
         stay_flat("runtime %s has no XR_KHR_vulkan_enable2", runtime);
         return;

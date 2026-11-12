@@ -86,6 +86,12 @@ Arrancá con `Play BOTW VR.bat` (o `BOTW VR.exe`). Primera persona es la vista p
 - [ ] Un toque corto del grip en la cadera derecha no hace nada (ni agarra).
 - [ ] Si no lo querés: `SAVAGEWIND_VR_DROP=0`.
 
+## 4p. Qué ofrece el runtime del visor (para lo próximo)
+
+- [ ] Después de una partida con el visor, mandame la línea `[vr] runtime ... offers N extensions: ...` de
+      `savagewind.log`: dice si Virtual Desktop ofrece space warp (`XR_FB_space_warp`), foveación (`XR_FB_foveation`),
+      capas de profundidad (`XR_KHR_composition_layer_depth`), etc. Con eso sé qué se puede agregar.
+
 ## 4o. Paquete de release (nuevo)
 
 - [ ] Descomprimí `build/dist/SavageWind-VR-0.5.0-alpha.5-windows.zip` en una carpeta nueva (puede tener espacios).
