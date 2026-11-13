@@ -35,10 +35,14 @@
 #include "vr_options.h"
 
 #define MAX_IMAGES 8
-enum { SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_PERF, SC_LEFT2, SC_RIGHT2, SC_COUNT };
+enum {
+    SC_LEFT, SC_RIGHT, SC_SCREEN, SC_HUD, SC_VIGNETTE, SC_MARKER, SC_PERF, SC_LEFT2, SC_RIGHT2,
+    SC_DEPTH_LEFT, SC_DEPTH_RIGHT, SC_COUNT
+};
 // (each eye has two swapchains: its picture comes in two formats, the scene's apart from the HUD and the window's;
 // switching between them used to make the swapchain again, a GPU wait each time, a stutter in the headset)
 static inline int eye_of(int i) { return i == SC_LEFT || i == SC_LEFT2 ? 0 : i == SC_RIGHT || i == SC_RIGHT2 ? 1 : -1; }
+static inline int depth_eye_of(int i) { return i == SC_DEPTH_LEFT ? 0 : i == SC_DEPTH_RIGHT ? 1 : -1; }
 
 static PFN_xrGetVulkanGraphicsRequirements2KHR GetRequirements;
 static PFN_xrCreateVulkanInstanceKHR CreateInstance;
@@ -65,6 +69,10 @@ static struct {
     vr_view eye_view[2];          // what each eye's last released image is (a projection view needs one per eye)
     bool eye_ready[2];
     int eye_sc[2];                // ... and which of its two swapchains has it
+    bool eye_depth_ready[2];
+    int eye_depth_sc[2];
+    VkExtent2D eye_depth_extent[2];
+    float eye_depth_near[2], eye_depth_far[2];
     VkPhysicalDevice phys;
     float screen_w, screen_dist;  // the virtual screen: its width and distance (m)
     bool hud_on;                  // phase 4: the HUD apart from the scene, in front of the eyes (SAVAGEWIND_VR_HUD)
@@ -76,6 +84,7 @@ static struct {
 } g;
 
 static vr_view pres;  // what the frame being presented was drawn as (vr_present_begin)
+bool vr_depth_wanted(void) { return vr_depth_enabled() && vr_world_view(); }
 
 // what the recorder thread does after the frame's submission (end_frame)
 static struct {
@@ -89,6 +98,9 @@ static struct {
     bool hud;                // ... and the HUD in front of them
     bool perf;               // ... and the performance overlay
     float perf_aspect;
+    int depth_eye;
+    VkExtent2D depth_extent;
+    float depth_near, depth_far;
 } fr;
 static uint64_t perf_frames;   // headset frames with the performance overlay
 uint64_t vr_perf_frames(void) { return perf_frames; }
@@ -215,6 +227,8 @@ static void drop_swapchain(int i) {
     xrDestroySwapchain(s->h);
     memset(s, 0, sizeof *s);
     if (eye_of(i) >= 0 && g.eye_sc[eye_of(i)] == i) g.eye_ready[eye_of(i)] = false;
+    if (depth_eye_of(i) >= 0 && g.eye_depth_sc[depth_eye_of(i)] == i)
+        g.eye_depth_ready[depth_eye_of(i)] = false;
     if (i == SC_HUD) g.hud_ready = false;
     if (i == SC_VIGNETTE) vig_dropped();
     if (i == SC_MARKER) marker_dropped();
@@ -260,6 +274,39 @@ static bool make_swapchain(int i, VkExtent2D ext, VkFormat src) {
     static const char *const names[] = {"left eye", "right eye", "virtual screen", "HUD", "comfort vignette",
                                         "controller marker", "performance overlay", "left eye (2)", "right eye (2)"};
     LOG("[vr] %s swapchain %ux%u, %u images (format %d)\n", names[i], ext.width, ext.height, s->n, (int)src);
+    return true;
+}
+
+static bool make_depth_swapchain(int i, VkExtent2D ext, VkFormat fmt) {
+    swapchain *s = &g.sc[i];
+    uint32_t n = 0;
+    int64_t formats[64];
+    if (!vr_xr_ok(xrEnumerateSwapchainFormats(g.session, 64, &n, formats), "xrEnumerateSwapchainFormats(depth)")) return false;
+    bool offered = false;
+    for (uint32_t k = 0; k < n; k++) offered |= formats[k] == fmt;
+    if (!offered) {
+        static bool said;
+        if (!said) LOG("[vr] the runtime offers no depth swapchain in format %d; composition depth is skipped\n", (int)fmt);
+        said = true;
+        return false;
+    }
+    XrSwapchainCreateInfo ci = {XR_TYPE_SWAPCHAIN_CREATE_INFO, NULL, 0,
+                                XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT,
+                                fmt, 1, ext.width, ext.height, 1, 1, 1};
+    if (!vr_xr_ok(xrCreateSwapchain(g.session, &ci, &s->h), "xrCreateSwapchain(depth)")) return false;
+    XrSwapchainImageVulkanKHR imgs[MAX_IMAGES];
+    for (int k = 0; k < MAX_IMAGES; k++) imgs[k] = (XrSwapchainImageVulkanKHR){XR_TYPE_SWAPCHAIN_IMAGE_VULKAN_KHR};
+    if (!vr_xr_ok(xrEnumerateSwapchainImages(s->h, MAX_IMAGES, &s->n, (XrSwapchainImageBaseHeader *)imgs),
+                  "xrEnumerateSwapchainImages(depth)")) {
+        xrDestroySwapchain(s->h);
+        s->h = XR_NULL_HANDLE;
+        return false;
+    }
+    for (uint32_t k = 0; k < s->n; k++) s->images[k] = imgs[k].image;
+    s->extent = ext;
+    s->format = fmt;
+    LOG("[vr] %s depth swapchain %ux%u, %u images (format %d)\n", i == SC_DEPTH_LEFT ? "left eye" : "right eye",
+        ext.width, ext.height, s->n, (int)fmt);
     return true;
 }
 
@@ -310,6 +357,19 @@ static void barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImage
                                .oldLayout = from, .newLayout = to, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = img,
                                .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+    VkDependencyInfo di = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1,
+                           .pImageMemoryBarriers = &b};
+    rec_CmdPipelineBarrier2(cb, &di);
+}
+
+static void barrier_aspect(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect, VkImageLayout from,
+                           VkImageLayout to, VkPipelineStageFlags2 src_stage, VkAccessFlags2 src_access,
+                           VkPipelineStageFlags2 dst_stage, VkAccessFlags2 dst_access) {
+    VkImageMemoryBarrier2 b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2, .srcStageMask = src_stage,
+                               .srcAccessMask = src_access, .dstStageMask = dst_stage, .dstAccessMask = dst_access,
+                               .oldLayout = from, .newLayout = to, .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                               .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = img,
+                               .subresourceRange = {aspect, 0, 1, 0, 1}};
     VkDependencyInfo di = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1,
                            .pImageMemoryBarriers = &b};
     rec_CmdPipelineBarrier2(cb, &di);
@@ -658,8 +718,46 @@ static bool put_region(int i, VkCommandBuffer cb, VkImage src, VkImageLayout src
     return true;
 }
 
+static bool put_depth_into(int i, VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt, float near_z,
+                           float far_z) {
+    if (!vr_depth_enabled() || !src || !ext.width || !ext.height || !(near_z > 0) || !(far_z > near_z)) return false;
+    swapchain *s = &g.sc[i];
+    if (s->h != XR_NULL_HANDLE &&
+        (s->extent.width != ext.width || s->extent.height != ext.height || s->format != fmt))
+        drop_swapchain(i);
+    if (s->h == XR_NULL_HANDLE && !make_depth_swapchain(i, ext, fmt)) return false;
+    uint32_t idx = 0;
+    if (!vr_xr_ok(xrAcquireSwapchainImage(s->h, NULL, &idx), "xrAcquireSwapchainImage(depth)")) return false;
+    XrSwapchainImageWaitInfo wi = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO, NULL, XR_INFINITE_DURATION};
+    if (!vr_xr_ok(xrWaitSwapchainImage(s->h, &wi), "xrWaitSwapchainImage(depth)")) return false;
+    VkImage dst = s->images[idx];
+    barrier_aspect(cb, src, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT,
+                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT);
+    barrier_aspect(cb, dst, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_PIPELINE_STAGE_2_NONE, 0, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1},
+                      .dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1},
+                      .extent = {ext.width, ext.height, 1}};
+    rec_CmdCopyImage(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &rg);
+    barrier_aspect(cb, dst, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT,
+                   VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                   VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+    barrier_aspect(cb, src, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                   VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                   VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+    fr.release[i] = true;
+    fr.depth_eye = depth_eye_of(i);
+    fr.depth_extent = ext;
+    fr.depth_near = near_z;
+    fr.depth_far = far_z;
+    return true;
+}
+
 // exec.c (vr_hud_prepare): this frame's 3D scene without the HUD, and the HUD alone (false: not made this frame)
 bool vk_vr_images(VkImage *scene, VkFormat *scene_fmt, VkImage *hud, VkFormat *hud_fmt, VkExtent2D *ext);
+bool vk_vr_depth(VkImage *depth, VkFormat *depth_fmt, VkExtent2D *ext, float *near_z, float *far_z);
 
 bool vr_hud_wanted(void) { return g.hud_on && vr_world_view(); }
 
@@ -673,6 +771,7 @@ static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt
     fr.view = pres;
     fr.aspect = (float)ext.height / (float)ext.width;
     fr.hud = false;
+    fr.depth_eye = -1;
     arc.n = pres.world ? vr_bow_arc(arc.pts, ARC_MAX) : 0;
     {   // (debugging) SAVAGEWIND_VR_TRACE=<n>: the first n frames recorded in play, as what
         static int left = -1;
@@ -690,6 +789,27 @@ static void record(VkCommandBuffer cb, VkImage src, VkExtent2D ext, VkFormat fmt
     bool split = pres.world && g.hud_on && vk_vr_images(&scene, &scene_fmt, &hud, &hud_fmt, &sext);
     if (split) sl = VK_IMAGE_LAYOUT_GENERAL;
     else scene = src, scene_fmt = fmt, sext = ext;
+    if (pres.world) {
+        int de = pres.eye == 1 ? 1 : 0;
+        g.eye_depth_ready[de] = false;
+        VkImage depth = VK_NULL_HANDLE;
+        VkFormat depth_fmt = VK_FORMAT_UNDEFINED;
+        VkExtent2D depth_ext = {0, 0};
+        float near_z = 0, far_z = 0;
+        if (vr_depth_enabled() && vk_vr_depth(&depth, &depth_fmt, &depth_ext, &near_z, &far_z)) {
+            float scene_ar = (float)sext.width / (float)sext.height;
+            float depth_ar = (float)depth_ext.width / (float)depth_ext.height;
+            if (fabsf(scene_ar - depth_ar) <= 0.01f * fmaxf(scene_ar, depth_ar)) {
+                int ds = de ? SC_DEPTH_RIGHT : SC_DEPTH_LEFT;
+                put_depth_into(ds, cb, depth, depth_ext, depth_fmt, near_z, far_z);
+            } else {
+                static bool said;
+                if (!said) LOG("[vr] composition depth skipped: scene %ux%u and depth %ux%u have different aspect ratios\n",
+                               sext.width, sext.height, depth_ext.width, depth_ext.height);
+                said = true;
+            }
+        }
+    }
     if (pres.world && pres.eye == 0) {  // stereo, the left frame: its eye's image only, the headset's frame comes next
         put_into(SC_LEFT, cb, scene, sl, sext, scene_fmt);
         g.world_frames++;
@@ -738,6 +858,14 @@ static void end_frame(void *arg) {
             g.eye_ready[eye_of(i)] = true;
             g.eye_sc[eye_of(i)] = i;
         }
+        if (depth_eye_of(i) >= 0 && fr.depth_eye == depth_eye_of(i)) {
+            int e = depth_eye_of(i);
+            g.eye_depth_ready[e] = true;
+            g.eye_depth_sc[e] = i;
+            g.eye_depth_extent[e] = fr.depth_extent;
+            g.eye_depth_near[e] = fr.depth_near;
+            g.eye_depth_far[e] = fr.depth_far;
+        }
         if (i == SC_HUD) g.hud_ready = true;
         if (i == SC_VIGNETTE) vig.ready = true;
         if (i == SC_MARKER) mk.ready = true;
@@ -747,10 +875,18 @@ static void end_frame(void *arg) {
                                vigq = {XR_TYPE_COMPOSITION_LAYER_QUAD}, mkq[2], perfq = {XR_TYPE_COMPOSITION_LAYER_QUAD};
         XrCompositionLayerProjection proj = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
         XrCompositionLayerProjectionView views[2];
+        XrCompositionLayerDepthInfoKHR depths[2];
         const XrCompositionLayerBaseHeader *layers[6];
         uint32_t n = 0;
         bool mono = fr.view.world && fr.view.eye < 0;
         if (fr.kind == 2 && (mono ? g.eye_ready[0] : g.eye_ready[0] && g.eye_ready[1])) {
+            bool with_depth = vr_depth_enabled() &&
+                              (mono ? g.eye_depth_ready[0] : g.eye_depth_ready[0] && g.eye_depth_ready[1]);
+            static bool depth_reported;
+            if (with_depth && !depth_reported) {
+                LOG("[vr] composition depth attached to both projection views\n");
+                depth_reported = true;
+            }
             for (int i = 0; i < 2; i++) {
                 int sc = mono ? 0 : i;  // (mono: the left swapchain's picture, at the head's pose, for both)
                 views[i] = (XrCompositionLayerProjectionView){XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
@@ -760,6 +896,17 @@ static void end_frame(void *arg) {
                 views[i].subImage.swapchain = g.sc[k].h;
                 views[i].subImage.imageRect =
                     (XrRect2Di){{0, 0}, {(int32_t)g.sc[k].extent.width, (int32_t)g.sc[k].extent.height}};
+                if (with_depth) {
+                    depths[i] = (XrCompositionLayerDepthInfoKHR){XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};
+                    depths[i].subImage.swapchain = g.sc[g.eye_depth_sc[sc]].h;
+                    depths[i].subImage.imageRect =
+                        (XrRect2Di){{0, 0}, {(int32_t)g.eye_depth_extent[sc].width, (int32_t)g.eye_depth_extent[sc].height}};
+                    depths[i].minDepth = 0.0f;
+                    depths[i].maxDepth = 1.0f;
+                    depths[i].nearZ = g.eye_depth_near[sc];
+                    depths[i].farZ = g.eye_depth_far[sc];
+                    views[i].next = &depths[i];
+                }
             }
             proj.space = g.local;
             proj.viewCount = 2;

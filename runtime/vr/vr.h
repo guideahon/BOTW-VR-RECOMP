@@ -10,6 +10,9 @@ void vr_init(void);
 
 // VR was asked for, the runtime and the headset answered, and nothing has failed since.
 bool vr_enabled(void);
+// Optional OpenXR composition depth was enabled for this runtime/session.
+bool vr_depth_enabled(void);
+bool vr_depth_wanted(void);
 
 // What the log and `report` say about VR: "off", "no runtime ...", "runtime <name>, headset <name>" ...
 const char *vr_status_text(void);

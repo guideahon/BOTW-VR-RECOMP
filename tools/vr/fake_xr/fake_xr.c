@@ -55,7 +55,7 @@ typedef struct {
 typedef struct session session;
 typedef struct {
     uint32_t magic;
-    bool headless, vulkan;  // the extensions the app enabled
+    bool headless, vulkan, composition_depth;  // the extensions the app enabled
     bool vk_requirements;   // xrGetVulkanGraphicsRequirements2KHR was called
     VkInstance vk_inst;     // what xrCreateVulkanInstanceKHR / ...Device2KHR / ...DeviceKHR made or chose
     PFN_vkGetInstanceProcAddr vk_gipa;
@@ -82,6 +82,7 @@ struct session {
     XrTime first_time, last_predicted;
     int waited;             // xrWaitFrame calls not yet followed by xrBeginFrame
     bool begun;
+    bool depth_logged;
     int script_at;          // the next script line to apply
     vr_pose head;           // VIEW in STAGE space
     struct fxvk *vk;        // the graphics binding (fake_xr_vk.inc), NULL headless
@@ -238,7 +239,8 @@ static space *get_space(XrSpace h) {
     } while (0)
 
 // ---- instance ----
-static const char *const extensions[] = {XR_MND_HEADLESS_EXTENSION_NAME, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME};
+static const char *const extensions[] = {XR_MND_HEADLESS_EXTENSION_NAME, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME,
+                                         XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME};
 #define EXTENSION_COUNT (sizeof extensions / sizeof *extensions)
 
 static XrResult XRAPI_CALL fx_EnumerateInstanceExtensionProperties(const char *layer, uint32_t cap, uint32_t *count,
@@ -262,7 +264,7 @@ static XrResult XRAPI_CALL fx_CreateInstance(const XrInstanceCreateInfo *ci, XrI
     if (XR_VERSION_MAJOR(ci->applicationInfo.apiVersion) != 1) return XR_ERROR_API_VERSION_UNSUPPORTED;
     if (!ci->applicationInfo.applicationName[0]) return XR_ERROR_NAME_INVALID;
     if (ci->enabledApiLayerCount) return XR_ERROR_API_LAYER_NOT_PRESENT;
-    bool headless = false, vulkan = false;
+    bool headless = false, vulkan = false, composition_depth = false;
     for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) {
         bool known = false;
         for (uint32_t k = 0; k < EXTENSION_COUNT; k++)
@@ -270,12 +272,14 @@ static XrResult XRAPI_CALL fx_CreateInstance(const XrInstanceCreateInfo *ci, XrI
         if (!known) return XR_ERROR_EXTENSION_NOT_PRESENT;
         if (!strcmp(ci->enabledExtensionNames[i], XR_MND_HEADLESS_EXTENSION_NAME)) headless = true;
         if (!strcmp(ci->enabledExtensionNames[i], XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME)) vulkan = true;
+        if (!strcmp(ci->enabledExtensionNames[i], XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME)) composition_depth = true;
     }
     instance *in = calloc(1, sizeof *in);
     in->magic = MAGIC_INSTANCE;
     fxa_reset();
     in->headless = headless;
     in->vulkan = vulkan;
+    in->composition_depth = composition_depth;
     in->cfg.ipd = FAKE_XR_DEFAULT_IPD;
     in->cfg.hz = FAKE_XR_DEFAULT_HZ;
     const char *v;
@@ -425,6 +429,8 @@ static XrResult XRAPI_CALL fx_EnumerateEnvironmentBlendModes(XrInstance h, XrSys
 static XrResult fxvk_session_create(session *s, const XrGraphicsBindingVulkanKHR *b);
 static void fxvk_session_destroy(session *s);
 static XrResult fxvk_check_layer(session *s, const XrCompositionLayerBaseHeader *l);
+static bool fxvk_depth_view(const XrCompositionLayerProjectionView *view, uint32_t *w, uint32_t *h,
+                            float *near_z, float *far_z);
 static void fxvk_capture(session *s, const XrFrameEndInfo *ei, uint64_t frame);
 
 // ---- session ----
@@ -641,6 +647,22 @@ static XrResult XRAPI_CALL fx_EndFrame(XrSession h, const XrFrameEndInfo *ei) {
     g_stats.last_layer_count = ei->layerCount;
     logf_(s->inst, "frame %llu display_time %lld layers %u %s\n", (unsigned long long)s->frame,
           (long long)ei->displayTime, ei->layerCount, kinds);
+    if (!s->depth_logged) {
+        for (uint32_t i = 0; i < ei->layerCount && !s->depth_logged; i++) {
+            if (ei->layers[i]->type != XR_TYPE_COMPOSITION_LAYER_PROJECTION) continue;
+            const XrCompositionLayerProjection *p = (const XrCompositionLayerProjection *)ei->layers[i];
+            bool found_depth = false;
+            for (uint32_t view = 0; view < p->viewCount; view++) {
+                if (!p->views[view].next) continue;
+                uint32_t w = 0, h = 0;
+                float near_z = 0, far_z = 0;
+                fxvk_depth_view(&p->views[view], &w, &h, &near_z, &far_z);
+                logf_(s->inst, "composition depth view %u %ux%u near %.3f far %.3f\n", view, w, h, near_z, far_z);
+                found_depth = true;
+            }
+            s->depth_logged = found_depth;
+        }
+    }
     static int log_quads = -1;  // FAKE_XR_LOG_QUADS=1: each quad layer's space, its centre in the room and its size
     if (log_quads < 0) log_quads = getenv("FAKE_XR_LOG_QUADS") && *getenv("FAKE_XR_LOG_QUADS") == '1';
     for (uint32_t i = 0; log_quads && i < ei->layerCount; i++) {

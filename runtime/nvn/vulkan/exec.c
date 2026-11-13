@@ -9790,9 +9790,15 @@ static VkFormat srgb_of(VkFormat f) {
 
 #ifdef SW_VR
 extern bool vr_hud_wanted(void);  // (runtime/vr/xr_vulkan.c: in play, the HUD goes to the headset apart from the scene)
+extern bool vr_depth_wanted(void); // (runtime/vr/vr.c: an enabled OpenXR depth extension in play)
+extern bool vr_depth_enabled(void); // (runtime/vr/vr.c: cheap capability check for command recording)
 #define VR_HUDLESS() vr_hud_wanted()
+#define VR_DEPTH_WANTED() vr_depth_wanted()
+#define VR_DEPTH_ENABLED() vr_depth_enabled()
 #else
 #define VR_HUDLESS() false
+#define VR_DEPTH_WANTED() false
+#define VR_DEPTH_ENABLED() false
 #endif
 
 #ifdef SW_VR
@@ -9827,6 +9833,17 @@ static void fg_copy_hudless(void) {
 // its own, the presented frame where it differs from the HUD-less one and transparent elsewhere (vr_hud.frag), for a
 // layer in front of the eyes. Both are the presented frame's size, in GENERAL layout, valid until the next present.
 static struct { bool ok; VkImage scene, hud; VkFormat scene_fmt, hud_fmt; VkExtent2D ext; } vr_img;
+static struct { bool ok; VkImage image; VkFormat format; VkExtent2D ext; float near_z, far_z; } vr_depth_img;
+
+bool vk_vr_depth(VkImage *depth, VkFormat *depth_fmt, VkExtent2D *ext, float *near_z, float *far_z) {
+    if (!vr_depth_img.ok) return false;
+    *depth = vr_depth_img.image;
+    *depth_fmt = vr_depth_img.format;
+    *ext = vr_depth_img.ext;
+    *near_z = vr_depth_img.near_z;
+    *far_z = vr_depth_img.far_z;
+    return true;
+}
 
 static void vr_hud_prepare(TexBackend *b) {
     vr_img.ok = false;
@@ -9863,7 +9880,7 @@ static void fg_before_draw(void) {
 }
 
 static void fg_draw(Prog *pr, CmdRec *r) {
-    if (!g_fg_want && !dlss_wanted() && !VR_HUDLESS()) return;  // (DLSS's motion vectors are made from the same camera: dlss_scene)
+    if (!g_fg_want && !dlss_wanted() && !VR_HUDLESS() && !VR_DEPTH_ENABLED()) return;
     if (st.rt.depth && vk_texture_scale_group(st.rt.depth) == RS_SCENE) {
         Range u = st.ubuf[0][0];
         const float *f = (const float *)(uintptr_t)u.addr;
@@ -9934,7 +9951,7 @@ static int cam_best(uint32_t w, uint32_t h) {
     int best = -1;
     for (int i = 0; i < fg.ncand; i++) {
         TexBackend *d = vk_tex(fg.cand[i].depth, true);
-        if (d->image && d->width == w && d->height == h && d->layers == 1 && d->samples == 1 &&
+        if (d->image && ((!w && !h) || (d->width == w && d->height == h)) && d->layers == 1 && d->samples == 1 &&
             (best < 0 || fg.cand[i].draws > fg.cand[best].draws))
             best = i;
     }
@@ -10014,6 +10031,7 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
     fg.present_format = unorm_of(b->format);
     if (fg.copy_pending) fg_copy_hudless();  // (nothing drawn after the composite)
 #ifdef SW_VR
+    vr_depth_img.ok = false;
     vr_hud_prepare(b);
 #endif
     uint64_t now = SDL_GetTicksNS();
@@ -10021,6 +10039,18 @@ TexBackend *vk_fg_generate(NvnTexture *t, TexBackend *b) {
     fg.last_ns = now;
     TexBackend *out = NULL, *scene = fg.scene && same ? vk_tex(fg.scene, true) : NULL;
     int best = scene ? cam_best(scene->width, scene->height) : -1;
+#ifdef SW_VR
+    if (VR_DEPTH_WANTED()) {
+        int di = best >= 0 ? best : cam_best(0, 0);
+        if (di >= 0) {
+            TexBackend *db = vk_tex(fg.cand[di].depth, true);
+            const float *m = fg.cand[di].m;
+            if (db->image && (db->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) && db->layers == 1 && db->samples == 1 &&
+                isfinite(m[56]) && isfinite(m[57]) && m[56] > 0.0f && m[57] > m[56])
+                vr_depth_img = (typeof(vr_depth_img)){true, db->image, db->format, {db->width, db->height}, m[56], m[57]};
+        }
+    }
+#endif
     bool ok = g_fg_want && fg.hudless_ok && best >= 0 && b->image && b->layers == 1 && b->samples == 1;
     {   // why not, now and then (a frame in play without what generation needs)
         static uint64_t n;

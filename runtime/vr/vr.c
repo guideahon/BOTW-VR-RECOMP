@@ -17,16 +17,19 @@
 #include "vr_internal.h"
 
 #define VULKAN_ENABLE2 "XR_KHR_vulkan_enable2"
+#define COMPOSITION_DEPTH "XR_KHR_composition_layer_depth"
 
 static bool asked, enabled;
 static char status[192] = "off";
 static XrInstance g_inst = XR_NULL_HANDLE;
 static XrSystemId g_system = XR_NULL_SYSTEM_ID;
+static bool g_depth;
 
 bool vr_enabled(void) { return enabled; }
 const char *vr_status_text(void) { return status; }
 XrInstance vr_xr_instance(void) { return enabled ? g_inst : XR_NULL_HANDLE; }
 XrSystemId vr_xr_system(void) { return g_system; }
+bool vr_depth_enabled(void) { return enabled && g_depth; }
 
 bool vr_xr_ok(XrResult r, const char *what) {
     if (XR_SUCCEEDED(r)) return true;
@@ -46,6 +49,11 @@ void vr_disable(const char *why) {
 static bool env_on(const char *name) {
     const char *v = getenv(name);
     return v && *v && strcmp(v, "0") != 0 && strcmp(v, "off") != 0;
+}
+
+static bool env_off(const char *name) {
+    const char *v = getenv(name);
+    return v && (!strcmp(v, "0") || !strcmp(v, "off"));
 }
 
 static bool runtime_has(const char *ext) {
@@ -103,8 +111,9 @@ void vr_init(void) {
     snprintf(ci.applicationInfo.engineName, sizeof ci.applicationInfo.engineName, "Savage Wind");
     ci.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
     bool vulkan = runtime_has(VULKAN_ENABLE2);
-    const char *ext[] = {VULKAN_ENABLE2};
-    ci.enabledExtensionCount = vulkan ? 1 : 0;
+    g_depth = vulkan && runtime_has(COMPOSITION_DEPTH) && !env_off("SAVAGEWIND_VR_DEPTH");
+    const char *ext[] = {VULKAN_ENABLE2, COMPOSITION_DEPTH};
+    ci.enabledExtensionCount = vulkan ? (g_depth ? 2 : 1) : 0;
     ci.enabledExtensionNames = ext;
     XrResult r = xrCreateInstance(&ci, &g_inst);
     if (XR_FAILED(r)) {
@@ -151,5 +160,7 @@ void vr_init(void) {
     snprintf(status, sizeof status, "runtime %s, headset %s", runtime, sp.systemName);
     enabled = true;
     LOG("[vr] OpenXR %s\n", status);
+    LOG("[vr] composition depth %s%s\n", g_depth ? "enabled" : "unavailable",
+        env_off("SAVAGEWIND_VR_DEPTH") ? " (SAVAGEWIND_VR_DEPTH=0)" : "");
     window_for_headset();
 }
