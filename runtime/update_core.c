@@ -56,30 +56,41 @@ int uc_version_cmp(const char *a, const char *b) {
     return 0;
 }
 
-// BOTW VR: [<lowercase word>-]<year>.<month>.<day>[.<the day's number>]: a real date, the number 1 to 9999. A day's
-// first release had no number ("vr-2026.11.22", then ".2"): it comes before that day's numbered ones.
+// BOTW VR: "YYYY.MM.DD" or "YYYY.MM.DD.N": a real date from 2000 on, its month and day two digits each, and the day's
+// number, 1 to 9999 without a leading zero. A day's first release had none ("vr-2026.11.22", then ".2"): it comes before
+// that day's numbered ones.
+static bool vr_date(const char *s, unsigned n[4]) {
+    static const int width[3] = {4, 2, 2};
+    n[3] = 0;
+    for (int i = 0; i < 3; i++) {
+        n[i] = 0;
+        for (int k = 0; k < width[i]; k++, s++) {
+            if (*s < '0' || *s > '9') return false;
+            n[i] = n[i] * 10 + (unsigned)(*s - '0');
+        }
+        if (i < 2 && *s++ != '.') return false;
+    }
+    if (*s == '.') {
+        if (*++s < '1' || *s > '9') return false;
+        for (int k = 0; k < 4 && *s >= '0' && *s <= '9'; k++, s++) n[3] = n[3] * 10 + (unsigned)(*s - '0');
+    }
+    if (*s || n[0] < 2000 || n[1] < 1 || n[1] > 12 || n[2] < 1) return false;
+    static const unsigned char days[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    bool leap = n[0] % 4 == 0 && (n[0] % 100 || n[0] % 400 == 0);
+    return n[2] <= (n[1] == 2 && !leap ? 28u : days[n[1] - 1]);
+}
+
+// The same with the phase before it ("alpha-2026.11.26.2": lowercase letters and a dash), or without
 static bool vr_parse(const char *s, unsigned n[4]) {
     if (!s) return false;
     const char *dash = strchr(s, '-');
     if (dash) {
         if (dash == s) return false;
         for (const char *c = s; c < dash; c++)
-            if (!islower((unsigned char)*c)) return false;
+            if (*c < 'a' || *c > 'z') return false;
         s = dash + 1;
     }
-    static const unsigned least[4] = {2000, 1, 1, 1}, most[4] = {9999, 12, 31, 9999};
-    n[3] = 0;
-    for (int i = 0; i < 4; i++) {
-        int k = 0;
-        for (n[i] = 0; k < 5 && isdigit((unsigned char)s[k]); k++) n[i] = n[i] * 10 + (unsigned)(s[k] - '0');
-        if (n[i] < least[i] || n[i] > most[i]) return false;  // (no digits: 0; more than four: over 9999)
-        s += k;
-        if (i == 3 || (i == 2 && !*s)) break;
-        if (*s++ != '.') return false;
-    }
-    static const unsigned char days[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    bool leap = n[0] % 4 == 0 && (n[0] % 100 || n[0] % 400 == 0);
-    return !*s && n[2] <= (n[1] == 2 && !leap ? 28u : days[n[1] - 1]);
+    return vr_date(s, n);
 }
 
 bool uc_vr_version_valid(const char *v) {
@@ -97,7 +108,7 @@ int uc_vr_version_cmp(const char *a, const char *b) {
 }
 
 // ------------------------------------------------------------------ JSON: just enough to read the list of releases
-typedef struct { const char *p; bool bad; int depth; } J;
+typedef struct { const char *p; bool bad; int depth; bool nul; } J;  // nul: a \u0000 read into a value (j_string)
 
 static void j_ws(J *j) {
     while (*j->p == ' ' || *j->p == '\t' || *j->p == '\n' || *j->p == '\r') j->p++;
@@ -138,6 +149,7 @@ static void j_string(J *j, char *out, size_t n) {
                 default: c = e;
             }
         }
+        if (out && !c) j->nul = true;  // (cut short there in out: BOTW VR passes the release over, pick_release)
         if (out && k + 1 < n) out[k++] = c;
     }
     if (out && n) out[k] = 0;
@@ -191,9 +203,8 @@ static void j_string_or_skip(J *j, char *out, size_t n) {
     else j_skip(j);
 }
 
-// One entry of "assets": this platform's file and its signature go into r. prefix (BOTW VR): the file's name starts with
-// it too, and its signature is only its own <name>.sig, looked for in a second pass (sig_of: the file's name)
-static void read_asset(J *j, UcRelease *r, const char *suffix, const char *prefix, const char *sig_of) {
+// One entry of "assets": this platform's file and its signature go into r (prefix, BOTW VR: the file's name starts with it)
+static void read_asset(J *j, UcRelease *r, const char *suffix, const char *prefix) {
     char name[256] = "", url[1024] = "", digest[80] = "";
     uint64_t size = 0;
     j_ws(j);
@@ -220,11 +231,6 @@ static void read_asset(J *j, UcRelease *r, const char *suffix, const char *prefi
         if (*j->p == '}') { j->p++; break; }
         j->bad = true;
     }
-    if (sig_of) {
-        size_t k = strlen(sig_of);
-        if (!strncmp(name, sig_of, k) && !strcmp(name + k, ".sig")) snprintf(r->sig_url, sizeof r->sig_url, "%s", url);
-        return;
-    }
     char sig_suffix[64];
     snprintf(sig_suffix, sizeof sig_suffix, "%s.sig", suffix);
     if (ends_with(name, suffix) && (!prefix || !strncmp(name, prefix, strlen(prefix)))) {
@@ -233,27 +239,14 @@ static void read_asset(J *j, UcRelease *r, const char *suffix, const char *prefi
         r->zip_size = size;
         r->digest[0] = 0;
         if (!strncmp(digest, "sha256:", 7) && strlen(digest) == 71) snprintf(r->digest, sizeof r->digest, "%s", digest + 7);
-    } else if (!prefix && ends_with(name, sig_suffix))
+    } else if (ends_with(name, sig_suffix))
         snprintf(r->sig_url, sizeof r->sig_url, "%s", url);
-}
-
-static void read_assets(J *j, UcRelease *r, const char *suffix, const char *prefix, const char *sig_of) {
-    j->p++;
-    j_ws(j);
-    if (*j->p == ']') j->p++;
-    else
-        while (!j->bad) {
-            read_asset(j, r, suffix, prefix, sig_of);
-            j_ws(j);
-            if (*j->p == ',') { j->p++; continue; }
-            if (*j->p == ']') { j->p++; break; }
-            j->bad = true;
-        }
 }
 
 static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix, const char *prefix) {
     memset(r, 0, sizeof *r);
     *draft = false;
+    j->nul = false;
     j_ws(j);
     if (*j->p != '{') { j->bad = true; return; }
     j->p++;
@@ -272,9 +265,17 @@ static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix, co
             *draft = !strncmp(j->p, "true", 4);
             j_skip(j);
         } else if (!strcmp(key, "assets") && *j->p == '[') {
-            J list = *j;
-            read_assets(j, r, suffix, prefix, NULL);
-            if (prefix && r->zip_name[0] && !j->bad) read_assets(&list, r, suffix, prefix, r->zip_name);
+            j->p++;
+            j_ws(j);
+            if (*j->p == ']') j->p++;
+            else
+                while (!j->bad) {
+                    read_asset(j, r, suffix, prefix);
+                    j_ws(j);
+                    if (*j->p == ',') { j->p++; continue; }
+                    if (*j->p == ']') { j->p++; break; }
+                    j->bad = true;
+                }
         } else j_skip(j);
         j_ws(j);
         if (*j->p == ',') { j->p++; continue; }
@@ -286,16 +287,26 @@ static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix, co
 // The version a tag names, without its "v" (BOTW VR: "vr-" and the release, as .github/workflows/vr-release.yml makes
 // them); NULL when it names none of this kind
 static const char *tag_version(const char *tag, bool vr) {
-    if (vr) return !strncmp(tag, "vr-", 3) && isdigit((unsigned char)tag[3]) && uc_vr_version_valid(tag + 3) ? tag + 3 : NULL;
+    unsigned n[4];
+    if (vr) return !strncmp(tag, "vr-", 3) && vr_date(tag + 3, n) ? tag + 3 : NULL;
     if (!uc_version_valid(tag)) return NULL;
     return tag[0] == 'v' || tag[0] == 'V' ? tag + 1 : tag;
 }
 
 static int version_cmp(const char *a, const char *b, bool vr) { return vr ? uc_vr_version_cmp(a, b) : uc_version_cmp(a, b); }
 
-static UcPick pick_release(const char *json, const char *current, const char *suffix, bool vr, bool unsigned_ok,
+// BOTW VR: the file's address is exactly <downloads><tag>/<name>, as GitHub gives a release's files
+static bool vr_download_url(const UcRelease *r, const char *downloads) {
+    size_t d = strlen(downloads), t = strlen(r->tag);
+    return !strncmp(r->zip_url, downloads, d) && !strncmp(r->zip_url + d, r->tag, t) && r->zip_url[d + t] == '/' &&
+           !strcmp(r->zip_url + d + t + 1, r->zip_name);
+}
+
+// vr_downloads: NULL for Savage Wind's releases, else BOTW VR's (uc_pick_vr_release)
+static UcPick pick_release(const char *json, const char *current, const char *suffix, const char *vr_downloads,
                            UcRelease *out, int *skipped_unsigned) {
-    J j = {json, false, 0};
+    bool vr = vr_downloads != NULL;
+    J j = {json, false, 0, false};
     j_ws(&j);
     if (*j.p != '[') return UC_PICK_BAD_JSON;
     j.p++;
@@ -313,7 +324,9 @@ static UcPick pick_release(const char *json, const char *current, const char *su
             if (!draft && v && version_cmp(v, current, vr) > 0) {
                 if (!r.zip_url[0] || !r.zip_size) {
                     // (no Windows zip in this one: another platform's release, nothing to say)
-                } else if (!r.sig_url[0] && !unsigned_ok) unsigned_newer++;
+                } else if (vr && (j.nul || !vr_download_url(&r, vr_downloads))) {
+                    // (BOTW VR: a tag, name or address cut short by a NUL, or a file that isn't the release's own)
+                } else if (!vr && !r.sig_url[0]) unsigned_newer++;
                 else if (!found || version_cmp(v, out->version, vr) > 0) {
                     *out = r;
                     snprintf(out->version, sizeof out->version, "%s", v);
@@ -330,12 +343,11 @@ static UcPick pick_release(const char *json, const char *current, const char *su
 }
 
 UcPick uc_pick_release(const char *json, const char *current, const char *suffix, UcRelease *out, int *skipped_unsigned) {
-    return pick_release(json, current, suffix, false, false, out, skipped_unsigned);
+    return pick_release(json, current, suffix, NULL, out, skipped_unsigned);
 }
 
-UcPick uc_pick_vr_release(const char *json, const char *current, const char *suffix, bool unsigned_ok, UcRelease *out,
-                          int *skipped_unsigned) {
-    return pick_release(json, current, suffix, true, unsigned_ok, out, skipped_unsigned);
+UcPick uc_pick_vr_release(const char *json, const char *current, const char *suffix, const char *downloads, UcRelease *out) {
+    return pick_release(json, current, suffix, downloads, out, NULL);
 }
 
 // ------------------------------------------------------------------ paths and the manifest

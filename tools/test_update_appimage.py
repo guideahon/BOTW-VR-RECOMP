@@ -23,10 +23,12 @@ OLD = '0.5.1-alpha.5'
 NEW = '0.5.2-alpha.5'
 ARCH = os.uname().machine
 NAME = f'Savage_Wind-{NEW}-{ARCH}.AppImage'
-# BOTW VR (make VR=1): its versions (runtime/vr/botwvr_version.h), tags and release files
+# BOTW VR (make VR=1): its version (runtime/vr/botwvr_version.h), tags, release files and where GitHub keeps them
 VR_OLD = 'alpha-2026.11.26.2'
 VR_NEW = '2026.11.26.3'
 VR_NAME = f'BOTW-VR-alpha-{VR_NEW}-Linux-{"SteamFrame-aarch64" if ARCH == "aarch64" else ARCH}.AppImage'
+VR_URL = f'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-{VR_NEW}/{VR_NAME}'
+VR_PAGE = 'https://github.com/guideahon/BOTW-VR-RECOMP/releases'
 
 
 def run(cmd, **kw):
@@ -39,7 +41,7 @@ def run(cmd, **kw):
 def build():
     prebuilt = os.environ.get('SW_TEST_PREBUILT')  # (a machine without a compiler: the three files from another)
     if prebuilt:
-        return tuple(os.path.join(prebuilt, n) for n in ('key.pem', 'other.pem', 'tool', 'tool-vr', 'tool-vr-key'))
+        return tuple(os.path.join(prebuilt, n) for n in ('key.pem', 'other.pem', 'tool', 'tool-vr'))
     key = os.path.join(TMP, 'key.pem')
     other = os.path.join(TMP, 'other.pem')
     for k in (key, other):
@@ -48,17 +50,17 @@ def build():
     header = os.path.join(TMP, 'key.h')
     with open(header, 'w') as f:
         f.write(f'#define SW_UPDATE_TEST_PUBKEY "{pub}"\n')
-    exe, vr, vr_key = (os.path.join(TMP, n) for n in ('tool', 'tool-vr', 'tool-vr-key'))
-    src = ['tools/test_update_appimage.c', 'runtime/update_appimage.c', 'runtime/update_core.c', 'runtime/update_crypto.c']
-    run(['clang', '-O1', '-Wall', '-DSW_UPDATE_TEST', '-include', header, '-Iruntime', '-o', exe] + src, cwd=ROOT)
-    # BOTW VR: without a key of its own (as released now), and with one (this key)
-    run(['clang', '-O1', '-Wall', '-DSW_UPDATE_TEST', '-DSW_VR', '-Iruntime', '-o', vr] + src, cwd=ROOT)
-    run(['clang', '-O1', '-Wall', '-DSW_UPDATE_TEST', '-DSW_VR', f'-DBOTWVR_UPDATE_PUBKEY="{pub}"', '-Iruntime', '-o', vr_key] + src,
-        cwd=ROOT)
-    return key, other, exe, vr, vr_key
+    exe = os.path.join(TMP, 'tool')
+    run(['clang', '-O1', '-Wall', '-DSW_UPDATE_TEST', '-include', header, '-Iruntime', '-o', exe, 'tools/test_update_appimage.c',
+         'runtime/update_appimage.c', 'runtime/update_core.c', 'runtime/update_crypto.c'], cwd=ROOT)
+    # BOTW VR's Update as Savage Wind Configuration drives it: no update_crypto.c, nothing in it checks a signature
+    vr = os.path.join(TMP, 'tool-vr')
+    run(['clang', '-O1', '-Wall', '-DSW_UPDATE_TEST', '-DSW_VR', '-Iruntime', '-o', vr, 'tools/test_update_vr.c',
+         'runtime/post_update.c', 'runtime/update_appimage.c', 'runtime/update_core.c', '-lpthread'], cwd=ROOT)
+    return key, other, exe, vr
 
 
-KEY, OTHER, TOOL, TOOL_VR, TOOL_VR_KEY = build()
+KEY, OTHER, TOOL, TOOL_VR = build()
 
 
 def script(tag, health=73):
@@ -116,12 +118,11 @@ class Server:
     def url(self, p):
         return f'http://127.0.0.1:{self.port}{p}'
 
-    def publish(self, data, sig=None, digest=True, size=None, tag='v' + NEW, name=NAME, url=None, sig_url=None):
+    def publish(self, data, sig=None, digest=True, size=None, tag='v' + NEW, name=NAME, url=None):
         assets = [{'name': name, 'browser_download_url': url or self.url('/d/' + name), 'size': size or len(data),
                    'digest': 'sha256:' + hashlib.sha256(data).hexdigest() if digest else None}]
         if sig is not False:
-            assets.append({'name': name + '.sig', 'browser_download_url': sig_url or self.url('/d/s.sig'), 'size': 128,
-                           'digest': None})
+            assets.append({'name': name + '.sig', 'browser_download_url': self.url('/d/s.sig'), 'size': 128, 'digest': None})
             self.routes['/d/s.sig'] = (200, sig if sig is not None else sign(data), {})
         self.routes['/feed'] = (200, json.dumps([{'tag_name': tag, 'draft': False, 'html_url': 'x', 'assets': assets}]).encode(), {})
         self.routes['/d/' + name] = (200, data, {})
@@ -146,15 +147,18 @@ class App:
         self.work = os.path.join(TMP, name + '-work')
         os.makedirs(self.work, exist_ok=True)
 
-    def run(self, cmd, env=None, feed=None, tool=None, current=OLD):
-        tool = tool or TOOL
-        # ($APPDIR: the tool's folder, as the AppImage runtime's mount holds the program it runs; downloads only from this
-        # server, as a release's only from its own repository: None in env leaves that check as released)
-        e = dict(os.environ, APPIMAGE=self.path, APPDIR=os.path.dirname(tool), SW_UPDATE_TEST_FEED=feed or S.url('/feed'),
-                 SW_UPDATE_TEST_DOWNLOADS=S.url('/d/'))
+    def run(self, cmd, env=None, feed=None):
+        return self.start([TOOL, cmd, self.work, OLD], env, feed)
+
+    def vr(self, env=None, feed=None):  # BOTW VR: check, Update, go back, finish setting up (tools/test_update_vr.c)
+        return self.start([TOOL_VR, self.work, VR_OLD], env, feed)
+
+    def start(self, argv, env, feed):
+        # ($APPDIR: the tool's folder, as the AppImage runtime's mount holds the program it runs)
+        e = dict(os.environ, APPIMAGE=self.path, APPDIR=os.path.dirname(argv[0]), SW_UPDATE_TEST_FEED=feed or S.url('/feed'))
+        e.pop('RECOMPLAUNCHER', None)
         e.update(env or {})
-        e = {k: v for k, v in e.items() if v is not None}
-        p = subprocess.run([tool, cmd, self.work, current], env=e, capture_output=True, timeout=120)
+        p = subprocess.run(argv, env=e, capture_output=True, timeout=120)
         self.result = dict(line.split('=', 1) for line in p.stdout.decode().splitlines() if '=' in line)
         return self.result
 
@@ -168,7 +172,7 @@ class App:
     def assert_old(self):
         assert self.read() == self.old, 'the AppImage changed'
         assert os.stat(self.path).st_mode & stat.S_IXUSR
-        assert not self.has('.old') and not self.has('.vr-old')
+        assert not self.has('.old')
         assert self.read(os.path.join(self.dir, 'mine.txt')) == b'mine'
 
 
@@ -389,85 +393,68 @@ def not_an_appimage():
     expect(a.run('apply', env={'APPIMAGE': ''}), 'not_appimage')
 
 
-@scenario
-def vr_only_says_where():  # BOTW VR without a key of its own: named, never downloaded, signed or not
-    a = App('vr-offer')
-    for sig in (False, None):
-        S.publish(NEW_FILE, sig=sig, tag='vr-' + VR_NEW, name=VR_NAME)
-        r = a.run('check', tool=TOOL_VR, current=VR_OLD)
-        assert r['status'] == 'available' and r['version'] == VR_NEW, r
-        S.hits.clear()
-        r = a.run('apply', tool=TOOL_VR, current=VR_OLD)
-        expect(r, 'manual_update')
-        assert VR_NAME in r['what'] and 'github.com/guideahon/BOTW-VR-RECOMP/releases' in r['what'], r
-        assert not any(h[0].startswith('/d/') for h in S.hits), S.hits
-        a.assert_old()
+def curl_noted():
+    """A curl ahead of the system's in PATH that notes each time it starts: (the environment for it, the notes' file)."""
+    d = os.path.join(TMP, 'curl-noted')
+    os.makedirs(d, exist_ok=True)
+    notes = os.path.join(d, 'started.txt')
+    with open(os.path.join(d, 'curl'), 'w') as f:
+        f.write(f'#!/bin/sh\necho "$*" >> "{notes}"\nexec "{shutil.which("curl")}" "$@"\n')
+    os.chmod(os.path.join(d, 'curl'), 0o755)
+    if os.path.exists(notes):
+        os.remove(notes)
+    return {'PATH': d + os.pathsep + os.environ.get('PATH', '')}, notes
+
+
+def lines(p):
+    if not os.path.exists(p):
+        return []
+    with open(p) as f:
+        return f.read().splitlines()
 
 
 @scenario
-def vr_never_takes_savage_winds():  # (issue #2) not even signed with the key the VR build trusts
-    a = App('vr-sw')
-    for tag, name in (('v' + NEW, NAME), ('v0.6.0-alpha.6', VR_NAME)):
-        S.publish(NEW_FILE, tag=tag, name=name)
-        for tool in (TOOL_VR, TOOL_VR_KEY):
-            assert a.run('apply', tool=tool, current=VR_OLD)['status'] == 'current', (tag, name, a.result)
-    a.assert_old()
-
-
-@scenario
-def vr_signed_update_ok():  # with a key of its own: installed as Savage Wind's are
-    a = App('vr-signed')
-    S.publish(NEW_FILE, tag='vr-' + VR_NEW, name=VR_NAME)
-    a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)
-    assert a.read() == NEW_FILE, f'not replaced: {a.result}'
-    assert a.read(a.path + '.vr-old') == a.old and not a.has('.old')
-
-
-@scenario
-def vr_other_key_refused():  # (Savage Wind's key, say)
-    a = App('vr-otherkey')
-    S.publish(NEW_FILE, sig=sign(NEW_FILE, OTHER), tag='vr-' + VR_NEW, name=VR_NAME)
-    expect(a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD), 'bad_signature')
-    a.assert_old()
-    assert not a.has('.part')
-
-
-@scenario
-def vr_unsigned_not_offered_with_key():
-    a = App('vr-unsigned')
-    S.publish(NEW_FILE, sig=False, tag='vr-' + VR_NEW, name=VR_NAME)
-    assert a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)['status'] == 'current', a.result
-    a.assert_old()
-
-
-@scenario
-def vr_goes_back_only_to_its_own():  # a Savage Wind <name>.old next to it (the same name used for both) is the flat build
-    a = App('vr-back')
-    flat = script('flat')
+def vr_only_says_where():  # BOTW VR offered a newer release: the list asked for, then nothing downloaded or started
+    env, notes = curl_noted()
+    # (Savage Wind's build the same way: what this sees when something is downloaded and started)
+    c = App('vr-control')
+    S.publish(NEW_FILE)
+    S.hits.clear()
+    c.run('apply', env=env)
+    assert c.read() == NEW_FILE and len(lines(notes)) == 3 and len(S.hits) == 3, (c.result, lines(notes), S.hits)
+    assert any('--config' in s for s in lines(os.path.join(c.dir, 'started.txt')))
+    a = App('vr-where')
+    flat = script('flat')  # (a Savage Wind <name>.old next to it: never put back, never removed)
     with open(a.path + '.old', 'wb') as f:
         f.write(flat)
-    for tool in (TOOL_VR, TOOL_VR_KEY):
-        expect(a.run('back', tool=tool, current=VR_OLD), 'no_backup')
-        assert a.read() == a.old and a.read(a.path + '.old') == flat
-    S.publish(NEW_FILE, tag='vr-' + VR_NEW, name=VR_NAME)  # (a VR update keeps its own)
-    a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)
-    assert a.read() == NEW_FILE and a.read(a.path + '.vr-old') == a.old, a.result
-    assert a.run('back', tool=TOOL_VR_KEY, current=VR_OLD)['status'] == 'back'
-    assert a.read() == a.old and a.read(a.path + '.old') == flat and not a.has('.vr-old')
+    S.publish(NEW_FILE, tag='vr-' + VR_NEW, name=VR_NAME, url=VR_URL)  # (with a signature: no matter)
+    os.remove(notes)
+    S.hits.clear()
+    r = a.vr(env=env)
+    assert r.get('state') == 'available' and r['version'] == VR_NEW, r
+    assert r['by_hand'] == '1' and r['file'] == VR_NAME and r['page'] == VR_PAGE and r['self'] == a.path, r
+    assert r['applies_here'] == r['apply_started'] == r['can_rollback'] == r['rollback_started'] == '0', r
+    assert r['apply_title'] == '' and r['apply_progress'] == '-1', r
+    assert [h[0] for h in S.hits] == ['/feed'], S.hits
+    assert len(lines(notes)) == 1 and lines(notes)[0].endswith(' ' + S.url('/feed')), lines(notes)
+    assert not os.path.exists(os.path.join(a.dir, 'started.txt')), 'something was started'
+    assert a.read() == a.old and a.read(a.path + '.old') == flat
+    assert sorted(os.listdir(a.dir)) == sorted([os.path.basename(a.path), os.path.basename(a.path) + '.old', 'mine.txt'])
+    # (and none of it is in the VR build to be started: no install, going back or start of the new file, no execve)
+    if shutil.which('nm'):
+        syms = {w.split('@')[0] for w in subprocess.run(['nm', TOOL_VR], capture_output=True, text=True).stdout.split()}
+        built = [s for s in ('appimage_install', 'appimage_go_back', 'appimage_relaunch', 'appimage_has_old',
+                             'appimage_remove_old', 'execve', 'uc_p256_verify', 'uc_sha256_file') if s in syms]
+        assert not built, built
 
 
 @scenario
-def downloads_only_from_the_releases():  # the release's own addresses, as built (the server's are the test's alone)
-    a = App('where')
-    vr, sw = ('https://github.com/' + r + '/releases/download/' for r in ('guideahon/BOTW-VR-RECOMP', 'Revivedx/SavageWindRecomp'))
-    for tool, tag, name, current, mine, other in ((TOOL_VR, 'vr-' + VR_NEW, VR_NAME, VR_OLD, vr, sw),
-                                                  (TOOL_VR_KEY, 'vr-' + VR_NEW, VR_NAME, VR_OLD, vr, sw),
-                                                  (TOOL, 'v' + NEW, NAME, OLD, sw, vr)):
-        # (the file elsewhere: refused; its signature elsewhere: refused, unless the build has no key to check it with)
-        for url, sig_url, ok in ((mine, mine, True), (other, mine, False), (mine, other, tool == TOOL_VR)):
-            S.publish(NEW_FILE, tag=tag, name=name, url=f'{url}{tag}/{name}', sig_url=f'{sig_url}{tag}/{name}.sig')
-            r = a.run('check', tool=tool, current=current, env={'SW_UPDATE_TEST_DOWNLOADS': None})
-            assert r['status'] == 'available' if ok else r.get('code') == 'bad_response', (os.path.basename(tool), url, sig_url, r)
+def vr_never_takes_savage_winds():  # (signed with the key a Savage Wind build trusts, with either file's name)
+    a = App('vr-sw')
+    for name in (NAME, VR_NAME):
+        S.publish(NEW_FILE, name=name)
+        r = a.vr()
+        assert r.get('state') == 'current' and r['by_hand'] == '0', (name, r)
     a.assert_old()
 
 

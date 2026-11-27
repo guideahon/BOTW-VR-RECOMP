@@ -443,14 +443,16 @@ tools/zig_slim.sh reading zig's dependency lists): both fixed.
 
 ### Updates (Linux AppImages)
 
-Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`): tags
-`vr-<year>.<month>.<day>[.<number>]` with a real date, ordered by date and the day's number (`uc_vr_version_cmp`), and
-the file `BOTW-VR-...-Linux-x86_64.AppImage` or `BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage` with its own `.sig`.
-Savage Wind's update key is not used. The releases aren't signed yet, so Update installs nothing: it shows the new
-file's name, the releases page's address and the AppImage to replace (`update_by_hand`). To have it install them,
-see `runtime/vr/botwvr_update_key.h`. The previous version is then kept as `<name>.vr-old`, so "Go back to the previous
-version" never puts back a Savage Wind `<name>.old`. `make test-update-core` and `make test-update-appimage` cover both
-cases.
+Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`), and
+only says when a newer one is out: Update shows the file to download, the releases page's address and the AppImage to
+replace under the same name (`update_by_hand`). A VR build downloads, installs and goes back to nothing, and starts no
+other program for it: that code isn't built into it. Only tags `vr-YYYY.MM.DD` or `vr-YYYY.MM.DD.N` (a real date, N
+from 1 to 9999) count, ordered by date and the day's number, and only the file `BOTW-VR-...-Linux-x86_64.AppImage` (on
+aarch64 `BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`) at this repository's `releases/download/<tag>/<name>`.
+`make test-update-core` and `make test-update-appimage` cover it.
+
+Installing updates by itself would need BOTW VR's own signing key and a `.sig` with each AppImage, backups of its own
+(never Savage Wind's `<name>.old`) and a health check only a VR build passes: not done yet.
 
 ## How it hooks in
 

@@ -268,7 +268,7 @@ void post_update_finish(const char *version) {
     remove(p);
 #ifdef _WIN32
     if (update_dir(p, sizeof p)) remove_tree(p);
-#else
+#elif !defined(SW_VR)  // (BOTW VR makes no backup: a <name>.old next to it is Savage Wind's)
     appimage_remove_old();
 #endif
     fprintf(stderr, "[update] version %s is set up\n", version);
@@ -282,7 +282,7 @@ void post_update_tidy(const char *version) {
 #ifdef _WIN32
     char p[1100];
     if (update_dir(p, sizeof p) && file_there(p)) remove_tree(p);
-#else
+#elif !defined(SW_VR)
     appimage_remove_old();
 #endif
 }
@@ -301,8 +301,8 @@ bool post_update_failed_before(const char *version) {
 }
 
 bool post_update_can_rollback(void) {
-#if defined(_WIN32) && defined(SW_VR)
-    return false;  // (the journal there is Savage Wind's: going back would put the flat build back)
+#if defined(SW_VR)
+    return false;  // (BOTW VR never goes back: a journal or <name>.old next to it is Savage Wind's, the flat build)
 #elif defined(_WIN32)
     char p[1100], q[1200];
     if (!update_dir(p, sizeof p)) return false;
@@ -318,12 +318,8 @@ static pthread_mutex_t g_check_lock = PTHREAD_MUTEX_INITIALIZER;
 static UpdateState g_state = UPDATE_IDLE;
 static char g_version[64], g_message[512];
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(SW_VR)  // (BOTW VR's zip has no SW Update: one in its folder is Savage Wind's)
 static bool start_tool(const char *args, HANDLE *out_process, DWORD flags) {
-#ifdef SW_VR
-    (void)args, (void)out_process, (void)flags;
-    return false;  // (a SW Update in this folder is Savage Wind's: it installs Savage Wind's releases, or goes back to them)
-#endif
     char exe[1100];
     if (!rt_resource("SW Update.exe", NULL, exe, sizeof exe)) return false;
     wchar_t wexe[1200], line[1800], wargs[500];
@@ -381,9 +377,11 @@ static void *check_thread(void *arg) {
     return NULL;
 }
 
-#else  // the AppImage asks by itself, with the system's curl
+#elif !defined(_WIN32)  // the AppImage asks by itself, with the system's curl
 static UcRelease g_release;
+#ifndef SW_VR
 static volatile float g_install_progress = -1;
+#endif
 
 static void *check_thread(void *arg) {
     (void)arg;
@@ -444,6 +442,9 @@ const char *update_launcher(void) {
     return g_launcher;
 }
 
+#if defined(_WIN32) && defined(SW_VR)
+void update_check_start(void) {}  // (on Windows SW Update asks GitHub, and BOTW VR's zip has none)
+#else
 void update_check_start(void) {
     if (update_launcher()) return;  // (the launcher that installed it updates it)
 #ifdef _WIN32
@@ -461,6 +462,7 @@ void update_check_start(void) {
     if (pthread_create(&t, NULL, check_thread, NULL) == 0) pthread_detach(t);
     else g_state = UPDATE_IDLE;
 }
+#endif
 
 UpdateState update_check_state(char *version, size_t vn, char *message, size_t mn) {
     pthread_mutex_lock(&g_check_lock);
@@ -471,7 +473,31 @@ UpdateState update_check_state(char *version, size_t vn, char *message, size_t m
     return s;
 }
 
+#ifdef SW_VR
+// BOTW VR only says that a newer release of its own is out, and where to get it (runtime/update_appimage.c): it never
+// downloads, installs or goes back to anything, and starts no other program for it.
+bool update_by_hand(char *file, size_t n, const char **page, const char **self) {
 #ifdef _WIN32
+    (void)file, (void)n, (void)page, (void)self;
+    return false;
+#else
+    pthread_mutex_lock(&g_check_lock);
+    bool ok = g_state == UPDATE_AVAILABLE && (*self = appimage_path()) != NULL;
+    if (ok) {
+        *page = appimage_by_hand();
+        snprintf(file, n, "%s", g_release.zip_name);
+    }
+    pthread_mutex_unlock(&g_check_lock);
+    return ok;
+#endif
+}
+bool update_applies_here(void) { return false; }
+void update_apply_here(char *title, size_t tn, char *what, size_t wn) { (void)title, (void)tn, (void)what, (void)wn; }
+float update_apply_progress(void) { return -1; }
+bool update_apply_start(void) { return false; }
+bool update_rollback_start(void) { return false; }
+
+#elif defined(_WIN32)
 bool update_by_hand(char *file, size_t n, const char **page, const char **self) { (void)file, (void)n, (void)page, (void)self; return false; }
 bool update_applies_here(void) { return false; }
 void update_apply_here(char *title, size_t tn, char *what, size_t wn) { (void)title, (void)tn, (void)what, (void)wn; }
@@ -489,14 +515,7 @@ bool update_rollback_start(void) {
     return start_tool(a, NULL, 0);
 }
 #else
-bool update_by_hand(char *file, size_t n, const char **page, const char **self) {
-    *page = appimage_by_hand(), *self = appimage_path();
-    if (!*page || !*self) return false;
-    pthread_mutex_lock(&g_check_lock);
-    snprintf(file, n, "%s", g_release.zip_name);
-    pthread_mutex_unlock(&g_check_lock);
-    return true;
-}
+bool update_by_hand(char *file, size_t n, const char **page, const char **self) { (void)file, (void)n, (void)page, (void)self; return false; }
 bool update_applies_here(void) { return true; }
 float update_apply_progress(void) { return g_install_progress; }
 
