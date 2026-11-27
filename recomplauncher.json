@@ -1,22 +1,21 @@
 {
   "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
   "format": 1,
-  "name": "Savage Wind",
-  "repo": "Revivedx/SavageWindRecomp",
+  "name": "BOTW VR Recomp",
+  "repo": "guideahon/BOTW-VR-RECOMP",
   "game": {
     "kind": "folder",
     "label": "Your own extracted copy of The Legend of Zelda: Breath of the Wild, version 1.9.0: the folder with exefs and romfs (and the DLC folders aoc1 and aoc2, if you have them).",
     "check": { "file": "exefs/main" }
   },
   "start": {
-    "program": ["savagewind.exe", "Savage_Wind-x86_64.AppImage"],
+    "program": ["savagewind.exe", "BOTW-VR.AppImage"],
     "args": ["--game"]
   },
   "prepare": {
-    "program": ["savagewind.exe", "Savage_Wind-x86_64.AppImage"],
+    "program": ["savagewind.exe", "BOTW-VR.AppImage"],
     "args": ["--prepare", "--game", "{game}"],
-    "label": "Copying your game files and building the game code",
-    "timeout": 7200
+    "label": "Copying your game files and building the game code"
   },
   "config": [
     {
