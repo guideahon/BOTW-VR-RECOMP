@@ -73,7 +73,7 @@ static void remove_tree(const char *dir) {
     rmdir(dir);
 }
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(SW_VR)
 // update/journal.txt (runtime/platform/windows_update.c) there and not ending in "C": the swap didn't finish
 static bool journal_cut_off(const wchar_t *journal) {
     FILE *f = _wfopen(journal, L"rb");
@@ -117,6 +117,9 @@ bool post_update_recover_if_cut(void) {
     return true;
 }
 
+#elif defined(_WIN32)
+// (BOTW VR ships no SW Update: one left in this folder by Savage Wind, with its journal, would put the flat build back)
+bool post_update_recover_if_cut(void) { return false; }
 #else
 bool post_update_recover_if_cut(void) { return false; }  // (the AppImage is replaced in one step)
 #endif
@@ -298,7 +301,9 @@ bool post_update_failed_before(const char *version) {
 }
 
 bool post_update_can_rollback(void) {
-#ifdef _WIN32
+#if defined(_WIN32) && defined(SW_VR)
+    return false;  // (the journal there is Savage Wind's: going back would put the flat build back)
+#elif defined(_WIN32)
     char p[1100], q[1200];
     if (!update_dir(p, sizeof p)) return false;
     snprintf(q, sizeof q, "%s/journal.txt", p);
@@ -315,6 +320,10 @@ static char g_version[64], g_message[512];
 
 #ifdef _WIN32
 static bool start_tool(const char *args, HANDLE *out_process, DWORD flags) {
+#ifdef SW_VR
+    (void)args, (void)out_process, (void)flags;
+    return false;  // (a SW Update in this folder is Savage Wind's: it installs Savage Wind's releases, or goes back to them)
+#endif
     char exe[1100];
     if (!rt_resource("SW Update.exe", NULL, exe, sizeof exe)) return false;
     wchar_t wexe[1200], line[1800], wargs[500];

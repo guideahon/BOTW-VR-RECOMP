@@ -430,8 +430,10 @@ upstream), defaults every game executable to VR, and adds:
 - `savagewind.exe` also starts in VR if launched directly; set `SAVAGEWIND_VR=0` to start it flat;
 - `libopenxr_loader.dll` (the ucrt64 one, found as the game's other DLLs are);
 - `VR/`: this file, the setup guides and the checklist.
-It ships no SW Update: an upstream update would replace the VR build with the flat one. A VR build ignores one left in
-the folder by a Savage Wind zip (`post_update_shipped`), so it never offers updates on Windows.
+It ships no SW Update: an upstream update would replace the VR build with the flat one. A VR build never starts one
+left in the folder by a Savage Wind zip, with its `update/journal.txt`: no update check, no Update, no "Go back to the
+previous version", and no recovery of a cut-off update, by the game (`runtime/post_update.c`) or by Savage Wind
+Configuration (`runtime/platform/windows_config.c`, built with `SW_VR`).
 
 Checked from a clean folder: the zip extracted to `D:\SW VR test` (a path with a space), its first start set up from
 a dump (`SAVAGEWIND_LAUNCHER_EXTRACT=<dump>`: copy, game code built with the bundled zig, shaders precompiled), then
