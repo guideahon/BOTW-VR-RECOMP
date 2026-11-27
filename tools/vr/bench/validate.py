@@ -61,6 +61,9 @@ def main():
     ap.add_argument('--case', default='validate')
     ap.add_argument('--boot', type=float, default=300)
     ap.add_argument('--measure', type=float, default=12)
+    ap.add_argument('--limit', type=float, default=1.0,
+                    help='the most of the field that may differ between the eyes, %% (Stereo: its fires flicker per eye, 15)')
+    ap.add_argument('--min-fps', type=float, default=0, help='fail under this many headset frames a second (0: not judged)')
     a = ap.parse_args()
     run_dir = os.path.join(os.path.abspath(a.out), a.case)
     shutil.rmtree(run_dir, ignore_errors=True)
@@ -180,8 +183,23 @@ def main():
             tag, part, dx, cell, where, la, lb))
     res['caps'] = caps
     res['notes'] = notes
+    bad = [] if alive else ['the game stopped']
+    for tag, c in caps.items():
+        if c is None:
+            bad.append('%s: no capture' % tag)
+        elif c['dx']:
+            bad.append('%s: the eyes %d samples apart' % (tag, c['dx']))
+        elif c['diff'] > a.limit:
+            bad.append('%s: %.2f%% differs (limit %.2f%%), worst at %s' % (tag, c['diff'], a.limit, c['where']))
+    if a.min_fps and res.get('hmd_fps', 0) < a.min_fps:
+        bad.append('%.1f headset fps, under %.0f' % (res.get('hmd_fps', 0), a.min_fps))
+    res['broken'] = bad
     json.dump(res, open(os.path.join(run_dir, 'result.json'), 'w'), indent=1)
     print('RESULT', json.dumps({k: v for k, v in res.items() if k != 'caps'}))
+    for b in bad:
+        print('  FAIL ' + b)
+    print('PASS' if not bad else 'FAIL')
+    sys.exit(0 if not bad else 1)
 
 
 if __name__ == '__main__':

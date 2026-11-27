@@ -58,9 +58,11 @@ def run(save, out, stereo):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--save', required=True)
+    ap.add_argument('--exe', default=T.EXE)
     ap.add_argument('--out', default='build/vr/mono')
     ap.add_argument('--control', action='store_true', help='also run normal stereo, which must fail the mono checks')
     a = ap.parse_args()
+    T.EXE = os.path.abspath(a.exe)
     ok = True
 
     def check(c, what):

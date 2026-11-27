@@ -36,7 +36,7 @@ import perf_routes  # noqa: E402
 
 R = '/user/hand/right/input/thumbstick'
 L = '/user/hand/left/input/thumbstick'
-HANDS = ['0 head 0 1.7 0 0 0 0', '0 hand right 0.12 1.45 -0.38 0 0 0', '0 hand left -0.12 1.45 -0.38 0 0 0']
+HANDS = ['0 head 0 1.7 0 0 0 0', '0 hand right 0.12 1.58 -0.40 0 0 0', '0 hand left -0.12 1.58 -0.40 0 0 0']  # (12 cm under the eyes: in the measured field, tangents to 0.6; 25 cm under they were out of it)
 
 
 def hands_shift(a, b, max_dx=12):

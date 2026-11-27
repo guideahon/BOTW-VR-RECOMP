@@ -42,6 +42,7 @@ typedef struct {
 
 typedef struct {
     float ipd;
+    long long hand_drift;   // FAKE_XR_HAND_DRIFT=<ns>: each hand location since the last xrWaitFrame that much later
     int hz;
     FILE *log;
     script_line *lines;
@@ -97,6 +98,7 @@ struct session {
     vr_pose head;           // VIEW in STAGE space
     struct fxvk *vk;        // the graphics binding (fake_xr_vk.inc), NULL headless
     bool attached;          // action sets attached (fake_xr_actions.inc)
+    long long hand_locates; // hand locations since the last xrWaitFrame (FAKE_XR_HAND_DRIFT)
 };
 
 typedef struct {
@@ -295,6 +297,10 @@ static XrResult XRAPI_CALL fx_CreateInstance(const XrInstanceCreateInfo *ci, XrI
     in->cfg.hz = FAKE_XR_DEFAULT_HZ;
     const char *v;
     if ((v = getenv("FAKE_XR_IPD")) && atof(v) >= 0) in->cfg.ipd = (float)atof(v);
+    // (a real runtime's prediction for one display time moves on as new tracking comes: a hand located again later in
+    // the frame is somewhere else when it moves. This one gives each hand location since the last xrWaitFrame that many
+    // nanoseconds more; 0, the default: the same pose for the same time every time)
+    if ((v = getenv("FAKE_XR_HAND_DRIFT")) && atoll(v) > 0) in->cfg.hand_drift = atoll(v);
     if ((v = getenv("FAKE_XR_HZ")) && atoi(v) > 0) in->cfg.hz = atoi(v);
     if ((v = getenv("FAKE_XR_LOG")) && *v) in->cfg.log = fopen(v, "w");
     if ((v = getenv("FAKE_XR_CAPTURE")) && *v) {
@@ -674,6 +680,7 @@ static XrResult XRAPI_CALL fx_WaitFrame(XrSession h, const XrFrameWaitInfo *wi, 
         return XR_ERROR_VALIDATION_FAILURE;
     if (s->lost) return XR_ERROR_SESSION_LOST;
     if (!s->running) return XR_ERROR_SESSION_NOT_RUNNING;
+    s->hand_locates = 0;
     XrTime display = BASE_TIME + (XrTime)(s->frame + 1) * period_ns(s);
     if (!s->frame) s->first_time = display;
     s->frame++;
@@ -908,6 +915,7 @@ static XrResult XRAPI_CALL fx_LocateSpace(XrSpace h, XrSpace base, XrTime t, XrS
     if (!sp || !bs) return XR_ERROR_HANDLE_INVALID;
     if (!loc || loc->type != XR_TYPE_SPACE_LOCATION) return XR_ERROR_VALIDATION_FAILURE;
     if (t <= 0) return XR_ERROR_TIME_INVALID;
+    if (sp->hand && sp->s && sp->s->inst->cfg.hand_drift) t += sp->s->inst->cfg.hand_drift * ++sp->s->hand_locates;
     vr_pose now = vr_pose_mul(vr_pose_inverse(space_at(bs, t)), space_at(sp, t));
     loc->pose = to_xr(now);
     loc->locationFlags = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT |

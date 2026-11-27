@@ -1056,6 +1056,12 @@ $(B)/test_vr_gestures: tests/vr/test_vr_gestures.c runtime/vr/vr_gestures.h runt
 	@mkdir -p $(dir $@)
 	$(CC) $(VR_TEST_CFLAGS) -o $@ $< -lm
 
+# BOTW VR's regression suite (tools/vr/regress.py, docs/vr/TESTING.md "Before every release"): every check that once found
+# a bug. VR_SAVE: the 100% save (copied per run). make vr-regress VR_SAVE=<folder> [REGRESS=--quick]
+vr-regress:
+	python3 tools/vr/regress.py --exe $(B)/savagewind --deps $(DEPS) --save "$(VR_SAVE)" $(REGRESS)
+.PHONY: vr-regress
+
 test-vr: $(B)/test_vr_math $(B)/test_vr_pair $(B)/test_vr_input_map $(B)/test_vr_melee $(B)/test_vr_gestures $(B)/test_vr_ik $(B)/test_fake_xr_session fake-xr
 	$(B)/test_vr_math
 	$(B)/test_vr_pair

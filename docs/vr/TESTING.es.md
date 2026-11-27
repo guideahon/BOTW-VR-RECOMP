@@ -68,3 +68,13 @@ separada para la apariencia natural.
 Usá entradas sintéticas. Nunca subas al repo archivos del juego, código generado, partidas ni capturas de prueba o de
 referencia; las capturas o clips breves sí se pueden adjuntar a un issue según las
 [reglas de copyright](../../CONTRIBUTING.md). Reportá por ID; ver [la lista para probar en el visor](CHECKLIST.es.md).
+
+## Antes de cada release: la suite de regresión
+
+`tools/vr/regress.py` (`make vr-regress VR=1 B=build/native-vr DEPS=build/linux/x86_64/deps VR_SAVE=<la partida 100%>`)
+corre cada prueba que alguna vez encontró un error, cada una con el error que vigila (`--list`). `--quick`: los casos de
+Estéreo y los tests unitarios (~15 min); sin él, todos los modos (~45 min). Un release se hace solo si pasa, y cada
+error que una prueba encuentra suma su caso ahí: el caso de un error arreglado se queda, para que no vuelva sin que se
+note. Los mínimos de fps son los de la PC de referencia (`--no-perf` en otras). Lo que fake_xr no puede mostrar (cuadros
+perdidos, la predicción propia de un runtime, la comodidad) sigue necesitando un visor; `FAKE_XR_HAND_DRIFT` en fake_xr
+da a las ubicaciones de manos más tardías poses más tardías, como un runtime.

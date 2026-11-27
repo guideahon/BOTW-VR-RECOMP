@@ -44,6 +44,15 @@ automated evidence separate from headset evidence: mark **AI validated** only wh
 **Human validated** only after a person reports the behavior in a headset. A script can measure the arm geometry; it
 cannot establish that the arms look natural to the player.
 
+## Before every release: the regression suite
+
+`tools/vr/regress.py` (`make vr-regress VR=1 B=build/native-vr DEPS=build/linux/x86_64/deps VR_SAVE=<the 100% save>`)
+runs every check that once found a bug, each named with the bug it guards against (`--list`). `--quick`: the Stereo
+cases and the unit tests (~15 min); without it, every mode (~45 min). A release is made only when it passes, and every
+bug a test finds adds its case there - a fixed bug's case stays, so it cannot come back unnoticed. The fps floors are
+the reference PC's (`--no-perf` elsewhere). What fake_xr cannot show (dropped frames, a runtime's own prediction, comfort)
+still needs a headset; fake_xr's `FAKE_XR_HAND_DRIFT` gives later hand locations later poses, as a runtime does.
+
 ## Experimental features and releases
 
 A change that can make play worse while it is being finished (a faster rendering path, a new effect, a new way of
