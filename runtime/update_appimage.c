@@ -25,8 +25,10 @@
 #ifdef SW_VR
 // BOTW VR (make VR=1): its own releases, never Savage Wind's (one would replace the VR build with the flat one),
 // checked against its own key, never Savage Wind's. Without that key a new release is only named, with where to get it.
+// The previous version is kept under a name of its own: a Savage Wind <name>.old next to it is the flat build.
 #include "vr/botwvr_update_key.h"
 #define REPO "guideahon/BOTW-VR-RECOMP"
+#define OLD_SUFFIX ".vr-old"
 #ifdef BOTWVR_UPDATE_PUBKEY
 #define OFFER_ONLY 0
 #else
@@ -35,6 +37,7 @@
 #else
 #include "platform/sw_update_key.h"
 #define REPO "Revivedx/SavageWindRecomp"
+#define OLD_SUFFIX ".old"
 #define OFFER_ONLY 0
 #endif
 #define FEED_URL "https://api.github.com/repos/" REPO "/releases?per_page=30"
@@ -89,6 +92,8 @@ const char *appimage_path(void) {
     pthread_once(&once, appimage_find);
     return g_self_image[0] ? g_self_image : NULL;
 }
+
+const char *appimage_by_hand(void) { return OFFER_ONLY ? RELEASES_PAGE : NULL; }
 
 // The environment for another program. What the AppImage runtime set describes this mount, not the next program's.
 // curl is the system's: libraries a launcher such as Steam injects aren't meant for it (no_ld).
@@ -247,6 +252,13 @@ static const char *feed_url(void) {
     return FEED_URL;
 }
 
+static const char *download_prefix(void) {
+#ifdef SW_UPDATE_TEST
+    if (getenv("SW_UPDATE_TEST_DOWNLOADS")) return getenv("SW_UPDATE_TEST_DOWNLOADS");  // (unset: the release's own)
+#endif
+    return DOWNLOAD_PREFIX;
+}
+
 bool appimage_find_update(const char *work, const char *current, UcRelease *out, bool *available, UpdateProblem *p) {
     *available = false;
     char body[1100], headers[1100], code_f[1100];
@@ -280,14 +292,13 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
             else {
                 ok = true;
                 *available = pick == UC_PICK_UPDATE;
-#ifndef SW_UPDATE_TEST
-                if (*available && (strncmp(out->zip_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1) ||
-                                   (!OFFER_ONLY && strncmp(out->sig_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1)))) {
+                const char *at = download_prefix();
+                if (*available && (strncmp(out->zip_url, at, strlen(at)) ||
+                                   (!OFFER_ONLY && strncmp(out->sig_url, at, strlen(at))))) {
                     *available = false;
                     ok = fail(p, "bad_response", "GitHub sent an unexpected answer",
                               "The download address is not where Savage Wind's releases are. Nothing was downloaded.");
                 }
-#endif
             }
         }
     }
@@ -359,17 +370,15 @@ bool appimage_install(const char *work, const UcRelease *r, volatile float *prog
     const char *self = appimage_path();
     if (!self) return fail(p, "not_appimage", "This copy can't update itself", "Only the AppImage releases can update themselves.");
 #if OFFER_ONLY
-    return fail(p, "manual_update", "Download the new version from GitHub",
-                "BOTW VR %s is out. This copy can't install it by itself yet, as BOTW VR's releases aren't signed. Download "
-                "%s from " RELEASES_PAGE " and put it in place of:\n%s\n\nunder the same name, so shortcuts and Steam entries "
-                "keep working. Your game files, saves and settings stay as they are.", r->version, r->zip_name, self);
+    // (Savage Wind Configuration says so itself, appimage_by_hand)
+    return fail(p, "manual_update", "Download the new version from GitHub", "%s, from " RELEASES_PAGE, r->zip_name);
 #endif
     char dir[1100], part[1200], sigf[1300], old[1200];
     if (!folder_of(self, dir, sizeof dir))
         return fail(p, "wrong_folder", "The AppImage's location isn't known", "Get the new AppImage from the project's GitHub releases page.");
     snprintf(part, sizeof part, "%s.part", self);
     snprintf(sigf, sizeof sigf, "%s/update.sig", work);
-    snprintf(old, sizeof old, "%s.old", self);
+    snprintf(old, sizeof old, "%s" OLD_SUFFIX, self);
     if (access(dir, W_OK))
         return fail(p, "read_only", "Savage Wind can't write in this folder",
                     "The system does not allow writing in:\n%s\n\nMove the AppImage somewhere in your home folder and try again.", dir);
@@ -477,8 +486,8 @@ bool appimage_install(const char *work, const UcRelease *r, volatile float *prog
 bool appimage_has_old(void) {
     const char *self = appimage_path();
     char old[1200];
-    if (!self) return false;
-    snprintf(old, sizeof old, "%s.old", self);
+    if (!self || OFFER_ONLY) return false;  // (one that never installs has made none)
+    snprintf(old, sizeof old, "%s" OLD_SUFFIX, self);
     return access(old, F_OK) == 0;
 }
 
@@ -486,7 +495,7 @@ void appimage_remove_old(void) {
     const char *self = appimage_path();
     char old[1200];
     if (!self) return;
-    snprintf(old, sizeof old, "%s.old", self);
+    snprintf(old, sizeof old, "%s" OLD_SUFFIX, self);
     remove(old);
 }
 
@@ -494,8 +503,8 @@ bool appimage_go_back(UpdateProblem *p) {
     const char *self = appimage_path();
     char old[1200];
     if (!self) return fail(p, "not_appimage", "This copy can't update itself", "Only the AppImage releases can update themselves.");
-    snprintf(old, sizeof old, "%s.old", self);
-    if (access(old, F_OK))
+    snprintf(old, sizeof old, "%s" OLD_SUFFIX, self);
+    if (OFFER_ONLY || access(old, F_OK))
         return fail(p, "no_backup", "There is no earlier version to go back to",
                     "The previous version is only kept until an update finishes setting up.");
     if (rename(old, self)) return fail(p, "file_error", "The previous version could not be put back", "Reason: %s.", strerror(errno));

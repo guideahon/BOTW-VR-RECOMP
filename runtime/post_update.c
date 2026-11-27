@@ -472,6 +472,7 @@ UpdateState update_check_state(char *version, size_t vn, char *message, size_t m
 }
 
 #ifdef _WIN32
+bool update_by_hand(char *file, size_t n, const char **page, const char **self) { (void)file, (void)n, (void)page, (void)self; return false; }
 bool update_applies_here(void) { return false; }
 void update_apply_here(char *title, size_t tn, char *what, size_t wn) { (void)title, (void)tn, (void)what, (void)wn; }
 float update_apply_progress(void) { return -1; }
@@ -488,6 +489,14 @@ bool update_rollback_start(void) {
     return start_tool(a, NULL, 0);
 }
 #else
+bool update_by_hand(char *file, size_t n, const char **page, const char **self) {
+    *page = appimage_by_hand(), *self = appimage_path();
+    if (!*page || !*self) return false;
+    pthread_mutex_lock(&g_check_lock);
+    snprintf(file, n, "%s", g_release.zip_name);
+    pthread_mutex_unlock(&g_check_lock);
+    return true;
+}
 bool update_applies_here(void) { return true; }
 float update_apply_progress(void) { return g_install_progress; }
 
@@ -537,6 +546,7 @@ UpdateState update_check_state(char *version, size_t vn, char *message, size_t m
 }
 bool update_apply_start(void) { return false; }
 bool update_rollback_start(void) { return false; }
+bool update_by_hand(char *file, size_t n, const char **page, const char **self) { (void)file, (void)n, (void)page, (void)self; return false; }
 bool update_applies_here(void) { return false; }
 void update_apply_here(char *title, size_t tn, char *what, size_t wn) { (void)title, (void)tn, (void)what, (void)wn; }
 float update_apply_progress(void) { return -1; }

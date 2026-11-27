@@ -444,12 +444,13 @@ tools/zig_slim.sh reading zig's dependency lists): both fixed.
 ### Updates (Linux AppImages)
 
 Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`): tags
-`vr-<release>`, ordered by date and the day's number (`uc_vr_version_cmp`), and the asset ending
-`-Linux-x86_64.AppImage` or `-Linux-SteamFrame-aarch64.AppImage`. Savage Wind's update key is not used. The releases
-aren't signed yet, so Update only names the new file and links the releases page. To have it install them, put the
-public half of a key of BOTW VR's own in `runtime/vr/botwvr_update_key.h` and upload each AppImage's `.sig`
-(`tools/sign_update.py`); unsigned releases are then passed over, as in Savage Wind. `make test-update-core` and
-`make test-update-appimage` cover both cases.
+`vr-<year>.<month>.<day>[.<number>]` with a real date, ordered by date and the day's number (`uc_vr_version_cmp`), and
+the file `BOTW-VR-...-Linux-x86_64.AppImage` or `BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage` with its own `.sig`.
+Savage Wind's update key is not used. The releases aren't signed yet, so Update installs nothing: it shows the new
+file's name, the releases page's address and the AppImage to replace (`update_by_hand`). To have it install them,
+see `runtime/vr/botwvr_update_key.h`. The previous version is then kept as `<name>.vr-old`, so "Go back to the previous
+version" never puts back a Savage Wind `<name>.old`. `make test-update-core` and `make test-update-appimage` cover both
+cases.
 
 ## How it hooks in
 

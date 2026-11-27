@@ -116,11 +116,12 @@ class Server:
     def url(self, p):
         return f'http://127.0.0.1:{self.port}{p}'
 
-    def publish(self, data, sig=None, digest=True, size=None, tag='v' + NEW, name=NAME):
-        assets = [{'name': name, 'browser_download_url': self.url('/d/' + name), 'size': size or len(data),
+    def publish(self, data, sig=None, digest=True, size=None, tag='v' + NEW, name=NAME, url=None, sig_url=None):
+        assets = [{'name': name, 'browser_download_url': url or self.url('/d/' + name), 'size': size or len(data),
                    'digest': 'sha256:' + hashlib.sha256(data).hexdigest() if digest else None}]
         if sig is not False:
-            assets.append({'name': name + '.sig', 'browser_download_url': self.url('/d/s.sig'), 'size': 128, 'digest': None})
+            assets.append({'name': name + '.sig', 'browser_download_url': sig_url or self.url('/d/s.sig'), 'size': 128,
+                           'digest': None})
             self.routes['/d/s.sig'] = (200, sig if sig is not None else sign(data), {})
         self.routes['/feed'] = (200, json.dumps([{'tag_name': tag, 'draft': False, 'html_url': 'x', 'assets': assets}]).encode(), {})
         self.routes['/d/' + name] = (200, data, {})
@@ -147,9 +148,12 @@ class App:
 
     def run(self, cmd, env=None, feed=None, tool=None, current=OLD):
         tool = tool or TOOL
-        # ($APPDIR: the tool's folder, as the AppImage runtime's mount holds the program it runs)
-        e = dict(os.environ, APPIMAGE=self.path, APPDIR=os.path.dirname(tool), SW_UPDATE_TEST_FEED=feed or S.url('/feed'))
+        # ($APPDIR: the tool's folder, as the AppImage runtime's mount holds the program it runs; downloads only from this
+        # server, as a release's only from its own repository: None in env leaves that check as released)
+        e = dict(os.environ, APPIMAGE=self.path, APPDIR=os.path.dirname(tool), SW_UPDATE_TEST_FEED=feed or S.url('/feed'),
+                 SW_UPDATE_TEST_DOWNLOADS=S.url('/d/'))
         e.update(env or {})
+        e = {k: v for k, v in e.items() if v is not None}
         p = subprocess.run([tool, cmd, self.work, current], env=e, capture_output=True, timeout=120)
         self.result = dict(line.split('=', 1) for line in p.stdout.decode().splitlines() if '=' in line)
         return self.result
@@ -164,7 +168,7 @@ class App:
     def assert_old(self):
         assert self.read() == self.old, 'the AppImage changed'
         assert os.stat(self.path).st_mode & stat.S_IXUSR
-        assert not self.has('.old')
+        assert not self.has('.old') and not self.has('.vr-old')
         assert self.read(os.path.join(self.dir, 'mine.txt')) == b'mine'
 
 
@@ -416,7 +420,7 @@ def vr_signed_update_ok():  # with a key of its own: installed as Savage Wind's 
     S.publish(NEW_FILE, tag='vr-' + VR_NEW, name=VR_NAME)
     a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)
     assert a.read() == NEW_FILE, f'not replaced: {a.result}'
-    assert a.read(a.path + '.old') == a.old
+    assert a.read(a.path + '.vr-old') == a.old and not a.has('.old')
 
 
 @scenario
@@ -433,6 +437,37 @@ def vr_unsigned_not_offered_with_key():
     a = App('vr-unsigned')
     S.publish(NEW_FILE, sig=False, tag='vr-' + VR_NEW, name=VR_NAME)
     assert a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)['status'] == 'current', a.result
+    a.assert_old()
+
+
+@scenario
+def vr_goes_back_only_to_its_own():  # a Savage Wind <name>.old next to it (the same name used for both) is the flat build
+    a = App('vr-back')
+    flat = script('flat')
+    with open(a.path + '.old', 'wb') as f:
+        f.write(flat)
+    for tool in (TOOL_VR, TOOL_VR_KEY):
+        expect(a.run('back', tool=tool, current=VR_OLD), 'no_backup')
+        assert a.read() == a.old and a.read(a.path + '.old') == flat
+    S.publish(NEW_FILE, tag='vr-' + VR_NEW, name=VR_NAME)  # (a VR update keeps its own)
+    a.run('apply', tool=TOOL_VR_KEY, current=VR_OLD)
+    assert a.read() == NEW_FILE and a.read(a.path + '.vr-old') == a.old, a.result
+    assert a.run('back', tool=TOOL_VR_KEY, current=VR_OLD)['status'] == 'back'
+    assert a.read() == a.old and a.read(a.path + '.old') == flat and not a.has('.vr-old')
+
+
+@scenario
+def downloads_only_from_the_releases():  # the release's own addresses, as built (the server's are the test's alone)
+    a = App('where')
+    vr, sw = ('https://github.com/' + r + '/releases/download/' for r in ('guideahon/BOTW-VR-RECOMP', 'Revivedx/SavageWindRecomp'))
+    for tool, tag, name, current, mine, other in ((TOOL_VR, 'vr-' + VR_NEW, VR_NAME, VR_OLD, vr, sw),
+                                                  (TOOL_VR_KEY, 'vr-' + VR_NEW, VR_NAME, VR_OLD, vr, sw),
+                                                  (TOOL, 'v' + NEW, NAME, OLD, sw, vr)):
+        # (the file elsewhere: refused; its signature elsewhere: refused, unless the build has no key to check it with)
+        for url, sig_url, ok in ((mine, mine, True), (other, mine, False), (mine, other, tool == TOOL_VR)):
+            S.publish(NEW_FILE, tag=tag, name=name, url=f'{url}{tag}/{name}', sig_url=f'{sig_url}{tag}/{name}.sig')
+            r = a.run('check', tool=tool, current=current, env={'SW_UPDATE_TEST_DOWNLOADS': None})
+            assert r['status'] == 'available' if ok else r.get('code') == 'bad_response', (os.path.basename(tool), url, sig_url, r)
     a.assert_old()
 
 

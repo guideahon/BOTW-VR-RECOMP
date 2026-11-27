@@ -2041,6 +2041,9 @@ extern "C" void launcher_run(const char *root, int mode) {
     pthread_mutex_unlock(&g_lock);
     bool failure_popup_pending = false;
     std::string failure_title, failure_detail;
+    bool by_hand_pending = false;  // (Update where the new version is downloaded by hand: update_by_hand)
+    char by_hand_file[256] = "";
+    const char *by_hand_page = "", *by_hand_self = "";
     g_pad_ab_swapped = bind_ab_swapped();  // (also when the start screen opens on Settings)
     if (live_mode() && getenv("SAVAGEWIND_LIVE_START")) {   // (just handed over: the game at once)
         unsetenv("SAVAGEWIND_LIVE_START");
@@ -2228,7 +2231,9 @@ extern "C" void launcher_run(const char *root, int mode) {
                     ImGui::SetCursorPosX(x0);
                     if (menu_item("UPDATE", !busy) || (!busy && getenv("SAVAGEWIND_LAUNCHER_AUTOUPDATE"))) {  // (test: at once)
                         settings_save();
-                        if (update_applies_here()) {
+                        if (update_by_hand(by_hand_file, sizeof by_hand_file, &by_hand_page, &by_hand_self))
+                            by_hand_pending = true;  // (nothing is installed: where to get it, not a failed setup)
+                        else if (update_applies_here()) {
                             page = SETUP;
                             set_job("");
                             g_file_size.set_suspended(true);
@@ -2874,6 +2879,35 @@ extern "C" void launcher_run(const char *root, int mode) {
                     if (*problem_report_make()) reveal_folder(rt_data_root());
                 }
                 ImGui::SameLine();
+                if (ImGui::Button(tr("OK")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
+                    ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
+                    ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+            if (by_hand_pending) {
+                ImGui::OpenPopup("##byhand");
+                by_hand_pending = false;
+            }
+            ImGui::SetNextWindowSize(ImVec2(fminf(ds.x * 0.82f, 900 * s), 0));
+            if (ImGui::BeginPopupModal("##byhand", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
+                // (the file's name, the page and the path apart from the translated text, as they are: the job line's
+                // trv would take a % in a folder's name for its own)
+                ImVec4 data(0.86f, 0.85f, 0.80f, 1);
+                ImGui::PushTextWrapPos(0);
+                ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", tr("Download the new version from GitHub"));
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", tr("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. "
+                                            "Download this file from the releases page:"));
+                ImGui::TextColored(data, "%s", by_hand_file);
+                ImGui::TextColored(data, "%s", by_hand_page);
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", tr("Put it in place of this AppImage, under the same name, so shortcuts and Steam "
+                                            "entries keep working:"));
+                ImGui::TextColored(data, "%s", by_hand_self);
+                ImGui::Spacing();
+                ImGui::TextWrapped("%s", tr("Your game files, saves and settings stay as they are."));
+                ImGui::PopTextWrapPos();
+                ImGui::Spacing();
                 if (ImGui::Button(tr("OK")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
                     ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false))
                     ImGui::CloseCurrentPopup();
