@@ -1082,15 +1082,15 @@ static bool sim_hand(int hand, vr_pose *out) {
 }
 
 bool vr_hand_pose(int hand, vr_pose *out) {
-    if (in.ready && sim_hand(hand, out)) return true;
+    extern bool vr_pair_hand(int hand, vr_pose *io, bool located);   // (vr_camera.c: Stereo, once a pair)
+    if (in.ready && sim_hand(hand, out)) return vr_pair_hand(hand, out, true);
     if (!in.ready || !in.hand[hand]) return false;
     XrTime t = vr_next_display_time();
     XrSpaceLocation l = {XR_TYPE_SPACE_LOCATION};
-    if (!t || XR_FAILED(xrLocateSpace(in.hand[hand], vr_xr_local(), t, &l)) ||
-        !(l.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) || !(l.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))
-        return false;
-    *out = pose_of(l.pose);
-    return true;
+    bool ok = t && XR_SUCCEEDED(xrLocateSpace(in.hand[hand], vr_xr_local(), t, &l)) &&
+              (l.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) && (l.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT);
+    if (ok) *out = pose_of(l.pose);
+    return vr_pair_hand(hand, out, ok);
 }
 
 

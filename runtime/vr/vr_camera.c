@@ -55,6 +55,9 @@ static struct {
     uint64_t kept_turns;   // cameras whose own fast turn was kept off the view (the left trigger's recentre)
     float window_aspect;   // the window image's width / height
     float out[9];          // the last eye / at / up written
+    float outs[8][9];      // ... and the ones before it (both eyes', the frame's other cameras): what the game may hand back
+    int outs_n;
+    uint64_t pair_hands_kept;   // right frames whose hands were their left frame's (vr_pair_hand)
     float view_out[9];     // ... the view's own, before a debug camera moved it (vr_view_heading)
     bool out_ok;
     float game[9];         // the game's own eye / at / up, as it last set them: a camera that holds still is not set
@@ -248,6 +251,42 @@ static bool stereo_on(void) {
     }
     return c.stereo;
 }
+
+// (vr_input.c vr_hand_pose) Stereo: the controllers located once a pair, as the head is (c.pair_views). Each game
+// frame located them again, the right one a little later: a real runtime's prediction for the same display time moves
+// on as new tracking comes, so with the hands moving the right eye drew them somewhere else than the left one -
+// "the left and right hand rendering when moving gives a crosseyed effect" (26.2's tester, Stereo). fake_xr gives the
+// same pose for the same time every time, which hid it. The pair's left frame locates and keeps them; its right frame
+// draws with the kept ones. Not in synchronous stereo / multiview (one frame a pair) or mono, nor with
+// SAVAGEWIND_VR_PAIR_ANCHOR=0 (each eye its own, as before)
+static struct { uint64_t id; bool ok; vr_pose p; } pair_hand[2];
+bool vr_pair_hand(int hand, vr_pose *io, bool located) {
+    static int same = -1;
+    if (same < 0) same = !(getenv("SAVAGEWIND_VR_PAIR_ANCHOR") && *getenv("SAVAGEWIND_VR_PAIR_ANCHOR") == '0');
+    static int logn = -1;   // (SAVAGEWIND_VR_LOG_PAIR_HANDS=<n>: the first n locations, the eye and where, to the log)
+    if (logn < 0) logn = getenv("SAVAGEWIND_VR_LOG_PAIR_HANDS") ? atoi(getenv("SAVAGEWIND_VR_LOG_PAIR_HANDS")) : 0;
+    if (logn > 0 && located && hand == 1) {
+        logn--;
+        LOG("[vr-hand] eye %d pair %llu located x %.4f\n", c.pair.open ? c.pair.eye : -1,
+            (unsigned long long)vr_pair_id(&c.pair), io->p.x);
+    }
+    if (hand < 0 || hand > 1 || !same || !stereo_on() || vr_sync_mode() || !vr_world_view()) return located;
+    pthread_mutex_lock(&lock);
+    // (the frame's eye as its clock step chose it, rt_vfr_update at the frame's start: not chosen here, as a call from
+    // another thread would choose it at the wrong time)
+    int eye = c.pair.open ? c.pair.eye : -1;
+    uint64_t id = vr_pair_id(&c.pair);
+    bool ok = located;
+    if (eye == 1 && id && pair_hand[hand].id == id && pair_hand[hand].ok) {
+        *io = pair_hand[hand].p, ok = true;
+        c.pair_hands_kept++;
+    } else if (eye == 0 && id && located) {
+        pair_hand[hand].id = id, pair_hand[hand].ok = true, pair_hand[hand].p = *io;
+    }
+    pthread_mutex_unlock(&lock);
+    return ok;
+}
+uint64_t vr_pair_hands_kept(void) { return c.pair_hands_kept; }
 
 // ---- events (cutscenes): BetterVR's modes (SAVAGEWIND_VR_EVENTS) ----
 //   auto    (the default) as BetterVR's table says for each event (runtime/vr/vr_event_table.h, from BetterVR's
@@ -521,6 +560,17 @@ static bool locate(XrView v[2]) {
     return (vs.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
 }
 
+// one of ours handed back: the same eye and the same way of looking (the game may put its at point at another distance
+// along the line, and the up vector is left out: it can renormalise them)
+static bool same_view(const float *a, const float *b) {
+    for (int i = 0; i < 3; i++)
+        if (fabsf(a[i] - b[i]) > 1e-3f) return false;
+    float da[3] = {a[3] - a[0], a[4] - a[1], a[5] - a[2]}, db[3] = {b[3] - b[0], b[4] - b[1], b[5] - b[2]};
+    float la = sqrtf(da[0] * da[0] + da[1] * da[1] + da[2] * da[2]), lb = sqrtf(db[0] * db[0] + db[1] * db[1] + db[2] * db[2]);
+    if (la < 1e-6f || lb < 1e-6f) return false;
+    return (da[0] * db[0] + da[1] * db[1] + da[2] * db[2]) / (la * lb) > 0.999999f;
+}
+
 static bool near9(const float *a, const float *b) {
     for (int i = 0; i < 9; i++)
         if (fabsf(a[i] - b[i]) > 1e-4f) return false;
@@ -544,12 +594,19 @@ void vr_camera_lookat(float *f) {
     if (!vr_world_view()) {
         extern bool vr_quick_menu_open(void), framepace_quick_ui(void);
         if (vr_quick_menu_open() || framepace_quick_ui()) quick_held = true;
-        c.out_ok = false;
+        c.out_ok = false, c.outs_n = 0;
         c.fp_now = false;   // (menus: Link's model as the game has it, the inventory's too)
         return;
     }
     pthread_mutex_lock(&lock);
-    if (!(c.out_ok && near9(f, c.out))) memcpy(c.game, f, sizeof c.game);  // (else: ours, the game's is kept)
+    // (else: ours, the game's is kept). Not only the last one written: the game hands back the camera of another of its
+    // calls - the other eye's, an earlier camera of the frame - and that, taken as the game's own, had the head's turn
+    // put on it again: in third person, with the head turned, the view swung between the game's way plus the head's turn
+    // and plus twice it, frame to frame and eye to eye ("the rotation is broken", 26.2's tester; first person takes its
+    // place from Link and showed less)
+    bool ours = c.out_ok && same_view(f, c.out);
+    for (int i = 0; !ours && i < c.outs_n; i++) ours = same_view(f, c.outs[i]);
+    if (!ours) memcpy(c.game, f, sizeof c.game);
     XrView v[2];
     if (!locate(v)) {
         pthread_mutex_unlock(&lock);
@@ -710,8 +767,8 @@ void vr_camera_lookat(float *f) {
             static float back = 0.15f;
             if (on < 0) {
                 on = !(getenv("SAVAGEWIND_VR_CLIMB_EYE") && *getenv("SAVAGEWIND_VR_CLIMB_EYE") == '0');
-                back = env_f("SAVAGEWIND_VR_CLIMB_BACK", 0.15f, 0.05f, 0.5f);
-                LOG("[vr] climb camera: %.2f m behind Link's head (SAVAGEWIND_VR_CLIMB_BACK)\n", back);
+                back = env_f("SAVAGEWIND_VR_CLIMB_BACK", 0.12f, 0.05f, 0.5f);
+                LOG("[vr] climb camera: at Link's eyes, %.2f m back from the wall (SAVAGEWIND_VR_CLIMB_BACK)\n", back);
             }
             extern bool vr_player_flags(uint32_t *f);
             extern bool vr_skel_facing(float *yaw);
@@ -723,7 +780,14 @@ void vr_camera_lookat(float *f) {
             last = now;
             w += ((climbing ? 1.0f : 0.0f) - w) * (1 - expf(-(dt > 0.5f ? 0.5f : dt) / 0.2f));
             if (w > 0.001f && vr_skel_facing(&face)) {
-                vr_vec3 behind = vr_v3((float)lp[0] - sinf(face) * back, geye.y, (float)lp[2] - cosf(face) * back);
+                // (from his head bone as animated, not from his feet at standing height: climbing he hangs with his
+                // head lower and nearer the wall, and the eye sat 0.38 m over it and 0.32 m back - "the head very far
+                // from the body", 2026-11-26; now at his eyes, `back` off the wall. Without the bone, as before)
+                extern bool vr_skel_head_world(float out[3]);
+                float hw[3];
+                vr_vec3 behind = vr_skel_head_world(hw)
+                    ? vr_v3(hw[0] - sinf(face) * back, hw[1] + 0.08f + vr_opt(VR_OPT_HEIGHT) / 100.0f, hw[2] - cosf(face) * back)
+                    : vr_v3((float)lp[0] - sinf(face) * back, geye.y, (float)lp[2] - cosf(face) * back);
                 geye = vr_v3_add(geye, vr_v3_scale(vr_v3_sub(behind, geye), w));
                 c.climb_eye = w;
             } else {
@@ -817,6 +881,9 @@ void vr_camera_lookat(float *f) {
     }
     memcpy(c.out, f, sizeof c.out);
     c.out_ok = true;
+    memmove(c.outs[1], c.outs[0], sizeof c.outs - sizeof c.outs[0]);
+    memcpy(c.outs[0], f, sizeof c.outs[0]);
+    if (c.outs_n < 8) c.outs_n++;
     { extern void vr_sync_note_out(const float *); vr_sync_note_out(f); }
     // the frustum. In stereo, the eye's own field, off-centre as it is (narrower on the nose's side: SAVAGEWIND_VR_
     // ASYMMETRIC=0 for the symmetric one), widened to the window's shape about its centre: the game's projection gets
@@ -1070,6 +1137,12 @@ uint64_t vr_skel_first_frames(void) { return c.skel_first_frames; }
 // vr_skel.c: the last camera was set in first person (the eye in Link's head)
 bool vr_first_person_now(void) { return c.fp_now; }
 float vr_eye_height_used(void) { return c.eye_used; }
+// the `vr` command: the world eye last written (the view's place)
+bool vr_eye_world(float out[3]) {
+    if (!c.out_ok) return false;
+    out[0] = c.view_out[0], out[1] = c.view_out[1], out[2] = c.view_out[2];
+    return true;
+}
 float vr_climb_eye(void) { return c.climb_eye; }
 
 // vr_skel.c: a tracking-space pose in the game's world, with the anchor the last camera used (false before one)
@@ -1115,7 +1188,11 @@ bool vr_tracking_to_world(const vr_pose *in, vr_pose *out) {
         const double *alp = pair ? c.pair_anchor_lp : c.anchor_lp;
         bool alp_ok = pair ? c.pair_anchor_lp_ok : c.anchor_lp_ok;
         *out = vr_xr_to_game_pose(*an, *in);
-        if (now && alp_ok) {
+        // (Link's step since the anchor, carried to the hands so they do not trail his body - not in a pair's right
+        // frame: its view is drawn from the left frame's place, and carried, the hands went half a step ahead of it
+        // there while walking, somewhere else in each eye: "crosseyed hands when moving", 26.2's tester;
+        // test_vr_stereo_sync.py --walk, 10-12 samples apart before)
+        if (now && alp_ok && !pair) {
             vr_vec3 d = vr_v3((float)(lp[0] - alp[0]), (float)(lp[1] - alp[1]), (float)(lp[2] - alp[2]));
             if (vr_v3_len(d) < 2.0f) out->p = vr_v3_add(out->p, d);   // (a warp or a reload: no carry)
         }

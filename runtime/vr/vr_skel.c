@@ -217,6 +217,13 @@ bool vr_skel_facing(float *yaw) {
     return true;
 }
 
+// Link's head bone in the world as last animated (the `vr` command: how far the eye is from it); false when not seen
+bool vr_skel_head_world(float out[3]) {
+    if (!k.head_frame || k.head_frame + 30 < k.frames) return false;
+    out[0] = k.head_w.x, out[1] = k.head_w.y, out[2] = k.head_w.z;
+    return true;
+}
+
 bool vr_skel_head_height(float *y) {
     uint64_t t = atomic_load_explicit(&head_seen_ns, memory_order_relaxed);
     if (!t || plat_now_ns() - t > 500000000ull) return false;

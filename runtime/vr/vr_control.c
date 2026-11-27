@@ -1,4 +1,5 @@
 // The `vr` control command (docs/CONTROL.md): what the VR mode is doing. Read only, so every player may run it.
+#include <math.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -97,6 +98,7 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
         control_field_bool(r, "first_person", vr_first_person_now());
     }
     control_field_int(r, "stereo_pairs", (int64_t)vr_stereo_pairs());
+    { extern uint64_t vr_pair_hands_kept(void); control_field_int(r, "pair_hands_kept", (int64_t)vr_pair_hands_kept()); }
     control_field_int(r, "pair_anchors", (int64_t)vr_pair_anchors());
     {
         extern void vr_anchor_checks(uint64_t *frames, uint64_t *mismatch);
@@ -149,6 +151,15 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     { extern uint64_t vr_bow_string_frames(void); control_field_int(r, "bow_string_frames", (int64_t)vr_bow_string_frames()); }
     { extern uint64_t vr_carried_frames(void); control_field_int(r, "carried_frames", (int64_t)vr_carried_frames()); }
     { extern float vr_climb_eye(void); control_field_num(r, "climb_eye", vr_climb_eye()); }
+    {   // how far the eye is from Link's head bone: up (+) / down, and along the ground (a climbing report: "the head very
+        // far from the body", 2026-11-26)
+        extern bool vr_skel_head_world(float out[3]), vr_eye_world(float out[3]);
+        float h[3], e[3];
+        if (vr_skel_head_world(h) && vr_eye_world(e)) {
+            control_field_num(r, "eye_above_head", e[1] - h[1]);
+            control_field_num(r, "eye_from_head_flat", sqrtf((e[0] - h[0]) * (e[0] - h[0]) + (e[2] - h[2]) * (e[2] - h[2])));
+        }
+    }
     { extern bool vr_player_carrying(void); control_field_int(r, "carrying", vr_player_carrying()); }
     { extern uint64_t vk_vr_shadow_passes_skipped(void); control_field_int(r, "shadow_passes_skipped", (int64_t)vk_vr_shadow_passes_skipped()); }
     { extern uint64_t vk_vr_hud_draws_skipped(void); control_field_int(r, "hud_draws_skipped", (int64_t)vk_vr_hud_draws_skipped()); }

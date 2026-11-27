@@ -5,6 +5,28 @@
 What was done, how it was tested and what is left, newest first. Settings and tests: [../VR.md](../VR.md); reverse
 engineering: [re-notes.md](re-notes.md); the state of every feature: [FEATURES.md](FEATURES.md).
 
+## 2026-11-26 (26.2's tester: cross-eyed hands while moving them, third-person rotation; both reproduced and fixed)
+
+- **Hands crossed while moving (Stereo, first person):** the head was located once a pair (2026-11-24), the
+  controllers every game frame. In a headset the right eye's frame locates them later, and the runtime's prediction for
+  the same display time has moved on with new tracking: moving hands were drawn somewhere else in each eye. fake_xr gave
+  the same pose for the same time, and the hands checks measured a field (tangents to 0.6) the hands 25 cm under the
+  eyes were not in: both hid it. Now the pair's left frame locates the controllers and its right frame draws with
+  them (vr_camera.c `vr_pair_hand`; the `vr` command's `pair_hands_kept`). `test_vr_hands_moving.py` (new; fake_xr's
+  `FAKE_XR_HAND_DRIFT` makes a later location see a later pose, as a runtime): before, the hands 3-12 samples apart
+  between the eyes (up to ~3.4 deg); after, 0. `test_vr_stereo_sync.py --walk` now holds the hands where it measures.
+- **Third-person rotation:** with the head turned, the game hands back our own camera with its at point at another
+  distance; not recognised as ours, it got the head's turn again: the view swung between the game's way plus the
+  head's turn and plus twice it, frame to frame and eye to eye, the right eye taking the doubled one from the pair's
+  anchor. The checks had the head ahead (twice 0 is 0). Ours is now told by the eye and the direction, against the
+  last eight written: the view off "game + head" in 22.3% of the camera updates before, 0 after.
+- **Climbing (P10):** the eye sat 0.38 m over Link's head and 0.32 m back while he hung on the Plateau's tree (the
+  `vr` command's new `eye_above_head` / `eye_from_head_flat`): it was put back from his feet at standing height. Now
+  from his head bone, 0.12 m off the wall: 0.08 m over, 0.10-0.14 m back (`test_vr_climb.py`).
+- **Right A on a wall (Quest layout):** it let go (the game's B, BetterVR's scheme), so "A Take" on an apple dropped
+  Link off the tree; in the Quest layout A stays A while climbing, B lets go (`test_vr_gestures`, 180 checks).
+- **The regression suite** (`tools/vr/regress.py`, TESTING.md): every check that found a bug, run before each release.
+
 ## 2026-11-26 (Options > VR > Performance; a few minutes a mode; the 25.9 tester's report checked)
 
 `tools/vr/bench/quick.py`: one boot a mode (~2 min, fake_xr, the eyes 0 m apart): headset fps, both eyes at two yaws,

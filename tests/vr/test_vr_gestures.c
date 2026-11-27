@@ -296,6 +296,15 @@ int main(void) {
         in.a = false;
         b = run(&c, in, 0.05, 0.3);
         CHECK(!(b & BIT(VRB_A)) && !(b & BIT(VRB_B)));   // (no tap left behind)
+        // the Quest layout: A stays A on a wall (an apple reached from a tree; its B lets go - 2026-11-26)
+        vr_gesture_state qc = {0};
+        in = base(0);
+        in.quest = true;
+        in.climbing = true;
+        in.a = true;
+        b = run(&qc, in, 0, 0.05);
+        CHECK(b & BIT(VRB_A));
+        CHECK(!(b & BIT(VRB_B)));
         vr_gesture_state r = {0};
         in = base(1);
         in.riding = true;

@@ -21,7 +21,7 @@
 //   right trigger   use what is in hand: the melee weapon attacks (Y), the bow draws (ZR), a rune is used (A); over
 //                   the right shoulder with a weapon out, held: throw (R, let go to throw)
 //   right A         grab / interact (A); held 0.4 s: run (B);         right B   jump (X)
-//                   climbing or gliding: let go (B); riding: A, the grips A / B (spur / brake)
+//                   climbing or gliding: let go (B; the Quest layout: A stays A, its B lets go); riding: A, the grips A / B (spur / brake)
 //   riding, an empty hand patting low ahead (the horse's neck): pet the horse (L)
 //   right stick     camera; its click: a tap the inventory (+), held the scope (R stick)
 //   left trigger    lock on / shield (ZL)                              left Y    a tap the rune (L), held its menu
@@ -464,7 +464,9 @@ static inline uint64_t vr_gestures(vr_gesture_state *s, const vr_gesture_in *in)
     // while held); riding it is the game's A while held (spur, interact), the right grip away from the slots A too and
     // the left one B (brake): BetterVR 1.0.1
     if (in->a && !s->a_was) s->a_down = now;
-    if (in->climbing) {
+    // (BetterVR's scheme only: the Quest layout's A stays A while climbing - its B lets go - so an apple or a prompt
+    // reached from a wall is taken; as B the "A Take" prompt dropped Link off the tree, 2026-11-26)
+    if (in->climbing && !in->quest) {
         if (in->a) b |= 1ull << VRB_B;
     } else if (in->riding) {
         if (in->a) b |= 1ull << VRB_A;

@@ -7,6 +7,30 @@ en [../VR.md](../VR.md) (variables, tests) y la ingeniería inversa en [re-notes
 probar con el visor puesto, en [CHECKLIST.es.md](CHECKLIST.es.md); el estado de cada feature, en
 [FEATURES.es.md](FEATURES.es.md).
 
+## 2026-11-26 (el tester de 26.2: manos cruzadas al moverlas, rotación en tercera persona; los dos reproducidos y arreglados)
+
+- **Manos cruzadas al moverlas (Estéreo, primera persona):** la cabeza se ubicaba una vez por par (2026-11-24), los
+  controles en cada cuadro del juego. En un visor el cuadro del ojo derecho los ubica más tarde, y la predicción del
+  runtime para el mismo instante de pantalla ya avanzó con tracking nuevo: las manos en movimiento se dibujaban en otro
+  lugar en cada ojo. fake_xr daba la misma pose para el mismo instante, y las pruebas de manos medían un campo
+  (tangentes hasta 0,6) en el que las manos, 25 cm debajo de los ojos, no estaban: las dos cosas lo escondían. Ahora el
+  cuadro izquierdo del par ubica los controles y el derecho dibuja con esos (vr_camera.c `vr_pair_hand`; `pair_hands_kept`
+  en el comando `vr`). `test_vr_hands_moving.py` (nuevo; `FAKE_XR_HAND_DRIFT` en fake_xr hace que una ubicación más
+  tardía vea una pose más tardía, como un runtime): antes, las manos a 3-12 muestras entre ojos (hasta ~3,4°); después, 0.
+  `test_vr_stereo_sync.py --walk` ahora pone las manos donde mide.
+- **Rotación en tercera persona:** con la cabeza girada, el juego devuelve nuestra propia cámara con el punto "at" a
+  otra distancia; no reconocida como nuestra, recibía de nuevo el giro de la cabeza: la vista alternaba entre la
+  dirección del juego más el giro y más el doble, de cuadro a cuadro y de ojo a ojo, y el ojo derecho tomaba la doble
+  del ancla del par. Las pruebas tenían la cabeza al frente (el doble de 0 es 0). La nuestra se reconoce ahora por el
+  ojo y la dirección, contra las ocho últimas escritas: la vista fuera de "juego + cabeza" en el 22,3% de las
+  actualizaciones antes, 0 después.
+- **Escalada (P10):** el ojo quedaba 0,38 m sobre la cabeza de Link y 0,32 m atrás mientras colgaba del árbol del
+  Plateau (`eye_above_head` / `eye_from_head_flat`, nuevos en el comando `vr`): se corría desde sus pies a altura de
+  parado. Ahora desde el hueso de su cabeza, a 0,12 m de la pared: 0,08 m arriba, 0,10-0,14 m atrás (`test_vr_climb.py`).
+- **A derecho en una pared (esquema Quest):** soltaba (la B del juego, esquema de BetterVR), así que "A Coger" en una
+  manzana tiraba a Link del árbol; en el esquema Quest A sigue siendo A trepando, B suelta (`test_vr_gestures`, 180).
+- **La suite de regresión** (`tools/vr/regress.py`, TESTING.es.md): cada prueba que encontró un error, antes de cada release.
+
 ## 2026-11-26 (Opciones > VR > Rendimiento; unos minutos por modo; el reporte del tester de 25.9 revisado)
 
 `tools/vr/bench/quick.py`: un arranque por modo (~2 min, fake_xr, los ojos a 0 m): fps del visor, los dos ojos en dos
