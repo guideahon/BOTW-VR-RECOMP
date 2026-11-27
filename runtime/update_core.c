@@ -56,8 +56,9 @@ int uc_version_cmp(const char *a, const char *b) {
     return 0;
 }
 
-// BOTW VR: [<lowercase word>-]<year>.<month>.<day>[.<the day's number>]
-static bool vr_parse(const char *s, unsigned long n[4]) {
+// BOTW VR: [<lowercase word>-]<year>.<month>.<day>[.<the day's number>]: a real date, the number 1 to 9999. A day's
+// first release had no number ("vr-2026.11.22", then ".2"): it comes before that day's numbered ones.
+static bool vr_parse(const char *s, unsigned n[4]) {
     if (!s) return false;
     const char *dash = strchr(s, '-');
     if (dash) {
@@ -66,28 +67,28 @@ static bool vr_parse(const char *s, unsigned long n[4]) {
             if (!islower((unsigned char)*c)) return false;
         s = dash + 1;
     }
+    static const unsigned least[4] = {2000, 1, 1, 1}, most[4] = {9999, 12, 31, 9999};
     n[3] = 0;
     for (int i = 0; i < 4; i++) {
-        if (!isdigit((unsigned char)*s)) return false;
-        char *e;
-        n[i] = strtoul(s, &e, 10);
-        s = e;
-        if (i == 2 && !*s) return true;
-        if (i < 3) {
-            if (*s != '.') return false;
-            s++;
-        }
+        int k = 0;
+        for (n[i] = 0; k < 5 && isdigit((unsigned char)s[k]); k++) n[i] = n[i] * 10 + (unsigned)(s[k] - '0');
+        if (n[i] < least[i] || n[i] > most[i]) return false;  // (no digits: 0; more than four: over 9999)
+        s += k;
+        if (i == 3 || (i == 2 && !*s)) break;
+        if (*s++ != '.') return false;
     }
-    return !*s;
+    static const unsigned char days[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    bool leap = n[0] % 4 == 0 && (n[0] % 100 || n[0] % 400 == 0);
+    return !*s && n[2] <= (n[1] == 2 && !leap ? 28u : days[n[1] - 1]);
 }
 
 bool uc_vr_version_valid(const char *v) {
-    unsigned long n[4];
+    unsigned n[4];
     return vr_parse(v, n);
 }
 
 int uc_vr_version_cmp(const char *a, const char *b) {
-    unsigned long x[4], y[4];
+    unsigned x[4], y[4];
     bool ox = vr_parse(a, x), oy = vr_parse(b, y);
     if (!ox || !oy) return ox - oy;  // (as uc_version_cmp)
     for (int i = 0; i < 4; i++)
@@ -190,8 +191,9 @@ static void j_string_or_skip(J *j, char *out, size_t n) {
     else j_skip(j);
 }
 
-// One entry of "assets": this platform's file and its signature go into r
-static void read_asset(J *j, UcRelease *r, const char *suffix) {
+// One entry of "assets": this platform's file and its signature go into r. prefix (BOTW VR): the file's name starts with
+// it too, and its signature is only its own <name>.sig, looked for in a second pass (sig_of: the file's name)
+static void read_asset(J *j, UcRelease *r, const char *suffix, const char *prefix, const char *sig_of) {
     char name[256] = "", url[1024] = "", digest[80] = "";
     uint64_t size = 0;
     j_ws(j);
@@ -218,19 +220,38 @@ static void read_asset(J *j, UcRelease *r, const char *suffix) {
         if (*j->p == '}') { j->p++; break; }
         j->bad = true;
     }
+    if (sig_of) {
+        size_t k = strlen(sig_of);
+        if (!strncmp(name, sig_of, k) && !strcmp(name + k, ".sig")) snprintf(r->sig_url, sizeof r->sig_url, "%s", url);
+        return;
+    }
     char sig_suffix[64];
     snprintf(sig_suffix, sizeof sig_suffix, "%s.sig", suffix);
-    if (ends_with(name, suffix)) {
+    if (ends_with(name, suffix) && (!prefix || !strncmp(name, prefix, strlen(prefix)))) {
         snprintf(r->zip_name, sizeof r->zip_name, "%s", name);
         snprintf(r->zip_url, sizeof r->zip_url, "%s", url);
         r->zip_size = size;
         r->digest[0] = 0;
         if (!strncmp(digest, "sha256:", 7) && strlen(digest) == 71) snprintf(r->digest, sizeof r->digest, "%s", digest + 7);
-    } else if (ends_with(name, sig_suffix))
+    } else if (!prefix && ends_with(name, sig_suffix))
         snprintf(r->sig_url, sizeof r->sig_url, "%s", url);
 }
 
-static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix) {
+static void read_assets(J *j, UcRelease *r, const char *suffix, const char *prefix, const char *sig_of) {
+    j->p++;
+    j_ws(j);
+    if (*j->p == ']') j->p++;
+    else
+        while (!j->bad) {
+            read_asset(j, r, suffix, prefix, sig_of);
+            j_ws(j);
+            if (*j->p == ',') { j->p++; continue; }
+            if (*j->p == ']') { j->p++; break; }
+            j->bad = true;
+        }
+}
+
+static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix, const char *prefix) {
     memset(r, 0, sizeof *r);
     *draft = false;
     j_ws(j);
@@ -251,17 +272,9 @@ static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix) {
             *draft = !strncmp(j->p, "true", 4);
             j_skip(j);
         } else if (!strcmp(key, "assets") && *j->p == '[') {
-            j->p++;
-            j_ws(j);
-            if (*j->p == ']') j->p++;
-            else
-                while (!j->bad) {
-                    read_asset(j, r, suffix);
-                    j_ws(j);
-                    if (*j->p == ',') { j->p++; continue; }
-                    if (*j->p == ']') { j->p++; break; }
-                    j->bad = true;
-                }
+            J list = *j;
+            read_assets(j, r, suffix, prefix, NULL);
+            if (prefix && r->zip_name[0] && !j->bad) read_assets(&list, r, suffix, prefix, r->zip_name);
         } else j_skip(j);
         j_ws(j);
         if (*j->p == ',') { j->p++; continue; }
@@ -270,9 +283,10 @@ static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix) {
     }
 }
 
-// The version a tag names, without its "v" (BOTW VR: its word, "vr-"); NULL when it names none of this kind
+// The version a tag names, without its "v" (BOTW VR: "vr-" and the release, as .github/workflows/vr-release.yml makes
+// them); NULL when it names none of this kind
 static const char *tag_version(const char *tag, bool vr) {
-    if (vr) return !uc_vr_version_valid(tag) ? NULL : strchr(tag, '-') ? strchr(tag, '-') + 1 : tag;
+    if (vr) return !strncmp(tag, "vr-", 3) && isdigit((unsigned char)tag[3]) && uc_vr_version_valid(tag + 3) ? tag + 3 : NULL;
     if (!uc_version_valid(tag)) return NULL;
     return tag[0] == 'v' || tag[0] == 'V' ? tag + 1 : tag;
 }
@@ -293,7 +307,7 @@ static UcPick pick_release(const char *json, const char *current, const char *su
         for (;;) {
             UcRelease r;
             bool draft;
-            read_release(&j, &r, &draft, suffix);
+            read_release(&j, &r, &draft, suffix, vr ? "BOTW-VR-" : NULL);  // (BOTW VR's files: Makefile DIST_ZIP, vr-release.yml)
             if (j.bad) return UC_PICK_BAD_JSON;
             const char *v = tag_version(r.tag, vr);
             if (!draft && v && version_cmp(v, current, vr) > 0) {

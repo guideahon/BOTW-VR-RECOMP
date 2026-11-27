@@ -225,6 +225,23 @@ static void vr_versions(void) {
     CHECK(!uc_vr_version_valid("VR-2026.11.26.2"));
     CHECK(!uc_vr_version_valid("vr-2026.11.26.2-x"));
     CHECK(!uc_vr_version_valid(""));
+    // a real date, and a number that fits (one too big to read was taken as the largest, newer than any real release)
+    CHECK(!uc_vr_version_valid("vr-2026.13.32"));
+    CHECK(!uc_vr_version_valid("vr-2026.0.1"));
+    CHECK(!uc_vr_version_valid("vr-2026.11.0"));
+    CHECK(!uc_vr_version_valid("vr-2026.11.31"));
+    CHECK(!uc_vr_version_valid("vr-2026.2.29"));
+    CHECK(uc_vr_version_valid("vr-2028.2.29"));
+    CHECK(!uc_vr_version_valid("vr-2100.2.29"));
+    CHECK(uc_vr_version_valid("vr-2000.2.29"));
+    CHECK(!uc_vr_version_valid("vr-1999.12.31"));
+    CHECK(!uc_vr_version_valid("vr-26.11.26.2"));
+    CHECK(!uc_vr_version_valid("vr-2026.11.26.0"));
+    CHECK(uc_vr_version_valid("vr-2026.11.26.9999"));
+    CHECK(!uc_vr_version_valid("vr-2026.11.26.10000"));
+    CHECK(!uc_vr_version_valid("vr-2026.11.26.99999999999999999999"));
+    CHECK(!uc_vr_version_valid("vr-18446744073709551617.11.26.1"));
+    CHECK(uc_vr_version_cmp("vr-2026.11.26.99999999999999999999", "alpha-2026.11.26.2") < 0);
     CHECK(!uc_version_valid("vr-2026.11.26.2"));  // (and Savage Wind never takes BOTW VR's)
     CHECK(!uc_version_valid("alpha-2026.11.26.2"));
     CHECK(uc_vr_version_cmp("vr-2026.11.26.3", "alpha-2026.11.26.2") > 0);
@@ -235,6 +252,8 @@ static void vr_versions(void) {
     CHECK(uc_vr_version_cmp("vr-2026.12.1.1", "vr-2026.11.30.9") > 0);
     CHECK(uc_vr_version_cmp("vr-2027.1.1.1", "alpha-2026.12.31.9") > 0);
     CHECK(uc_vr_version_cmp("vr-2026.11.22.2", "vr-2026.11.22") > 0);
+    CHECK(uc_vr_version_cmp("vr-2026.11.22.1", "vr-2026.11.22") > 0);  // (no number: the day's first, before .1)
+    CHECK(uc_vr_version_cmp("2026.11.22", "alpha-2026.11.22.1") < 0);
     CHECK(uc_vr_version_cmp("beta-2026.11.27.1", "alpha-2026.11.26.2") > 0);
     CHECK(uc_vr_version_cmp("v0.6.0-alpha.6", "alpha-2026.11.26.2") < 0);
     CHECK(uc_vr_version_cmp("v9.9.9", "alpha-2026.11.26.2") < 0);
@@ -285,6 +304,47 @@ static void vr_releases(void) {
     CHECK(!strcmp(r.sig_url, "https://example.test/s"));
     CHECK(uc_pick_release(vr_signed, "0.6.0-alpha.6", "-x86_64.AppImage", &r, NULL) == UC_PICK_CURRENT);
     CHECK(uc_pick_vr_release("<html>", "alpha-2026.11.26.2", "-Linux-x86_64.AppImage", true, &r, NULL) == UC_PICK_BAD_JSON);
+    // only "vr-" and a release: not a release alone, another word, a word after "vr-", nor one that isn't a date or
+    // whose number doesn't fit (each of them newer than the real one, so offered in its place)
+    static const char tags[] =
+        "[" RELEASE("2026.12.1.1", "false", VR_IMAGE("2026.12.1.1", "x86_64")) ","
+            RELEASE("beta-2026.12.2.1", "false", VR_IMAGE("2026.12.2.1", "x86_64")) ","
+            RELEASE("vr-beta-2026.12.3.1", "false", VR_IMAGE("2026.12.3.1", "x86_64")) ","
+            RELEASE("VR-2026.12.4.1", "false", VR_IMAGE("2026.12.4.1", "x86_64")) ","
+            RELEASE("vr-2026.13.32", "false", VR_IMAGE("2026.13.32", "x86_64")) ","
+            RELEASE("vr-2026.11.26.99999999999999999999", "false", VR_IMAGE("2026.11.26.99999999999999999999", "x86_64")) ","
+            VR_RELEASE("2026.11.26.3", "") "]";
+    CHECK(uc_pick_vr_release(tags, "alpha-2026.11.26.2", "-Linux-x86_64.AppImage", true, &r, NULL) == UC_PICK_UPDATE);
+    CHECK(!strcmp(r.tag, "vr-2026.11.26.3"));
+}
+
+// A release's files: BOTW VR's own, and that file's own signature, wherever they are in the list (the last file and
+// signature ending as this platform's do used to be taken, a flat AppImage's too)
+static void vr_assets(void) {
+    UcRelease r;
+    int unsig = -1;
+    static const char mixed[] =
+        "[" RELEASE("vr-2026.11.26.3", "false",
+            ASSET("BOTW-VR-alpha-2026.11.26.3-Linux-x86_64.AppImage.sig", "https://example.test/vr.sig", 1) ","
+            ASSET("BOTW-VR-alpha-2026.11.26.3-Linux-x86_64.AppImage", "https://example.test/vr", 11) ","
+            ASSET("Savage_Wind-0.6.0-alpha.6-Linux-x86_64.AppImage", "https://example.test/sw", 7) ","
+            ASSET("Savage_Wind-0.6.0-alpha.6-Linux-x86_64.AppImage.sig", "https://example.test/sw.sig", 1)) "]";
+    CHECK(uc_pick_vr_release(mixed, "alpha-2026.11.26.2", "-Linux-x86_64.AppImage", false, &r, NULL) == UC_PICK_UPDATE);
+    CHECK(!strcmp(r.zip_name, "BOTW-VR-alpha-2026.11.26.3-Linux-x86_64.AppImage") && r.zip_size == 11);
+    CHECK(!strcmp(r.zip_url, "https://example.test/vr") && !strcmp(r.sig_url, "https://example.test/vr.sig"));
+    // a flat AppImage alone, signed: nothing to offer
+    static const char flat[] =
+        "[" RELEASE("vr-2026.11.26.3", "false",
+            ASSET("Savage_Wind-0.6.0-alpha.6-Linux-x86_64.AppImage", "https://example.test/sw", 7) ","
+            ASSET("Savage_Wind-0.6.0-alpha.6-Linux-x86_64.AppImage.sig", "https://example.test/sw.sig", 1)) "]";
+    CHECK(uc_pick_vr_release(flat, "alpha-2026.11.26.2", "-Linux-x86_64.AppImage", true, &r, NULL) == UC_PICK_CURRENT);
+    // another file's signature isn't this one's: unsigned
+    static const char other_sig[] =
+        "[" RELEASE("vr-2026.11.26.3", "false",
+            ASSET("BOTW-VR-alpha-2026.11.26.3-Linux-x86_64.AppImage", "https://example.test/vr", 11) ","
+            ASSET("BOTW-VR-alpha-2026.11.26.2-Linux-x86_64.AppImage.sig", "https://example.test/old.sig", 1)) "]";
+    CHECK(uc_pick_vr_release(other_sig, "alpha-2026.11.26.2", "-Linux-x86_64.AppImage", false, &r, &unsig) == UC_PICK_CURRENT);
+    CHECK(unsig == 1);
 }
 
 // The files a made-up folder has: "dir|name" entries
@@ -345,6 +405,7 @@ int main(void) {
     appimage_assets();
     vr_versions();
     vr_releases();
+    vr_assets();
     pick();
     paths();
     manifests();
