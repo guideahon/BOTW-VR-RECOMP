@@ -430,13 +430,24 @@ upstream), defaults every game executable to VR, and adds:
 - `savagewind.exe` also starts in VR if launched directly; set `SAVAGEWIND_VR=0` to start it flat;
 - `libopenxr_loader.dll` (the ucrt64 one, found as the game's other DLLs are);
 - `VR/`: this file, the setup guides and the checklist.
-It ships no SW Update: an upstream update would replace the VR build with the flat one.
+It ships no SW Update: an upstream update would replace the VR build with the flat one. A VR build ignores one left in
+the folder by a Savage Wind zip (`post_update_shipped`), so it never offers updates on Windows.
 
 Checked from a clean folder: the zip extracted to `D:\SW VR test` (a path with a space), its first start set up from
 a dump (`SAVAGEWIND_LAUNCHER_EXTRACT=<dump>`: copy, game code built with the bundled zig, shaders precompiled), then
 `tools/vr/test_vr_game.py --exe "<folder>\Savage Wind VR.exe"` against fake_xr (an absolute `--out`: the launcher
 starts the game in its own folder). A checkout path with a space broke `make dist` (DEPS passed as an absolute path,
 tools/zig_slim.sh reading zig's dependency lists): both fixed.
+
+### Updates (Linux AppImages)
+
+Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`): tags
+`vr-<release>`, ordered by date and the day's number (`uc_vr_version_cmp`), and the asset ending
+`-Linux-x86_64.AppImage` or `-Linux-SteamFrame-aarch64.AppImage`. Savage Wind's update key is not used. The releases
+aren't signed yet, so Update only names the new file and links the releases page. To have it install them, put the
+public half of a key of BOTW VR's own in `runtime/vr/botwvr_update_key.h` and upload each AppImage's `.sig`
+(`tools/sign_update.py`); unsigned releases are then passed over, as in Savage Wind. `make test-update-core` and
+`make test-update-appimage` cover both cases.
 
 ## How it hooks in
 

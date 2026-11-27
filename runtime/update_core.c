@@ -56,6 +56,45 @@ int uc_version_cmp(const char *a, const char *b) {
     return 0;
 }
 
+// BOTW VR: [<lowercase word>-]<year>.<month>.<day>[.<the day's number>]
+static bool vr_parse(const char *s, unsigned long n[4]) {
+    if (!s) return false;
+    const char *dash = strchr(s, '-');
+    if (dash) {
+        if (dash == s) return false;
+        for (const char *c = s; c < dash; c++)
+            if (!islower((unsigned char)*c)) return false;
+        s = dash + 1;
+    }
+    n[3] = 0;
+    for (int i = 0; i < 4; i++) {
+        if (!isdigit((unsigned char)*s)) return false;
+        char *e;
+        n[i] = strtoul(s, &e, 10);
+        s = e;
+        if (i == 2 && !*s) return true;
+        if (i < 3) {
+            if (*s != '.') return false;
+            s++;
+        }
+    }
+    return !*s;
+}
+
+bool uc_vr_version_valid(const char *v) {
+    unsigned long n[4];
+    return vr_parse(v, n);
+}
+
+int uc_vr_version_cmp(const char *a, const char *b) {
+    unsigned long x[4], y[4];
+    bool ox = vr_parse(a, x), oy = vr_parse(b, y);
+    if (!ox || !oy) return ox - oy;  // (as uc_version_cmp)
+    for (int i = 0; i < 4; i++)
+        if (x[i] != y[i]) return x[i] < y[i] ? -1 : 1;
+    return 0;
+}
+
 // ------------------------------------------------------------------ JSON: just enough to read the list of releases
 typedef struct { const char *p; bool bad; int depth; } J;
 
@@ -231,7 +270,17 @@ static void read_release(J *j, UcRelease *r, bool *draft, const char *suffix) {
     }
 }
 
-UcPick uc_pick_release(const char *json, const char *current, const char *suffix, UcRelease *out, int *skipped_unsigned) {
+// The version a tag names, without its "v" (BOTW VR: its word, "vr-"); NULL when it names none of this kind
+static const char *tag_version(const char *tag, bool vr) {
+    if (vr) return !uc_vr_version_valid(tag) ? NULL : strchr(tag, '-') ? strchr(tag, '-') + 1 : tag;
+    if (!uc_version_valid(tag)) return NULL;
+    return tag[0] == 'v' || tag[0] == 'V' ? tag + 1 : tag;
+}
+
+static int version_cmp(const char *a, const char *b, bool vr) { return vr ? uc_vr_version_cmp(a, b) : uc_version_cmp(a, b); }
+
+static UcPick pick_release(const char *json, const char *current, const char *suffix, bool vr, bool unsigned_ok,
+                           UcRelease *out, int *skipped_unsigned) {
     J j = {json, false, 0};
     j_ws(&j);
     if (*j.p != '[') return UC_PICK_BAD_JSON;
@@ -246,12 +295,12 @@ UcPick uc_pick_release(const char *json, const char *current, const char *suffix
             bool draft;
             read_release(&j, &r, &draft, suffix);
             if (j.bad) return UC_PICK_BAD_JSON;
-            if (!draft && uc_version_valid(r.tag) && uc_version_cmp(r.tag, current) > 0) {
-                const char *v = r.tag[0] == 'v' || r.tag[0] == 'V' ? r.tag + 1 : r.tag;
+            const char *v = tag_version(r.tag, vr);
+            if (!draft && v && version_cmp(v, current, vr) > 0) {
                 if (!r.zip_url[0] || !r.zip_size) {
                     // (no Windows zip in this one: another platform's release, nothing to say)
-                } else if (!r.sig_url[0]) unsigned_newer++;
-                else if (!found || uc_version_cmp(v, out->version) > 0) {
+                } else if (!r.sig_url[0] && !unsigned_ok) unsigned_newer++;
+                else if (!found || version_cmp(v, out->version, vr) > 0) {
                     *out = r;
                     snprintf(out->version, sizeof out->version, "%s", v);
                     found = true;
@@ -264,6 +313,15 @@ UcPick uc_pick_release(const char *json, const char *current, const char *suffix
         }
     if (skipped_unsigned) *skipped_unsigned = unsigned_newer;
     return found ? UC_PICK_UPDATE : UC_PICK_CURRENT;
+}
+
+UcPick uc_pick_release(const char *json, const char *current, const char *suffix, UcRelease *out, int *skipped_unsigned) {
+    return pick_release(json, current, suffix, false, false, out, skipped_unsigned);
+}
+
+UcPick uc_pick_vr_release(const char *json, const char *current, const char *suffix, bool unsigned_ok, UcRelease *out,
+                          int *skipped_unsigned) {
+    return pick_release(json, current, suffix, true, unsigned_ok, out, skipped_unsigned);
 }
 
 // ------------------------------------------------------------------ paths and the manifest

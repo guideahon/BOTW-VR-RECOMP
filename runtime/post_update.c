@@ -122,7 +122,11 @@ bool post_update_recover_if_cut(void) { return false; }  // (the AppImage is rep
 #endif
 
 bool post_update_shipped(void) {
-#ifdef _WIN32
+#if defined(_WIN32) && defined(SW_VR)
+    // (BOTW VR's zip has no SW Update, which installs only Savage Wind's releases: one left in this folder by a Savage
+    // Wind zip, with its sw-manifest.txt, would put the flat build over this one)
+    return false;
+#elif defined(_WIN32)
     char p[1100];
     return rt_resource("sw-manifest.txt", NULL, p, sizeof p);
 #else

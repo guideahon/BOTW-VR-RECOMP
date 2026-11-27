@@ -5,7 +5,6 @@
 #endif
 #include "update_appimage.h"
 #include "platform.h"
-#include "platform/sw_update_key.h"
 #include "update_crypto.h"
 
 #include <errno.h>
@@ -23,12 +22,31 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#ifdef SW_VR
+// BOTW VR (make VR=1): its own releases, never Savage Wind's (one would replace the VR build with the flat one),
+// checked against its own key, never Savage Wind's. Without that key a new release is only named, with where to get it.
+#include "vr/botwvr_update_key.h"
+#define REPO "guideahon/BOTW-VR-RECOMP"
+#ifdef BOTWVR_UPDATE_PUBKEY
+#define OFFER_ONLY 0
+#else
+#define OFFER_ONLY 1
+#endif
+#else
+#include "platform/sw_update_key.h"
 #define REPO "Revivedx/SavageWindRecomp"
+#define OFFER_ONLY 0
+#endif
 #define FEED_URL "https://api.github.com/repos/" REPO "/releases?per_page=30"
 #define DOWNLOAD_PREFIX "https://github.com/" REPO "/releases/download/"
+#define RELEASES_PAGE "https://github.com/" REPO "/releases"
 #define HEALTH_EXIT 73  // savagewind --update-health (runtime/main.c)
 
-#if defined(__x86_64__)
+#if defined(SW_VR) && defined(__x86_64__)
+#define ASSET_SUFFIX "-Linux-x86_64.AppImage"
+#elif defined(SW_VR) && defined(__aarch64__)
+#define ASSET_SUFFIX "-Linux-SteamFrame-aarch64.AppImage"
+#elif defined(__x86_64__)
 #define ASSET_SUFFIX "-x86_64.AppImage"
 #elif defined(__aarch64__)
 #define ASSET_SUFFIX "-aarch64.AppImage"
@@ -249,7 +267,11 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
         else {
             char *json = read_text(body, 8u << 20, NULL);
             int unsig = 0;
+#ifdef SW_VR
+            UcPick pick = json ? uc_pick_vr_release(json, current, ASSET_SUFFIX, OFFER_ONLY, out, &unsig) : UC_PICK_BAD_JSON;
+#else
             UcPick pick = json ? uc_pick_release(json, current, ASSET_SUFFIX, out, &unsig) : UC_PICK_BAD_JSON;
+#endif
             free(json);
             if (unsig) fprintf(stderr, "[update] %d newer release(s) have no signature: passed over\n", unsig);
             if (pick == UC_PICK_BAD_JSON)
@@ -260,7 +282,7 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
                 *available = pick == UC_PICK_UPDATE;
 #ifndef SW_UPDATE_TEST
                 if (*available && (strncmp(out->zip_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1) ||
-                                   strncmp(out->sig_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1))) {
+                                   (!OFFER_ONLY && strncmp(out->sig_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1)))) {
                     *available = false;
                     ok = fail(p, "bad_response", "GitHub sent an unexpected answer",
                               "The download address is not where Savage Wind's releases are. Nothing was downloaded.");
@@ -282,6 +304,12 @@ static bool signature_ok(const uint8_t hash[32], const uint8_t sig[64]) {
 #ifdef SW_UPDATE_TEST_PUBKEY
     uint8_t key[64];
     return uc_hex_decode(SW_UPDATE_TEST_PUBKEY, key, 64) && uc_p256_verify(hash, sig, key);
+#elif defined(SW_VR) && defined(BOTWVR_UPDATE_PUBKEY)
+    uint8_t key[64];
+    return uc_hex_decode(BOTWVR_UPDATE_PUBKEY, key, 64) && uc_p256_verify(hash, sig, key);
+#elif defined(SW_VR)
+    (void)hash, (void)sig;
+    return false;  // (no key of BOTW VR's own: nothing passes, and Savage Wind's key is never one)
 #else
     return uc_p256_verify(hash, sig, SW_UPDATE_PUBKEY);
 #endif
@@ -330,6 +358,12 @@ static bool download(const UcRelease *r, const char *part, volatile float *progr
 bool appimage_install(const char *work, const UcRelease *r, volatile float *progress, UpdateProblem *p) {
     const char *self = appimage_path();
     if (!self) return fail(p, "not_appimage", "This copy can't update itself", "Only the AppImage releases can update themselves.");
+#if OFFER_ONLY
+    return fail(p, "manual_update", "Download the new version from GitHub",
+                "BOTW VR %s is out. This copy can't install it by itself yet, as BOTW VR's releases aren't signed. Download "
+                "%s from " RELEASES_PAGE " and put it in place of:\n%s\n\nunder the same name, so shortcuts and Steam entries "
+                "keep working. Your game files, saves and settings stay as they are.", r->version, r->zip_name, self);
+#endif
     char dir[1100], part[1200], sigf[1300], old[1200];
     if (!folder_of(self, dir, sizeof dir))
         return fail(p, "wrong_folder", "The AppImage's location isn't known", "Get the new AppImage from the project's GitHub releases page.");
