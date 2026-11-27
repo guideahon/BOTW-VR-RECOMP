@@ -15,8 +15,7 @@
   "prepare": {
     "program": ["savagewind.exe", "BOTW-VR.AppImage"],
     "args": ["--prepare", "--game", "{game}"],
-    "label": "Copying your game files and building the game code",
-    "timeout": 7200
+    "label": "Copying your game files and building the game code"
   },
   "config": [
     {
