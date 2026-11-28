@@ -13,6 +13,10 @@ engineering: [re-notes.md](re-notes.md); the state of every feature: [FEATURES.m
   (`.github/workflows/catalog-test.yml`: `WM_NAME(UTF-8)`) and in a container like it; an all-ASCII error box is now
   shown in the C locale (its name in plain text) and says that no Vulkan driver was found. `tools/linux/test_catalog_window.sh`:
   26.2's AppImage fails, the new one shows its window in 1 s.
+- **28.1, still "not a single window":** its xdotool now found the box, but the catalog then counts only the windows
+  `xwininfo -tree` lists with a class, and SDL's X11 message box sets no WM_CLASS. With no window of ours yet, a plain
+  one (a window surface: no Vulkan, no GPU) now sits under the box, with SDL's class. Both catalog tests count that
+  way too: 28.1 fails them (as on the catalog), 28.2 passes; with Vulkan (lavapipe) the start screen opens as before.
 - **Names:** the release files are `BOTW-VR-Recomp-<version>-...` without "Linux" (`-x86_64.AppImage`,
   `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), and the AppImage's desktop file says BOTW VR Recomp: the project's
   name, as the repository and the README, which the catalog compares.

@@ -4,7 +4,8 @@
 # allows: started with no arguments on a bare X server (Xvfb, no window manager needed), an empty home (no game files,
 # no settings), no network (firejail --net=none there, a network namespace here), no OpenXR runtime and, by default,
 # no Vulkan driver at all (the catalog's runner has none). It passes when a visible window whose name xdotool can read
-# appears within 30 seconds (the catalog's own check: xdotool search --onlyvisible --name '.'). This machine's zenity, if
+# appears within 30 seconds (the catalog's own check: xdotool search --onlyvisible --name '.'), listed by
+# xwininfo -tree with a class. This machine's zenity, if
 # any, shows error boxes the runner can't (it has none): build/vr/catalog/docker's runner image is the closer copy, and
 # .github/workflows/catalog-test.yml runs the test on a GitHub runner itself. Output under build/vr/catalog (not /tmp).
 set -uo pipefail
@@ -39,6 +40,13 @@ for _ in $(seq 1 30); do
     kill -0 $APID 2>/dev/null || break
 done
 ELAPSED=$(( $(date +%s) - START ))
+# (then, as the catalog does, the windows xwininfo -tree lists with a name and a class: SDL's X11 message box has no
+# WM_CLASS, and alone it was "not a single window on screen", 28.1)
+if [ $RESULT = 0 ]; then
+    sleep 2
+    NWIN=$(DISPLAY=$DISP timeout 20 xwininfo -tree -root | grep 0x | grep -c '": ("' || true)
+    [ "$NWIN" -ge 1 ] || { RESULT=1; echo "no window with a class (xwininfo -tree):"; DISPLAY=$DISP xwininfo -tree -root | grep 0x; }
+fi
 if [ $RESULT = 0 ]; then
     sleep 2
     for w in $(cat "$OUT/windows.txt"); do echo "window: $(DISPLAY=$DISP xdotool getwindowname "$w")"; done

@@ -16,6 +16,11 @@ probar con el visor puesto, en [CHECKLIST.es.md](CHECKLIST.es.md); el estado de 
   y en un contenedor como él; un cuadro de error todo ASCII ahora se muestra con el locale C (su nombre en texto plano)
   y dice que no se encontró un driver Vulkan. `tools/linux/test_catalog_window.sh`: el AppImage de 26.2 falla, el nuevo
   muestra su ventana en 1 s.
+- **28.1, todavía "ni una ventana":** su xdotool ya encontraba el cuadro, pero el catálogo después cuenta solo las
+  ventanas que `xwininfo -tree` lista con clase, y el cuadro de mensaje X11 de SDL no pone WM_CLASS. Si todavía no hay
+  ninguna ventana nuestra, ahora hay una simple (una superficie de ventana: sin Vulkan, sin GPU) debajo del cuadro, con
+  la clase de SDL. Los dos tests del catálogo cuentan así también: 28.1 los falla (como en el catálogo), 28.2 los pasa;
+  con Vulkan (lavapipe) la pantalla de inicio abre como antes.
 - **Nombres:** los archivos de la release son `BOTW-VR-Recomp-<versión>-...` sin "Linux" (`-x86_64.AppImage`,
   `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), y el archivo .desktop del AppImage dice BOTW VR Recomp: el nombre
   del proyecto, como el repositorio y el README, que el catálogo compara.

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      APPIMAGE_URL: ${{ inputs.url || 'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-2026.11.28.1/BOTW-VR-Recomp-alpha-2026.11.28.1-x86_64.AppImage' }}
+      APPIMAGE_URL: ${{ inputs.url || 'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-2026.11.28.2/BOTW-VR-Recomp-alpha-2026.11.28.2-x86_64.AppImage' }}
     steps:
       - name: The catalog's packages (code/worker.sh's workflow), and gdb for the backtraces
         run: |
@@ -58,6 +58,9 @@ jobs:
             if ! kill -0 $APID 2>/dev/null; then RESULT="exited after $i s"; break; fi
             if timeout 5 xdotool search --onlyvisible --name '.' >/dev/null 2>&1; then RESULT="PASS: a window after $i s"; break; fi
           done
+          # (then the catalog counts the windows xwininfo -tree lists with a name and a class: WM_CLASS is needed too)
+          NWIN=$(timeout 20 xwininfo -tree -root | grep 0x | grep -c '": ("' || true)
+          case $RESULT in PASS*) [ "$NWIN" -ge 1 ] || RESULT="no window with a class (xwininfo -tree): $RESULT" ;; esac
           echo "RESULT: $RESULT" | tee out/result.txt
           xwininfo -root -tree > out/windows.txt 2>&1 || true
           for w in $(xwininfo -root -tree | grep -E '^ +0x' | awk '{print $1}'); do

@@ -7,5 +7,5 @@
 // log; a new one also resets the drivers' shader caches (runtime/post_update.c, device.c's application version).
 #pragma once
 #define BOTWVR_PHASE "alpha"
-#define BOTWVR_RELEASE "2026.11.28.1"
+#define BOTWVR_RELEASE "2026.11.28.2"
 #define BOTWVR_VERSION BOTWVR_PHASE "-" BOTWVR_RELEASE

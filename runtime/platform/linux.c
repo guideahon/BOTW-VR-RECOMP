@@ -430,7 +430,23 @@ void plat_fatal_notice(void) {
         saved_lc_all = lc ? strdup(lc) : NULL;
         setenv("LC_ALL", "C", 1);
     }
-    bool shown = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_NAME, text, NULL);
+    // With no window of ours yet (the start screen's failed: no Vulkan driver), a plain one - no Vulkan, no GPU: a
+    // window surface - under the box. SDL's X11 box sets no WM_CLASS, and the AppImage catalog's test counts only
+    // windows that xwininfo -tree lists with a class: the box alone was "not a single window on screen" (28.1).
+    SDL_Window *parent = NULL;
+    int nwin = 0;
+    SDL_Window **wins = SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetWindows(&nwin) : NULL;
+    SDL_free(wins);
+    if (SDL_WasInit(SDL_INIT_VIDEO) && nwin == 0) {
+        parent = SDL_CreateWindow(APP_NAME, 720, 320, 0);
+        SDL_Surface *s = parent ? SDL_GetWindowSurface(parent) : NULL;
+        if (s) {
+            SDL_FillSurfaceRect(s, NULL, SDL_MapSurfaceRGB(s, 24, 26, 30));
+            SDL_UpdateWindowSurface(parent);
+        }
+    }
+    bool shown = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_NAME, text, parent);
+    if (parent) SDL_DestroyWindow(parent);
     if (ascii) {
         if (saved_lc_all) setenv("LC_ALL", saved_lc_all, 1), free(saved_lc_all);
         else unsetenv("LC_ALL");
