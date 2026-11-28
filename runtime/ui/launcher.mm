@@ -2904,6 +2904,7 @@ extern "C" void launcher_run(const char *root, int mode) {
                 ImGui::TextWrapped("%s", tr("Put it in place of this AppImage, under the same name, so shortcuts and Steam "
                                             "entries keep working:"));
                 ImGui::TextColored(data, "%s", by_hand_self);
+                ImGui::TextWrapped("%s", tr("Then make it executable: Properties > Permissions, or chmod +x in a terminal."));
                 ImGui::Spacing();
                 ImGui::TextWrapped("%s", tr("Your game files, saves and settings stay as they are."));
                 ImGui::PopTextWrapPos();

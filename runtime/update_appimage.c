@@ -7,8 +7,8 @@
 #include "platform.h"
 #ifndef SW_VR
 #include "platform/sw_update_key.h"
-#endif
 #include "update_crypto.h"
+#endif
 
 #include <errno.h>
 #include <pthread.h>

@@ -208,6 +208,7 @@ VR_DEFAULT ?= 0  # (release packages set 1: any executable starts in VR unless S
 VR_MAKER   ?= 0  # (the PC Maker emits a transfer-ready package with a prebuilt game library)
 OPENXR_LIB ?= -lopenxr_loader
 ifeq ($(VR),1)
+RT_SRC   := $(filter-out runtime/update_crypto.c,$(RT_SRC))   # (BOTW VR checks no signature: runtime/update_appimage.c)
 RT_SRC   += $(wildcard runtime/vr/*.c)
 RT_HDRS  += $(wildcard runtime/vr/*.h)
 LDFLAGS  += $(OPENXR_LIB)

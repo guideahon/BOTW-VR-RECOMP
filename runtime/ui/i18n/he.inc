@@ -1408,4 +1408,5 @@ T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Vide
 T("Download the new version from GitHub", "הורידו את הגרסה החדשה מ-GitHub")
 T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "הגרסאות של BOTW VR עדיין לא חתומות, ולכן העותק הזה לא יכול להתקין אותן בעצמו. הורידו את הקובץ הזה מדף הגרסאות:")
 T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "שימו אותו במקום ה-AppImage הזה, באותו שם, כדי שקיצורי הדרך והפריטים ב-Steam ימשיכו לעבוד:")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "לאחר מכן הפכו אותו לבר-הרצה: מאפיינים > הרשאות, או chmod +x במסוף.")
 T("Your game files, saves and settings stay as they are.", "קובצי המשחק, השמירות וההגדרות שלכם נשארים כפי שהם.")

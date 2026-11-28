@@ -1409,4 +1409,5 @@ T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Vide
 T("Download the new version from GitHub", "GitHub에서 새 버전을 다운로드하세요")
 T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "BOTW VR 릴리스는 아직 서명되지 않아 이 사본이 직접 설치할 수 없습니다. 릴리스 페이지에서 이 파일을 다운로드하세요:")
 T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "바로 가기와 Steam 항목이 계속 작동하도록 같은 이름으로 이 AppImage를 바꿔 넣으세요:")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "그런 다음 실행 가능하게 만드세요: 속성 > 권한, 또는 터미널에서 chmod +x.")
 T("Your game files, saves and settings stay as they are.", "게임 파일, 세이브, 설정은 그대로 유지됩니다.")

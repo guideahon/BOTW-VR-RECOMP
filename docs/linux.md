@@ -57,8 +57,9 @@ name, so shortcuts and Steam entries keep working. The previous file stays next 
 version has finished setting up. The AppImage's folder must be writable.
 
 BOTW VR's AppImages (`make VR=1`) look only at BOTW VR's releases (`BOTW-VR-...-Linux-x86_64.AppImage`, on aarch64
-`BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`), never at Savage Wind's, and install nothing: Update names the new file
-and where to download it, and there is no going back (docs/VR.md, "Updates").
+`BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`), never at Savage Wind's, and install nothing: Update names the new file,
+where to download it and the AppImage to replace (then made executable), and there is no going back (docs/VR.md,
+"Updates").
 
 ### Steam Deck motion in Gaming Mode (DSU)
 

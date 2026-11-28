@@ -445,7 +445,7 @@ tools/zig_slim.sh reading zig's dependency lists): both fixed.
 
 Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`), and
 only says when a newer one is out: Update shows the file to download, the releases page's address and the AppImage to
-replace under the same name (`update_by_hand`). A VR build downloads, installs and goes back to nothing, and starts no
+replace under the same name and make executable (`update_by_hand`; `savagewind update` says the same). A VR build downloads, installs and goes back to nothing, and starts no
 other program for it: that code isn't built into it. Only tags `vr-YYYY.MM.DD` or `vr-YYYY.MM.DD.N` (a real date, N
 from 1 to 9999) count, ordered by date and the day's number, and only the file `BOTW-VR-...-Linux-x86_64.AppImage` (on
 aarch64 `BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`) at this repository's `releases/download/<tag>/<name>`.

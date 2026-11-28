@@ -1409,4 +1409,5 @@ T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Vide
 T("Download the new version from GitHub", "Téléchargez la nouvelle version sur GitHub")
 T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "Les versions de BOTW VR ne sont pas encore signées : cette copie ne peut donc pas les installer d'elle-même. Téléchargez ce fichier depuis la page des versions :")
 T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "Mettez-le à la place de cet AppImage, sous le même nom, pour que les raccourcis et les entrées Steam continuent de fonctionner :")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "Rendez-le ensuite exécutable : Propriétés > Permissions, ou chmod +x dans un terminal.")
 T("Your game files, saves and settings stay as they are.", "Vos fichiers du jeu, sauvegardes et réglages restent tels quels.")

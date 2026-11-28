@@ -747,8 +747,16 @@ static int cmd_update(int argc, char **argv) {
         fprintf(cli_out, ",\"message\":");
         cli_json_str(cli_out, message);
         fprintf(cli_out, "}\n");
-    } else if (s == UPDATE_AVAILABLE) fprintf(cli_out, "Savage Wind %s is out. Savage Wind Configuration installs it.\n", version);
+    }
+#ifdef SW_VR  // (BOTW VR installs nothing: runtime/update_appimage.c)
+    else if (s == UPDATE_AVAILABLE)
+        fprintf(cli_out, "BOTW VR %s is out. Download it from https://github.com/guideahon/BOTW-VR-RECOMP/releases, put it "
+                "in place of this AppImage under the same name and make it executable (chmod +x).\n", version);
+    else if (s == UPDATE_CURRENT) fprintf(cli_out, "BOTW VR is up to date.\n");
+#else
+    else if (s == UPDATE_AVAILABLE) fprintf(cli_out, "Savage Wind %s is out. Savage Wind Configuration installs it.\n", version);
     else if (s == UPDATE_CURRENT) fprintf(cli_out, "Savage Wind is up to date.\n");
+#endif
     else fprintf(cli_out, "Couldn't check for updates%s%s\n", message[0] ? ": " : ".", message);
     return checked ? 0 : 1;
 }
