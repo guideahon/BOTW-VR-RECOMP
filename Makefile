@@ -208,6 +208,7 @@ VR_DEFAULT ?= 0  # (release packages set 1: any executable starts in VR unless S
 VR_MAKER   ?= 0  # (the PC Maker emits a transfer-ready package with a prebuilt game library)
 OPENXR_LIB ?= -lopenxr_loader
 ifeq ($(VR),1)
+RT_SRC   := $(filter-out runtime/update_crypto.c,$(RT_SRC))   # (BOTW VR checks no signature: runtime/update_appimage.c)
 RT_SRC   += $(wildcard runtime/vr/*.c)
 RT_HDRS  += $(wildcard runtime/vr/*.h)
 LDFLAGS  += $(OPENXR_LIB)
@@ -400,9 +401,9 @@ $(B)/rt/platform/windows_rc.o: runtime/platform/windows.rc runtime/platform/wind
 	@mkdir -p $(dir $@)
 	$(WINDRES) -I docs/icon -I runtime/platform -O coff $< -o $@
 
-$(B)/rt/platform/windows_config.o: runtime/platform/windows_config.c
+$(B)/rt/platform/windows_config.o: runtime/platform/windows_config.c $(B)/runtime_config
 	@mkdir -p $(dir $@)
-	$(CC) -O2 -Wall $(OSFLAGS) -c $< -o $@
+	$(CC) -O2 -Wall $(OSFLAGS) $(if $(filter 1,$(VR)),-DSW_VR) -c $< -o $@
 $(B)/savagewind-config.exe: $(B)/rt/platform/windows_config.o $(B)/rt/platform/windows_rc.o
 	$(CC) -o $@ $^ -fuse-ld=lld -Wl,--subsystem,windows
 

@@ -38,6 +38,9 @@ UpdateState update_check_state(char *version, size_t version_size, char *message
 // Starts SW Update to install it / to go back; true: this program must quit now so its files can be replaced.
 bool update_apply_start(void);
 bool update_rollback_start(void);
+// BOTW VR's AppImage: Update installs nothing, it only says where the new version is (the others below do nothing in a
+// VR build). true, with the new file's name (from the check), the page to download it from and this AppImage's file.
+bool update_by_hand(char *file, size_t file_size, const char **page, const char **self);
 // Linux: the update runs inside this program, on a thread of the caller's. update_apply_here returns only if it failed,
 // saying why; when it works the new version replaces this process. update_apply_progress: 0..1, -1 when not running.
 bool update_applies_here(void);

@@ -1406,3 +1406,8 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "隐藏显示器上的窗口")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "头显显示游戏时，隐藏显示器上的游戏窗口（游玩时不会更新）。头显断开时窗口会恢复。")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "在头显中，无论视频设置如何，绘制距离为 Potato、抗锯齿为 SMAA（平面游玩保留视频设置）：Stereo 下每秒帧数提高约 30%。近处画面相同；远处的树木和建筑更少。关闭：使用视频设置。")
+T("Download the new version from GitHub", "从 GitHub 下载新版本")
+T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "BOTW VR 的发布版本尚未签名，因此此副本无法自行安装。请从发布页面下载此文件：")
+T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "请用它替换此 AppImage，并保持相同的名称，这样快捷方式和 Steam 条目才能继续使用：")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "然后将其设为可执行：属性 > 权限，或在终端中运行 chmod +x。")
+T("Your game files, saves and settings stay as they are.", "你的游戏文件、存档和设置保持不变。")

@@ -430,13 +430,29 @@ upstream), defaults every game executable to VR, and adds:
 - `savagewind.exe` also starts in VR if launched directly; set `SAVAGEWIND_VR=0` to start it flat;
 - `libopenxr_loader.dll` (the ucrt64 one, found as the game's other DLLs are);
 - `VR/`: this file, the setup guides and the checklist.
-It ships no SW Update: an upstream update would replace the VR build with the flat one.
+It ships no SW Update: an upstream update would replace the VR build with the flat one. A VR build never starts one
+left in the folder by a Savage Wind zip, with its `update/journal.txt`: no update check, no Update, no "Go back to the
+previous version", and no recovery of a cut-off update, by the game (`runtime/post_update.c`) or by Savage Wind
+Configuration (`runtime/platform/windows_config.c`, built with `SW_VR`).
 
 Checked from a clean folder: the zip extracted to `D:\SW VR test` (a path with a space), its first start set up from
 a dump (`SAVAGEWIND_LAUNCHER_EXTRACT=<dump>`: copy, game code built with the bundled zig, shaders precompiled), then
 `tools/vr/test_vr_game.py --exe "<folder>\Savage Wind VR.exe"` against fake_xr (an absolute `--out`: the launcher
 starts the game in its own folder). A checkout path with a space broke `make dist` (DEPS passed as an absolute path,
 tools/zig_slim.sh reading zig's dependency lists): both fixed.
+
+### Updates (Linux AppImages)
+
+Savage Wind Configuration checks this repository's releases, never Savage Wind's (`runtime/update_appimage.c`), and
+only says when a newer one is out: Update shows the file to download, the releases page's address and the AppImage to
+replace under the same name and make executable (`update_by_hand`; `savagewind update` says the same). A VR build downloads, installs and goes back to nothing, and starts no
+other program for it: that code isn't built into it. Only tags `vr-YYYY.MM.DD` or `vr-YYYY.MM.DD.N` (a real date, N
+from 1 to 9999) count, ordered by date and the day's number, and only the file `BOTW-VR-...-Linux-x86_64.AppImage` (on
+aarch64 `BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`) at this repository's `releases/download/<tag>/<name>`.
+`make test-update-core` and `make test-update-appimage` cover it.
+
+Installing updates by itself would need BOTW VR's own signing key and a `.sig` with each AppImage, backups of its own
+(never Savage Wind's `<name>.old`) and a health check only a VR build passes: not done yet.
 
 ## How it hooks in
 

@@ -1406,3 +1406,8 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "モニターのウィンドウを隠す")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "ヘッドセットにゲームが映っている間、モニターのウィンドウを隠します（プレイ中は更新されません）。ヘッドセットが切断されると戻ります。")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "ヘッドセットでは、ビデオの設定にかかわらず描画距離をPotato、アンチエイリアスをSMAAにします（通常画面のプレイではビデオの設定のまま）：Stereoで約30%フレームレートが上がります。近くの見た目は同じで、遠くの木や建物が少なくなります。オフ：ビデオの設定。")
+T("Download the new version from GitHub", "新しいバージョンをGitHubからダウンロードしてください")
+T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "BOTW VRのリリースはまだ署名されていないため、このコピーでは自動でインストールできません。リリースページから次のファイルをダウンロードしてください：")
+T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "ショートカットやSteamの項目がそのまま使えるように、同じ名前でこのAppImageと置き換えてください：")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "そのあと実行可能にしてください：プロパティ > アクセス権、またはターミナルで chmod +x。")
+T("Your game files, saves and settings stay as they are.", "ゲームファイル、セーブデータ、設定はそのまま残ります。")

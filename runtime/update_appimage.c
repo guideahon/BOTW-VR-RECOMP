@@ -5,8 +5,10 @@
 #endif
 #include "update_appimage.h"
 #include "platform.h"
+#ifndef SW_VR
 #include "platform/sw_update_key.h"
 #include "update_crypto.h"
+#endif
 
 #include <errno.h>
 #include <pthread.h>
@@ -23,12 +25,25 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#ifdef SW_VR
+// BOTW VR (make VR=1) checks its own releases, never Savage Wind's (one would replace the VR build with the flat one),
+// and only says where to download a newer one (update_by_hand, runtime/post_update.c). The download, the signature,
+// the install, going back and starting the new file aren't built into it. Installing by itself would need BOTW VR's
+// own key and .sig files, backups apart from Savage Wind's <name>.old and a health check only a VR build passes.
+#define REPO "guideahon/BOTW-VR-RECOMP"
+#define RELEASES_PAGE "https://github.com/" REPO "/releases"
+#else
 #define REPO "Revivedx/SavageWindRecomp"
+#endif
 #define FEED_URL "https://api.github.com/repos/" REPO "/releases?per_page=30"
 #define DOWNLOAD_PREFIX "https://github.com/" REPO "/releases/download/"
 #define HEALTH_EXIT 73  // savagewind --update-health (runtime/main.c)
 
-#if defined(__x86_64__)
+#if defined(SW_VR) && defined(__x86_64__)
+#define ASSET_SUFFIX "-Linux-x86_64.AppImage"
+#elif defined(SW_VR) && defined(__aarch64__)
+#define ASSET_SUFFIX "-Linux-SteamFrame-aarch64.AppImage"
+#elif defined(__x86_64__)
 #define ASSET_SUFFIX "-x86_64.AppImage"
 #elif defined(__aarch64__)
 #define ASSET_SUFFIX "-aarch64.AppImage"
@@ -71,6 +86,10 @@ const char *appimage_path(void) {
     pthread_once(&once, appimage_find);
     return g_self_image[0] ? g_self_image : NULL;
 }
+
+#ifdef SW_VR
+const char *appimage_by_hand(void) { return RELEASES_PAGE; }
+#endif
 
 // The environment for another program. What the AppImage runtime set describes this mount, not the next program's.
 // curl is the system's: libraries a launcher such as Steam injects aren't meant for it (no_ld).
@@ -249,7 +268,11 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
         else {
             char *json = read_text(body, 8u << 20, NULL);
             int unsig = 0;
+#ifdef SW_VR
+            UcPick pick = json ? uc_pick_vr_release(json, current, ASSET_SUFFIX, DOWNLOAD_PREFIX, out) : UC_PICK_BAD_JSON;
+#else
             UcPick pick = json ? uc_pick_release(json, current, ASSET_SUFFIX, out, &unsig) : UC_PICK_BAD_JSON;
+#endif
             free(json);
             if (unsig) fprintf(stderr, "[update] %d newer release(s) have no signature: passed over\n", unsig);
             if (pick == UC_PICK_BAD_JSON)
@@ -258,7 +281,7 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
             else {
                 ok = true;
                 *available = pick == UC_PICK_UPDATE;
-#ifndef SW_UPDATE_TEST
+#if !defined(SW_UPDATE_TEST) && !defined(SW_VR)  // (BOTW VR: uc_pick_vr_release takes only <DOWNLOAD_PREFIX><tag>/<name>)
                 if (*available && (strncmp(out->zip_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1) ||
                                    strncmp(out->sig_url, DOWNLOAD_PREFIX, sizeof DOWNLOAD_PREFIX - 1))) {
                     *available = false;
@@ -273,6 +296,7 @@ bool appimage_find_update(const char *work, const char *current, UcRelease *out,
     return ok;
 }
 
+#ifndef SW_VR  // (BOTW VR only names the new release: see REPO)
 static void hex32(const uint8_t b[32], char out[65]) {
     for (int i = 0; i < 32; i++) sprintf(out + 2 * i, "%02x", b[i]);
     out[64] = 0;
@@ -486,4 +510,5 @@ void appimage_relaunch(UpdateProblem *p) {
     fail(p, "relaunch", "The new version is installed but could not be started",
          "Reason: %s. Close this window and start Savage Wind again.", strerror(e));
 }
+#endif  // SW_VR
 #endif

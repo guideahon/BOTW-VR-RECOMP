@@ -3,6 +3,15 @@
 #include "../runtime/update_appimage.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+
+// (runtime/platform/linux.c's, without the rest of the game: $APPDIR is this program's folder in the test)
+bool plat_exe_path(char *buf, size_t size) {
+    ssize_t n = readlink("/proc/self/exe", buf, size - 1);
+    if (n <= 0) return false;
+    buf[n] = 0;
+    return true;
+}
 
 int main(int argc, char **argv) {
     if (argc < 4) return 2;

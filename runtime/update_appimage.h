@@ -20,6 +20,10 @@ typedef struct {
 const char *appimage_path(void);
 // work: a writable folder for temporary files. true: *available says if out holds a newer release.
 bool appimage_find_update(const char *work, const char *current, UcRelease *out, bool *available, UpdateProblem *p);
+#ifdef SW_VR
+// BOTW VR only names a newer release: the page to download it from by hand. Nothing below is built into it.
+const char *appimage_by_hand(void);
+#else
 // Downloads, checks, starts the new file once to see that it runs, and replaces the old one, kept as <file>.old until
 // the new version has finished setting up. *progress goes 0..1 as it works.
 bool appimage_install(const char *work, const UcRelease *r, volatile float *progress, UpdateProblem *p);
@@ -28,6 +32,7 @@ bool appimage_has_old(void);
 void appimage_remove_old(void);
 // Replaces this process with the AppImage on disk, opening Savage Wind Configuration. Returns only if it couldn't.
 void appimage_relaunch(UpdateProblem *p);
+#endif
 
 #ifdef __cplusplus
 }

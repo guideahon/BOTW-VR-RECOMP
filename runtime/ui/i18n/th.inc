@@ -1406,3 +1406,8 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "ซ่อนหน้าต่างบนจอภาพ")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "ขณะที่แว่น VR แสดงเกม หน้าต่างเกมบนจอภาพจะถูกซ่อน (ไม่อัปเดตระหว่างเล่น) และจะกลับมาเมื่อแว่นตัดการเชื่อมต่อ")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "ในแว่น VR ระยะการแสดงผลเป็น Potato และการลดรอยหยักเป็น SMAA ไม่ว่าการตั้งค่าวิดีโอจะเป็นอย่างไร (การเล่นแบบจอปกติใช้การตั้งค่าวิดีโอ): เฟรมต่อวินาทีเพิ่มขึ้นประมาณ 30% ในโหมด Stereo ภาพระยะใกล้เหมือนเดิม ระยะไกลมีต้นไม้และอาคารน้อยลง ปิด: ใช้การตั้งค่าวิดีโอ")
+T("Download the new version from GitHub", "ดาวน์โหลดเวอร์ชันใหม่จาก GitHub")
+T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "รุ่นที่เผยแพร่ของ BOTW VR ยังไม่ได้ลงนาม สำเนานี้จึงติดตั้งเองไม่ได้ ดาวน์โหลดไฟล์นี้จากหน้ารุ่นที่เผยแพร่:")
+T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "นำไปแทนที่ AppImage นี้โดยใช้ชื่อเดิม เพื่อให้ทางลัดและรายการใน Steam ยังใช้งานได้:")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "จากนั้นทำให้ไฟล์เรียกใช้งานได้: คุณสมบัติ > สิทธิ์ หรือ chmod +x ในเทอร์มินัล")
+T("Your game files, saves and settings stay as they are.", "ไฟล์เกม เซฟ และการตั้งค่าของคุณจะยังอยู่เหมือนเดิม")

@@ -56,6 +56,11 @@ machine (x86_64 or aarch64) with the system's `curl`, checks its signature and r
 name, so shortcuts and Steam entries keep working. The previous file stays next to it as `<name>.old` until the new
 version has finished setting up. The AppImage's folder must be writable.
 
+BOTW VR's AppImages (`make VR=1`) look only at BOTW VR's releases (`BOTW-VR-...-Linux-x86_64.AppImage`, on aarch64
+`BOTW-VR-...-Linux-SteamFrame-aarch64.AppImage`), never at Savage Wind's, and install nothing: Update names the new file,
+where to download it and the AppImage to replace (then made executable), and there is no going back (docs/VR.md,
+"Updates").
+
 ### Steam Deck motion in Gaming Mode (DSU)
 
 Keep Steam Input enabled for buttons and sticks. On Linux the game automatically prefers fresh native SDL gyro

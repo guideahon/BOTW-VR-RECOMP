@@ -22,6 +22,7 @@ int main(void) {
     DWORD n = GetModuleFileNameW(NULL, exe, sizeof exe / sizeof *exe);
     wchar_t *slash = n && n < sizeof exe / sizeof *exe ? wcsrchr(exe, L'\\') : NULL;
     if (!slash) return 1;
+#ifndef SW_VR  // (BOTW VR ships no SW Update: one left in this folder by Savage Wind would put the flat build back)
     // An update cut off halfway (a power cut, runtime/platform/windows_update.c): put the files back before anything loads them
     wcscpy(slash + 1, L"update\\journal.txt");
     if (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES) {
@@ -36,6 +37,7 @@ int main(void) {
             CloseHandle(rpi.hProcess);
         }
     }
+#endif
     wcscpy(slash + 1, L"savagewind.exe");
     const wchar_t *rest = args_after_name(GetCommandLineW());
     size_t cap = wcslen(exe) + wcslen(rest) + 32;

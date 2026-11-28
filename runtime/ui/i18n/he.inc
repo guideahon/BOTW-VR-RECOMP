@@ -1405,3 +1405,8 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "הסתרת החלון בצג")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "בזמן שהמשקפת מציגה את המשחק, החלון שלו בצג מוסתר (הוא לא מתעדכן במשחק). הוא חוזר אם המשקפת מתנתקת.")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "במשקפת, מרחק התצוגה הוא Potato והחלקת הקצוות SMAA, בלי קשר להגדרות הווידאו (משחק רגיל שומר את הגדרות הווידאו): כ-30% יותר פריימים לשנייה ב-Stereo. מקרוב התמונה זהה; למרחוק יש פחות עצים ומבנים. כבוי: הגדרות הווידאו.")
+T("Download the new version from GitHub", "הורידו את הגרסה החדשה מ-GitHub")
+T("BOTW VR's releases aren't signed yet, so this copy can't install them by itself. Download this file from the releases page:", "הגרסאות של BOTW VR עדיין לא חתומות, ולכן העותק הזה לא יכול להתקין אותן בעצמו. הורידו את הקובץ הזה מדף הגרסאות:")
+T("Put it in place of this AppImage, under the same name, so shortcuts and Steam entries keep working:", "שימו אותו במקום ה-AppImage הזה, באותו שם, כדי שקיצורי הדרך והפריטים ב-Steam ימשיכו לעבוד:")
+T("Then make it executable: Properties > Permissions, or chmod +x in a terminal.", "לאחר מכן הפכו אותו לבר-הרצה: מאפיינים > הרשאות, או chmod +x במסוף.")
+T("Your game files, saves and settings stay as they are.", "קובצי המשחק, השמירות וההגדרות שלכם נשארים כפי שהם.")

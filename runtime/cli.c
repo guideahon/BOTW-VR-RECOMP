@@ -100,10 +100,18 @@ static const Command k_commands[] = {
      "Whether all the shaders were precompiled, how many, when, and whether that was for this version and driver\n"
      "(outdated: precompile them again).", true},
     {"precompile-shaders", "", "precompile-shaders", "precompile all the game's shaders", "", false},
+#ifdef SW_VR  // (BOTW VR installs nothing: runtime/update_appimage.c; on Windows it has no check at all)
+    {"update", "", "update [--json]", "check for a newer version of BOTW VR",
+     "Linux AppImage: checks BOTW VR's releases and, if there's a newer one, says where to download it and how to put it\n"
+     "in place. Nothing is installed. Windows: no built-in check. Exit status 0: checked (available says whether there is\n"
+     "one); 1: couldn't check.",
+     true},
+#else
     {"update", "", "update [--json]", "check for a newer version of Savage Wind",
      "Asks SW Update whether there's a newer release (releases only; a source build has none). Doesn't install it:\n"
      "Savage Wind Configuration does. Exit status 0: checked (available says whether there is one); 1: couldn't check.",
      true},
+#endif
     {"log", "", "log [--follow | --previous]", "show the log",
      "Prints savagewind.log. --follow: keep printing what's added until Ctrl+C. --previous: the run before's.", true},
     {"config", "", "config", "open Savage Wind Configuration", "", false},
@@ -728,6 +736,14 @@ static int cmd_shaders(int argc, char **argv) {
 static int cmd_update(int argc, char **argv) {
     bool json = cli_has(argc, argv, "--json");
     char version[64] = "", message[512] = "";
+#if defined(SW_VR) && defined(_WIN32)
+    if (!post_update_shipped()) {  // (BOTW VR on Windows never runs SW Update: runtime/post_update.c)
+        if (json) fprintf(cli_out, "{\"checked\":false,\"available\":false,\"version\":\"\",\"message\":\"no update check\"}\n");
+        else fprintf(cli_out, "BOTW VR for Windows has no built-in update check: new versions are at "
+                     "https://github.com/guideahon/BOTW-VR-RECOMP/releases\n");
+        return 1;
+    }
+#endif
     if (!post_update_shipped()) {  // (a source build: no SW Update, nothing released to update it to)
         if (json) fprintf(cli_out, "{\"checked\":false,\"available\":false,\"version\":\"\",\"message\":\"source build\"}\n");
         else fprintf(cli_out, "This is a source build: update it with git and make, not SW Update.\n");
@@ -747,8 +763,16 @@ static int cmd_update(int argc, char **argv) {
         fprintf(cli_out, ",\"message\":");
         cli_json_str(cli_out, message);
         fprintf(cli_out, "}\n");
-    } else if (s == UPDATE_AVAILABLE) fprintf(cli_out, "Savage Wind %s is out. Savage Wind Configuration installs it.\n", version);
+    }
+#ifdef SW_VR  // (BOTW VR installs nothing: runtime/update_appimage.c)
+    else if (s == UPDATE_AVAILABLE)
+        fprintf(cli_out, "BOTW VR %s is out. Download it from https://github.com/guideahon/BOTW-VR-RECOMP/releases, put it "
+                "in place of this AppImage under the same name and make it executable (chmod +x).\n", version);
+    else if (s == UPDATE_CURRENT) fprintf(cli_out, "BOTW VR is up to date.\n");
+#else
+    else if (s == UPDATE_AVAILABLE) fprintf(cli_out, "Savage Wind %s is out. Savage Wind Configuration installs it.\n", version);
     else if (s == UPDATE_CURRENT) fprintf(cli_out, "Savage Wind is up to date.\n");
+#endif
     else fprintf(cli_out, "Couldn't check for updates%s%s\n", message[0] ? ": " : ".", message);
     return checked ? 0 : 1;
 }

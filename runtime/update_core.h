@@ -14,6 +14,13 @@ bool uc_version_valid(const char *v);
 // <0, 0, >0 as a is older than, the same as or newer than b. A final version is newer than its own pre-releases.
 int uc_version_cmp(const char *a, const char *b);
 
+// BOTW VR's versions (runtime/vr/botwvr_version.h): "alpha-2026.11.26.2", the phase (lowercase letters) optional:
+// YYYY.MM.DD, a real date, and optionally the day's number, 1 to 9999 without a leading zero ("2026.11.22" was a day's
+// first). None is one of Savage Wind's, nor the other way round.
+bool uc_vr_version_valid(const char *v);
+// As uc_version_cmp, by the release's date and the day's number alone: a tag doesn't name the phase.
+int uc_vr_version_cmp(const char *a, const char *b);
+
 typedef struct {
     char version[64];    // no leading v
     char tag[64];
@@ -33,6 +40,12 @@ typedef enum {
 // asset ("-windows.zip", "-x86_64.AppImage"...). Drafts, tags that aren't versions and releases without both that asset
 // and its ".sig" are passed over; *skipped_unsigned counts newer releases passed over for lack of a signature (may be NULL).
 UcPick uc_pick_release(const char *json, const char *current, const char *suffix, UcRelease *out, int *skipped_unsigned);
+// The same for BOTW VR, which only says that a release is out (nothing is downloaded, so no ".sig" is looked for): only
+// its own tags count, "vr-YYYY.MM.DD" or "vr-YYYY.MM.DD.N", and only its own files, "BOTW-VR-...<suffix>", whose address
+// is exactly <downloads><tag>/<name> ("https://github.com/<repo>/releases/download/"). A Savage Wind release or file in
+// the list, which would replace the VR build with the flat one, never counts, nor does a release whose tag, file name
+// or address holds a NUL (a \u0000 in the JSON). out->version: the tag without "vr-" ("2026.11.26.3").
+UcPick uc_pick_vr_release(const char *json, const char *current, const char *suffix, const char *downloads, UcRelease *out);
 
 typedef struct {
     char sha256[65];
