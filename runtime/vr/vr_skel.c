@@ -188,7 +188,18 @@ static struct {
     vr_vec3 head_w;          // his head bone, as animated (world), and the frame it was
     uint64_t head_frame;
     uint64_t carried_model;  // the lifted object's model moved to the hands (carried_in_hands)
+    // (a check) Link's wrists as drawn this frame, and how far his armor's wrists (sleeves, gloves) end up from them
+    vr_vec3 wrist_final[2];
+    uint64_t wrist_final_frame;
+    float armor_off, armor_off_max;   // (m: the last and the largest since asked)
+    uint64_t armor_checks, armor_off_n;   // (armor arm calcs; those more than 3 cm off)
 } k = {.hide = -1, .arms = -1};
+
+// the `vr` command: how far the armor's wrists were from Link's (the largest since the last call), and how often
+void vr_skel_armor_off(float *last, float *max, uint64_t *checks, uint64_t *off) {
+    *last = k.armor_off, *max = k.armor_off_max, *checks = k.armor_checks, *off = k.armor_off_n;
+    k.armor_off_max = 0;
+}
 
 enum { VR_SKEL_NONE, VR_SKEL_MELEE, VR_SKEL_BOW, VR_SKEL_SHIELD, VR_SKEL_OTHER };
 
@@ -643,7 +654,71 @@ static void hide_head(uint64_t world, const skel_info *s, bool every) {
         if (every || (s->part[i] & 0x07) == PART_HEAD) squeeze(bone_m(world, i));
 }
 
+static void skel_calc(uint64_t model);
+static void pair_pose(uint64_t model);
 void vr_skel_calc(uint64_t model) {
+    skel_calc(model);
+    pair_pose(model);
+}
+
+// Stereo: Link the same in both eyes. A pair's two eyes are two game frames half a step apart, both drawn from the
+// left frame's place (vr_camera.c, the pair's anchor), and the right frame animated him again: walking, his body, belt
+// and legs were somewhere else in each eye, while the arms (the controllers, kept once a pair) matched - "extreme
+// jitter when the character walks, the whole body flickers" (2026-11-27; tools/vr/test_vr_body_walk.py: 18-28% of the
+// lower picture differing between the eyes, 2% standing). The left frame keeps the bones of Link and of the models on
+// him (armor, weapons) as they are drawn; the right frame of the same pair draws those. SAVAGEWIND_VR_PAIR_POSE=0: off
+// (also off with SAVAGEWIND_VR_PAIR_ANCHOR=0, each eye its own place)
+#define PAIR_MODELS 32
+static struct { uint64_t model, pair; int n; float (*m)[16]; } pair_models[PAIR_MODELS];
+static uint64_t pair_poses_kept;
+uint64_t vr_pair_poses_kept(void) { return pair_poses_kept; }
+
+static void pair_pose(uint64_t model) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("SAVAGEWIND_VR_PAIR_POSE"), *a = getenv("SAVAGEWIND_VR_PAIR_ANCHOR");
+        on = !(e && *e == '0') && !(a && *a == '0');
+        if (!on) LOG("[vr] stereo: Link animated in each eye's own frame (SAVAGEWIND_VR_PAIR_POSE=0)\n");
+    }
+    extern int vr_frame_eye_peek(uint64_t *pair);   // (vr_camera.c)
+    uint64_t pair;
+    int eye;
+    if (!on || !vr_world_view() || (eye = vr_frame_eye_peek(&pair)) < 0) return;
+    uint64_t skel = rd64(model + 0x118);
+    if (!GUEST_OK(skel)) return;
+    uint64_t world = rd64(skel + 0x20);
+    if (!GUEST_OK(world)) return;
+    int n = bone_count(skel);
+    if (!n) return;
+    if (model != k.model) {   // (one on Link: an armor piece or a weapon, within reach of him)
+        const char *name = fmdl_name(rd64(model + 0xe0));
+        if (!name || (strncmp(name, "Armor_", 6) && strncmp(name, "Weapon_", 7))) return;
+        double lp[3];
+        if (!control_cell_get(&control_cell_player_pos, lp)) return;
+        const float *r = bone_m(world, 0);
+        float dx = r[12] - (float)lp[0], dy = r[13] - (float)lp[1], dz = r[14] - (float)lp[2];
+        if (dx * dx + dy * dy + dz * dz > 9.0f) return;
+    }
+    int at = -1, free_at = -1, old_at = 0;
+    for (int i = 0; i < PAIR_MODELS; i++) {
+        if (pair_models[i].model == model) { at = i; break; }
+        if (!pair_models[i].model && free_at < 0) free_at = i;
+        if (pair_models[i].pair < pair_models[old_at].pair) old_at = i;
+    }
+    if (eye == 0) {
+        if (at < 0) at = free_at >= 0 ? free_at : old_at;
+        if (pair_models[at].n < n) free(pair_models[at].m), pair_models[at].m = malloc(sizeof(float[16]) * (size_t)n);
+        if (!pair_models[at].m) { pair_models[at].model = 0, pair_models[at].n = 0; return; }
+        pair_models[at].model = model, pair_models[at].pair = pair;
+        if (pair_models[at].n < n) pair_models[at].n = n;
+        memcpy(pair_models[at].m, (const void *)(uintptr_t)world, sizeof(float[16]) * (size_t)n);
+    } else if (at >= 0 && pair_models[at].pair == pair && pair_models[at].n >= n) {
+        memcpy((void *)(uintptr_t)world, pair_models[at].m, sizeof(float[16]) * (size_t)n);
+        if (model == k.model) pair_poses_kept++;
+    }
+}
+
+static void skel_calc(uint64_t model) {
     if (k.hide < 0) {
         const char *e = getenv("SAVAGEWIND_VR_HIDE_HEAD"), *a = getenv("SAVAGEWIND_VR_ARMS"),
                    *l = getenv("SAVAGEWIND_VR_LOG_ARMS");
@@ -716,6 +791,9 @@ void vr_skel_calc(uint64_t model) {
         if (arms) {
             for (int side = 0; side < 2; side++) solve_arm(world, s, side);
             apply_arms(world, s);
+            for (int side = 0; side < 2; side++)
+                if (s->wrist[side] >= 0) k.wrist_final[side] = vr_bm_pos(bone_m(world, s->wrist[side]));
+            k.wrist_final_frame = k.frames;
             if ((k.arm[0].ok || k.arm[1].ok) && !k.said_arms) LOG("[vr] Link's arms follow the controllers\n"), k.said_arms = true;
             if (k.log_arms > 0 && k.frames % (uint64_t)k.log_arms == 0)
                 LOG("[vr-arms] left %s %.3f m, right %s %.3f m from the target (wrist bend %.0f / %.0f deg, forearm "
@@ -873,6 +951,13 @@ void vr_skel_calc(uint64_t model) {
     else if (arms) {
         body_turn_other(world, skel);   // (his body's turn first, then the arms' as on him)
         apply_arms(world, s);           // (sleeves and gloves follow the arms)
+        for (int side = 0; side < 2; side++) {
+            if (s->wrist[side] < 0 || !k.arm[side].ok || k.wrist_final_frame + 2 < k.frames) continue;
+            float d = vr_v3_len(vr_v3_sub(vr_bm_pos(bone_m(world, s->wrist[side])), k.wrist_final[side]));
+            k.armor_off = d, k.armor_checks++;
+            if (d > k.armor_off_max) k.armor_off_max = d;
+            if (d > 0.03f) k.armor_off_n++;
+        }
     }
 }
 
@@ -881,8 +966,11 @@ void vr_skel_calc(uint64_t model) {
 // An arrow leaving the bow (rt_arrow_aim, main+0x931590): its AI has just made the way it flies, from where the arrow
 // is to the shooter's aim point (the camera's line for the player). In first person, for an arrow at Link (his shots),
 // that way becomes the line from the string hand through the bow hand, and the aim point moves onto it. SAVAGEWIND_VR_BOW_AIM=head keeps the game's.
-static uint64_t arrows_aimed;
+static uint64_t arrows_aimed, side_arrows_aimed;
 uint64_t vr_arrows_aimed(void) { return arrows_aimed; }
+uint64_t vr_side_arrows_aimed(void) { return side_arrows_aimed; }
+// the last shot's turn, from the way the game aimed it to the hands' (a multi-shot bow's other arrows get the same)
+static struct { vr_quat turn; uint64_t ns; } last_shot;
 
 void vr_arrow_aim(float *dir, const float *origin, float *target) {
     static int log = -1;
@@ -904,6 +992,8 @@ void vr_arrow_aim(float *dir, const float *origin, float *target) {
     vr_vec3 d = vr_v3_sub(wb.p, ws.p);
     if (vr_v3_len(d) < 0.08f) d = vr_quat_rotate(wb.q, vr_v3(0, 0, -1));   // hands together: where the bow points
     d = vr_v3_normalize(d);
+    last_shot.turn = vr_quat_between(vr_v3_normalize(vr_v3(dir[0], dir[1], dir[2])), d);
+    last_shot.ns = plat_now_ns();
     dir[0] = d.x, dir[1] = d.y, dir[2] = d.z;
     // the aim point the arrow then flies at: as far away as the game's, on the new line
     float far = vr_v3_len(vr_v3_sub(vr_v3(target[0], target[1], target[2]), o));
@@ -912,6 +1002,37 @@ void vr_arrow_aim(float *dir, const float *origin, float *target) {
     target[0] = t.x, target[1] = t.y, target[2] = t.z;
     arrows_aimed++;
     if (log) fprintf(stderr, "[vr-arrow] aimed by hand: %.3f %.3f %.3f\n", d.x, d.y, d.z);
+}
+
+// A multi-shot bow's other arrows (a Lynel bow's three: rt_arrow_aim_side, main+0x92cfbc): their own shoot step aims
+// each at the game's aim point turned by the bow's spread (3 deg), so they flew where the head looked while the main
+// arrow went along the bow (2026-11-27). Each gets the main arrow's turn (the game's aim to the hands'), the spread kept
+// about the bow's line; the same arrows only (near Link, his shot, the main one aimed in the last second).
+void vr_arrow_aim_side(uint64_t actor, float *dir, float *target) {
+    static int log = -1;
+    if (log < 0) log = getenv("SAVAGEWIND_VR_LOG_ARROWS") != NULL;
+    double lp[3];
+    if (!GUEST_OK(actor) || vr_opt(VR_OPT_BOW_AIM) != 0 || !vr_first_person_now() ||
+        !control_cell_get(&control_cell_player_pos, lp))
+        return;
+    bool own = *(const uint8_t *)(uintptr_t)(actor + 0xc79);   // (its start its own, not the actor's place)
+    const float *op = (const float *)(uintptr_t)(actor + (own ? 0xc30 : 0x3a4));
+    vr_vec3 o = own ? vr_v3(op[0], op[1], op[2]) : vr_v3(op[0], op[4], op[8]);   // (a 3x4 row-major matrix's column)
+    float near = vr_v3_len(vr_v3_sub(o, vr_v3((float)lp[0], (float)lp[1] + 1.2f, (float)lp[2])));
+    uint64_t now = plat_now_ns();
+    if (log)
+        fprintf(stderr, "[vr-arrow] other arrow from %.2f %.2f %.2f (%.2f m from Link) dir %.3f %.3f %.3f, the main one "
+                "%.2f s before\n", o.x, o.y, o.z, near, dir[0], dir[1], dir[2],
+                last_shot.ns ? (now - last_shot.ns) / 1e9 : -1.0);
+    if (!(near < 3.0f) || !last_shot.ns || now - last_shot.ns > 1000000000ull) return;
+    vr_vec3 d = vr_v3_normalize(vr_quat_rotate(last_shot.turn, vr_v3(dir[0], dir[1], dir[2])));
+    dir[0] = d.x, dir[1] = d.y, dir[2] = d.z;
+    float far = vr_v3_len(vr_v3_sub(vr_v3(target[0], target[1], target[2]), o));
+    if (!(far > 5.0f && far < 2000.0f)) far = 100.0f;
+    vr_vec3 t = vr_v3_add(o, vr_v3_scale(d, far));
+    target[0] = t.x, target[1] = t.y, target[2] = t.z;
+    side_arrows_aimed++;
+    if (log) fprintf(stderr, "[vr-arrow] other arrow turned with the main one: %.3f %.3f %.3f\n", d.x, d.y, d.z);
 }
 
 // The arc the arrow about to go would fly (BetterVR draws it while the bow is drawn): LOCAL space points (metres), from

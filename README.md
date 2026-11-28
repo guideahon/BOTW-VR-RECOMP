@@ -49,8 +49,8 @@ about 20 GB of free disk space, and a PC-VR headset with an OpenXR runtime: Ques
 1. Download the latest build from [Releases](https://github.com/guideahon/BOTW-VR-RECOMP/releases):
    - **Windows:** the file ending in `windows.zip`. Extract it to a folder you can write to, not Program Files. Every
      game executable in the VR package starts in VR by default (`SAVAGEWIND_VR=0` starts flat).
-   - **Linux PC:** the `BOTW-VR-*-Linux-x86_64.AppImage`.
-   - **Steam Frame (experimental):** the `BOTW-VR-*-Linux-SteamFrame-aarch64.AppImage`.
+   - **Linux PC:** the `BOTW-VR-Recomp-*-x86_64.AppImage`.
+   - **Steam Frame (experimental):** the `BOTW-VR-Recomp-*-SteamFrame-aarch64.AppImage`.
      Make the AppImage executable and run it; it starts in VR (`SAVAGEWIND_VR=0` to play flat). More in
      [docs/linux.md](docs/linux.md).
 2. Start it and choose the folder with your extracted game (`exefs/` and `romfs/`), then **Set up game files**. It

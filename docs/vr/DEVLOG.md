@@ -5,6 +5,62 @@
 What was done, how it was tested and what is left, newest first. Settings and tests: [../VR.md](../VR.md); reverse
 engineering: [re-notes.md](re-notes.md); the state of every feature: [FEATURES.md](FEATURES.md).
 
+## 2026-11-28 (the AppImage catalog's test)
+
+- **"Could not find a single window on screen":** the AppImage catalog's test machine has no Vulkan driver, so the app
+  stops at its window and shows its error box - but SDL's X11 box, in the runner's UTF-8 locale, names its window in
+  "UTF-8" text, which the catalog's xdotool (2016) cannot read: it counted no window. Reproduced on a GitHub runner
+  (`.github/workflows/catalog-test.yml`: `WM_NAME(UTF-8)`) and in a container like it; an all-ASCII error box is now
+  shown in the C locale (its name in plain text) and says that no Vulkan driver was found. `tools/linux/test_catalog_window.sh`:
+  26.2's AppImage fails, the new one shows its window in 1 s.
+- **Names:** the release files are `BOTW-VR-Recomp-<version>-...` without "Linux" (`-x86_64.AppImage`,
+  `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), and the AppImage's desktop file says BOTW VR Recomp: the project's
+  name, as the repository and the README, which the catalog compares.
+
+## 2026-11-27 (a multi-shot bow's other arrows; attacking with "four arms")
+
+- **A Lynel bow's other arrows went where the head looked** (the main one along the bow): they have a shoot step of
+  their own, main+0x92ce7c (the same FirstSpeed / TargetPos / IsShootByPlayer as the main one's, their spread in the
+  target). A new patch site after its direction (`arrow_aim_side`, main+0x92cfbc) gives each the main arrow's turn (the
+  game's aim to the hands'), so the 3-degree spread stays about the bow. Savage Lynel Bow (Weapon_Bow_032), hands at
+  -54 deg, head at 0: before, -0.4 to -4 deg; now all five -49 to -53. `tools/vr/save_equip.py` makes a save with it
+  equipped; `test_vr_bow.py --others 2` checks every arrow; regression case `bow-multishot`.
+- **Attacking, "as if Link had four arms":** a swing also pressed the game's attack, whose animation moved Link's body and
+  shoulders under the arms that follow the controllers. Options > VR > Swings play Link's attack is now off by default,
+  as BetterVR (the swing hits through the weapon's sensor; a new settings key, `vr_swing_anim`, so a saved value is not
+  read inverted). The sleeves and gloves were measured on the arms through the attacks (1088 checks, 0 off: not the
+  cause). `test_vr_attack_arms.py` (`--swing-attack 1`: the negative control); regression case `attack-no-anim`.
+
+- **Walking, "the whole body flickers" (Stereo):** each eye is a game frame half a step apart and both are drawn from the
+  left frame's place, but the right frame animated Link again: his torso, belt and legs were somewhere else in each eye
+  while the arms (the controllers, kept once a pair) matched. The left frame now keeps the bones of Link and of the models
+  on him (armor, weapons) and the right frame of the same pair draws those (vr_skel.c `pair_pose`;
+  `SAVAGEWIND_VR_PAIR_POSE=0` off; the `vr` command's `pair_poses_kept`). `test_vr_body_walk.py` (eyes 0 m apart, looking
+  down, walking): the lower picture differing 19-34% -> 2-9% (the grass and the light; 1.6% standing); regression case
+  `body-walk-stereo`.
+- **A torch's light on one side in one eye and on the other in the other (Stereo):** not a flicker - each eye kept its
+  own light picture after picture (left vs left 0.5%, left vs right 4.7%, standing at Kakariko at night), and with
+  symmetric fields (`SAVAGEWIND_VR_ASYMMETRIC=0`) both eyes were one picture (0.03%). The local lights (vertex shader
+  72cb759a00, one draw a light) make each pixel's view ray from the field in cb3 +0xd0 (tan x, -tan y, centre x, centre
+  y); the game leaves the centre 0, and each eye's field is off-centre, so the light was put on the wrong place of the
+  screen, one way in each eye. exec.c `cbuf_info` gives that block (told by content) the eye's centre, minus its
+  tangents (the sign measured against the symmetric picture). Kakariko at night 2.2-7.6% -> 0.5-1.2% between the eyes,
+  Lurelin 0.6-33% -> 0.4-2.3% (the rest at the picture's edges, by a torch's flame). `SAVAGEWIND_VR_RAY_FIX=0`: as the
+  game has it; the `vr` command's `rays_fixed`; regression case `fire-light-stereo`. Also not the game's random
+  generator (the right frame given the left's numbers, sead::Random::getU32 main+0xeb6e7c: tried, no change, removed).
+- **"With Performance on the climbing test's tree is not there": nothing was missing, the test missed.** Pictures there
+  (fake_xr, four sides, Performance on and off, and with the terrain's distant trees pushed out) show the same tree and
+  rocks, and what Link grips there is a rock face, not the tree. Ten walks with the same head yaw in one run: 2 of 10
+  climbs both with Performance on and off, at the same place; his heading drifts tens of degrees from one `goto` to the
+  next (even with the camera's yaw set), by a different amount each run (timing, so most likely the frame rate, which
+  Performance changes: not measured). The test's eight fixed yaws missed the face in whole runs, more often with
+  Performance on; draw-distance factors (0.67-1.2, the nearer actors kept) only moved that chance, single runs flipping
+  both ways. `test_vr_climb.py` now starts 6 m from the face's tall part and steers: every 0.4 s it turns the yaw by how
+  far his last steps were off the line to the face. On the first try every time: Performance on 4 of 4 (3 through
+  `regress.py`), off 1 of 1, the eye checks hanging and climbing up all passing (steered from the tree, 6 of 6, but that
+  line crossed a ~2 m rock he got on top of before "climbing up"). `climb-eye` runs with Performance on again; the draw
+  distance is unchanged (no fps to measure).
+
 ## 2026-11-26 (26.2's tester: cross-eyed hands while moving them, third-person rotation; both reproduced and fixed)
 
 - **Hands crossed while moving (Stereo, first person):** the head was located once a pair (2026-11-24), the

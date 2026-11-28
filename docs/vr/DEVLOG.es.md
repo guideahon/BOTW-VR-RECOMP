@@ -7,6 +7,70 @@ en [../VR.md](../VR.md) (variables, tests) y la ingeniería inversa en [re-notes
 probar con el visor puesto, en [CHECKLIST.es.md](CHECKLIST.es.md); el estado de cada feature, en
 [FEATURES.es.md](FEATURES.es.md).
 
+## 2026-11-28 (el test del catálogo de AppImage)
+
+- **"Could not find a single window on screen":** la máquina del test del catálogo de AppImage no tiene driver Vulkan,
+  así que el programa se detiene al crear la ventana y muestra su cuadro de error; pero el cuadro X11 de SDL, con el
+  locale UTF-8 del runner, nombra su ventana en texto "UTF-8", que el xdotool del catálogo (2016) no sabe leer: no
+  contaba ninguna ventana. Reproducido en un runner de GitHub (`.github/workflows/catalog-test.yml`: `WM_NAME(UTF-8)`)
+  y en un contenedor como él; un cuadro de error todo ASCII ahora se muestra con el locale C (su nombre en texto plano)
+  y dice que no se encontró un driver Vulkan. `tools/linux/test_catalog_window.sh`: el AppImage de 26.2 falla, el nuevo
+  muestra su ventana en 1 s.
+- **Nombres:** los archivos de la release son `BOTW-VR-Recomp-<versión>-...` sin "Linux" (`-x86_64.AppImage`,
+  `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), y el archivo .desktop del AppImage dice BOTW VR Recomp: el nombre
+  del proyecto, como el repositorio y el README, que el catálogo compara.
+
+## 2026-11-27 (las otras flechas de los arcos múltiples; atacar con "cuatro brazos")
+
+- **Las flechas extra de un arco de centaleón iban adonde miraba la cabeza** (la principal, por el arco): tienen su
+  propio paso de disparo, main+0x92ce7c (los mismos FirstSpeed / TargetPos / IsShootByPlayer que la principal, con la
+  dispersión en el objetivo). Un sitio nuevo después de su dirección (`arrow_aim_side`, main+0x92cfbc) les da el mismo
+  giro que a la principal (de la puntería del juego a la de las manos), y la dispersión de 3° queda alrededor del arco.
+  Arco de centaleón salvaje (Weapon_Bow_032), manos a -54°, cabeza a 0: antes -0,4 a -4°; ahora las cinco entre -49 y
+  -53. `tools/vr/save_equip.py` arma un save con ese arco equipado; `test_vr_bow.py --others 2` revisa cada flecha; caso
+  de regresión `bow-multishot`.
+- **Al atacar, "como si Link tuviera 4 brazos":** el tajo además apretaba el ataque del juego, cuya animación movía el
+  cuerpo y los hombros de Link debajo de los brazos que siguen a los controles. Opciones > VR > Los tajos hacen el ataque
+  de Link ahora viene apagado, como BetterVR (el tajo pega con el sensor del arma; clave nueva `vr_swing_anim`, para no
+  leer al revés un valor guardado). Las mangas y guantes se midieron sobre los brazos durante los ataques (1088
+  mediciones, 0 desfasadas: no eran la causa). `test_vr_attack_arms.py` (`--swing-attack 1`: el control negativo); caso
+  de regresión `attack-no-anim`.
+
+- **Al caminar "titila todo el cuerpo" (Stereo):** cada ojo es un cuadro del juego medio paso aparte y los dos se dibujan
+  desde el lugar del izquierdo, pero el cuadro derecho volvía a animar a Link: el torso, el cinturón y las piernas estaban
+  en otro lugar en cada ojo, mientras los brazos (los controles, guardados una vez por par) coincidían. Ahora el cuadro
+  izquierdo guarda los huesos de Link y de los modelos que lleva (armadura, armas) y el derecho del mismo par dibuja esos
+  (vr_skel.c `pair_pose`; `SAVAGEWIND_VR_PAIR_POSE=0` lo apaga; `pair_poses_kept` en el comando `vr`).
+  `test_vr_body_walk.py` (ojos a 0 m, mirando abajo, caminando): la parte de abajo distinta 19-34% -> 2-9% (el pasto y la
+  luz; 1,6% quieto); caso de regresión `body-walk-stereo`.
+- **La luz de una antorcha de un lado en un ojo y del otro en el otro (Stereo):** no era un parpadeo: cada ojo mantenía
+  su propia luz captura tras captura (izquierdo contra izquierdo 0,5%, izquierdo contra derecho 4,7%, quieto en Kakariko
+  de noche), y con campos simétricos (`SAVAGEWIND_VR_ASYMMETRIC=0`) los dos ojos eran una sola imagen (0,03%). Las luces
+  locales (vertex shader 72cb759a00, un dibujo por luz) arman el rayo de vista de cada píxel con el campo en cb3 +0xd0
+  (tan x, -tan y, centro x, centro y); el juego deja el centro en 0 y el campo de cada ojo está descentrado, así que la
+  luz caía en otro lugar de la pantalla, para un lado en cada ojo. exec.c `cbuf_info` le da a ese bloque (reconocido por
+  contenido) el centro del ojo, en menos sus tangentes (el signo medido contra la imagen simétrica). Kakariko de noche
+  2,2-7,6% -> 0,5-1,2% entre los ojos, Lurelin 0,6-33% -> 0,4-2,3% (lo que queda, en los bordes, junto a la llama de una
+  antorcha). `SAVAGEWIND_VR_RAY_FIX=0`: como lo hace el juego; `rays_fixed` en el comando `vr`; caso de regresión
+  `fire-light-stereo`. Tampoco era el generador de números aleatorios (darle al cuadro derecho los del izquierdo,
+  sead::Random::getU32 main+0xeb6e7c: probado, sin cambio, sacado).
+- **"Con Rendimiento encendido el árbol de la prueba de trepar no está": no faltaba nada, fallaba la prueba.** Las fotos
+  del lugar (fake_xr, cuatro lados, Rendimiento encendido y apagado, y con los árboles lejanos del terreno alejados con
+  `SAVAGEWIND_TREE_NEAR=8`) muestran el mismo árbol y las mismas rocas, y lo que Link agarra ahí es una pared de roca,
+  no el árbol. Diez caminatas con el mismo yaw de cabeza en una corrida: trepa 2 de 10 con Rendimiento encendido y 2 de
+  10 apagado, en el mismo lugar (~-963 1884); su rumbo se corre decenas de grados de un `goto` al siguiente (aun fijando
+  el yaw de la cámara con `goto swr:1 ... yaw=`), cada corrida distinto (el tiempo; lo más probable, los fps, que
+  Rendimiento cambia: no medido). Los ocho yaws fijos de la prueba erraban la pared en corridas enteras, más seguido con
+  Rendimiento encendido. Las bisecciones de la distancia de dibujado (`SAVAGEWIND_TRAVERSE_SCALE` 0,67, 0,75, 0,9, 1 y
+  1,2 pasaron; `SAVAGEWIND_NEAR_MIN` 160-450 a veces sí y a veces no, 450 una vez cada cosa; el caso base pasó 1 de 2)
+  solo movían esa probabilidad. Las distancias de recorrido que pasan por `rt_traverse_scale` ahí empiezan en 40 m (24 m
+  en Potato), lejos de los 10 m de la prueba. `test_vr_climb.py` ahora empieza a 6 m de la parte alta de la pared
+  (-958.5 233 1885.0) y la dirige: cada 0,4 s gira el yaw lo que sus últimos pasos se desviaron de la línea a la pared
+  (desde el árbol esa línea cruzaba una roca de ~2 m a la que se subía antes de la muestra "trepando"; así, 6 de 6
+  trepaban igual). Al primer intento siempre: Rendimiento encendido 4 de 4 (3 por `regress.py`), apagado 1 de 1; los
+  ojos colgado y trepando, todos dentro de lo pedido (0,08 m sobre la cabeza, 0,09-0,15 m de ella). `climb-eye` vuelve a
+  correr con Rendimiento encendido; la distancia de dibujado no cambia (no hay fps que medir).
+
 ## 2026-11-26 (el tester de 26.2: manos cruzadas al moverlas, rotación en tercera persona; los dos reproducidos y arreglados)
 
 - **Manos cruzadas al moverlas (Estéreo, primera persona):** la cabeza se ubicaba una vez por par (2026-11-24), los

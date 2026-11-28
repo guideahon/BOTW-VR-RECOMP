@@ -143,7 +143,7 @@ Resumen: 193 features; implementadas 173, validadas por IA 145, validadas por hu
 | A04 | Pega cuando la movés, más fuerte cuanto más rápido | BVR | ✅ | ✅ | ⬜ | Golpe suave y golpe fuerte: distinto daño |
 | A05 | Un golpe por tajo | BVR | ✅ | ✅ | ⬜ | Opciones > VR > Un golpe por tajo: no le pega dos veces al mismo |
 | A06 | Cortar árboles | BVR | ✅ | ✅ | ⬜ | Hachazo a un árbol: cae |
-| A07 | El tajo también hace el ataque de Link | Mod | ✅ | ✅ | ⬜ | Opciones > VR > Los tajos hacen el ataque de Link: apagado, pega sin la animación |
+| A07 | El tajo también hace el ataque de Link | Mod | ✅ | ✅ | ⬜ | Opciones > VR > Los tajos hacen el ataque de Link (apagado por defecto desde 2026-11-27: su animación movía el cuerpo de Link bajo las manos, "cuatro brazos"): apagado, pega sin la animación |
 | A08 | Perfil de tajos fáciles | BVR | ✅ | ✅ | ⬜ | Opciones > VR > Tajos fáciles |
 | A09 | Armas a dos manos con las dos manos | BVR | ✅ | ✅ | ⬜ | Opciones > VR > Agarre a dos manos; mandoble afuera, grip izquierdo en el mango: la hoja apunta a la otra mano |
 | A10 | Prender fuego, cortar cuerdas con movimiento | BVR | ✅ | ⬜ | ⬜ | Antorcha al pasto; cortar una cuerda |

@@ -18,6 +18,7 @@ static int from_env(int id, const char *e) {
     case VR_OPT_TURN_SPEED: return atof(e) >= 0.2 && atof(e) <= 3 ? (int)(atof(e) * 100 + 0.5) : 0;
     case VR_OPT_WALK: return !strcmp(e, "controller");
     case VR_OPT_LEFT_HANDED: return *e == '1';
+    case VR_OPT_SWING_ATTACK: return *e == '1';   // (off by default)
     case VR_OPT_RUMBLE_GAIN: return atof(e) > 0 && atof(e) <= 4 ? (int)(atof(e) * 100 + 0.5) : 0;
     case VR_OPT_SWING: return !strcmp(e, "easy");
     case VR_OPT_HEIGHT: return atoi(e) >= -50 && atoi(e) <= 50 ? atoi(e) : 0;             // (cm)

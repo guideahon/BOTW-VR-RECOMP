@@ -41,9 +41,22 @@ CASES = [
     ('pair-anchor-stereo', True, 'turning, the right eye drawn from another place (2026-11-24, Steam Frame); the view '
      'standing still then jumping 0.35 rad (2026-11-25)', [PY, 'tools/vr/test_vr_stereo_sync.py', '--exe', '{exe}',
                                                            '--save', '{save}', '--out', '{out}', '--mode', 'compat']),
+    ('body-walk-stereo', True, 'walking, Link\'s body posed again in the right eye\'s frame: "the whole body flickers" '
+     '(2026-11-27)', [PY, 'tools/vr/test_vr_body_walk.py', '--exe', '{exe}', '--save', '{save}', '--out', '{out}']),
+    ('fire-light-stereo', True, 'the lights worked out for a centred field in the off-centre eyes: a torch lit things on '
+     'one side in one eye and on the other in the other (2026-11-27; Lurelin at night 33% of the picture apart)',
+     [PY, 'tools/vr/test_vr_eye_match.py', '--exe', '{exe}', '--save', '{save}', '--out', '{out}', '--mode', 'stereo',
+      '--place', 'Lurelin', '--hour', '21', '--yaws', '90', '180', '--limit', '4']),
     ('third-person-stereo', True, 'third person: the left eye a frame behind orbiting (25.9) and the head\'s turn put on '
      'twice (26.2\'s tester, 2026-11-26)', [PY, 'tools/vr/test_vr_third_person.py', '--exe', '{exe}', '--save', '{save}',
                                             '--out', '{out}', '--mode', 'stereo']),
+    ('bow-multishot', True, 'a Lynel bow\'s other arrows flew where the head looked, the main one along the bow '
+     '(2026-11-27); the bow aimed by hand at all (2026-11-11)',
+     [PY, 'tools/vr/save_equip.py', '{save}', '{out}/save_lynel', 'Weapon_Bow_032', '&&', PY, 'tools/vr/test_vr_bow.py',
+      '--exe', '{exe}', '--save', '{out}/save_lynel', '--out', '{out}', '--others', '2']),
+    ('attack-no-anim', True, 'a swing played Link\'s attack animation under the hands that follow the controllers: '
+     '"as if Link had four arms" (2026-11-27); sleeves and gloves off the arms', [PY, 'tools/vr/test_vr_attack_arms.py',
+                                                                            '--exe', '{exe}', '--save', '{save}', '--out', '{out}']),
     ('climb-eye', True, 'climbing, the eye 0.38 m over Link\'s head and 0.32 m back (2026-11-26)',
      [PY, 'tools/vr/test_vr_climb.py', '--exe', '{exe}', '--save', '{save}', '--out', '{out}']),
     ('eyes-stereo', True, 'something drawn in one eye only, a darker eye, the eyes apart after a menu, in third person '

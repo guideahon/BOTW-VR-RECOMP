@@ -19,6 +19,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "../app_name.h"
 #include "../gamelib.h"
 #include "../platform.h"
 
@@ -394,7 +395,17 @@ void plat_fatal_notice(void) {
             snprintf(gpu, sizeof gpu, "\n\n%.*s", (int)(n < 600 ? n : 600), g);
         }
     }
-    snprintf(text, sizeof text, "Savage Wind stopped because of an error.%s%s%s%s%s%s", fatal, gpu,
+    // (no Vulkan driver at all - the window can't be made: SDL_CreateWindow's "doesn't implement the VK_KHR_surface
+    // extension", or the loader finding no driver - the start screen is drawn with Vulkan too, so this is what to say)
+    bool no_vulkan = !gpu[0] && (strstr(fatal, "VK_KHR_surface") || strstr(fatal, "VK_ERROR_INCOMPATIBLE_DRIVER") ||
+                                 strstr(fatal, "Vulkan support is either not configured") || strstr(fatal, "vkCreateInstance"));
+    snprintf(text, sizeof text, APP_NAME " stopped because of an error.%s%s%s%s%s%s%s", fatal, gpu,
+             // (in short lines: SDL's X11 box doesn't wrap, and a long one ran off a small screen's edges)
+             no_vulkan ? "\n\nNo Vulkan graphics driver was found. " APP_NAME " needs one, even for\n"
+                         "its start screen: install your distribution's Mesa Vulkan drivers\n"
+                         "(mesa-vulkan-drivers, vulkan-radeon, vulkan-intel...) or your graphics\n"
+                         "card's own driver."
+                       : "",
              gpu[0] ? "\n\nSavage Wind needs a graphics driver with Vulkan 1.3, or with Vulkan 1.2 and these extensions: VK_KHR_dynamic_rendering, VK_KHR_synchronization2, VK_EXT_extended_dynamic_state and VK_EXT_extended_dynamic_state2. Update Mesa or the "
                       "driver for the graphics card named above. If its newest driver still lacks them, that card cannot "
                       "run Savage Wind."
@@ -406,7 +417,25 @@ void plat_fatal_notice(void) {
              log_path && *log_path ? "\n\nDetails: " :
                                      "\n\nNo log file was available. If you started the app from a terminal, attach its output.",
              log_path && *log_path ? log_path : "");
-    if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Savage Wind", text, NULL)) {
+    // SDL's X11 dialog switches to the environment's locale and names its window in that locale's encoding: in a UTF-8
+    // one WM_NAME is "UTF-8" text, which older tools can't read (the AppImage catalog's test, xdotool 2016, then counted
+    // no window on screen at all, and refused the AppImage). Plain ASCII text needs nothing else: shown in the C locale
+    // its window is named in plain STRING. (Other text keeps the player's locale: a human reads that box fine.)
+    bool ascii = true;
+    for (const unsigned char *c = (const unsigned char *)text; *c; c++)
+        if (*c >= 0x80) { ascii = false; break; }
+    char *saved_lc_all = NULL;
+    if (ascii) {
+        const char *lc = getenv("LC_ALL");
+        saved_lc_all = lc ? strdup(lc) : NULL;
+        setenv("LC_ALL", "C", 1);
+    }
+    bool shown = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, APP_NAME, text, NULL);
+    if (ascii) {
+        if (saved_lc_all) setenv("LC_ALL", saved_lc_all, 1), free(saved_lc_all);
+        else unsetenv("LC_ALL");
+    }
+    if (shown) {
         const char *launcher = getenv("SAVAGEWIND_LAUNCHER_LOG");
         FILE *marker = launcher && *launcher ? fopen(launcher, "ab") : NULL;
         if (marker) {

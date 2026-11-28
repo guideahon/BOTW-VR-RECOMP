@@ -235,7 +235,7 @@ All the settings, as environment variables:
 | `SAVAGEWIND_VR_TWO_HANDS` | 1 | both hands on a large sword or a spear by the other hand's grip on it; `0`: off |
 | `SAVAGEWIND_VR_DROP` | 1 | the drop gesture (a grip held at the right hip); `0`: off |
 | `SAVAGEWIND_VR_SWING_HITS` | 1 | first person: the held weapon's attack sensor is on while it is swung, the damage by the swing's power; `0`: only in the game's attacks |
-| `SAVAGEWIND_VR_SWING_ATTACK` | 1 | a swing also presses the game's attack (Y: Link's attack, its combo and sound); `0`: the swing only hits (BetterVR's way). Only a swing whose hand really travels (peak 2 m/s for a slash, 1.5 m/s for a stab: a wrist flick is under 1) with a melee weapon in Link's hand presses it or turns the weapon's sensor on; the others count in the `vr` field `swings_ignored` |
+| `SAVAGEWIND_VR_SWING_ATTACK` | 0 | `1`: a swing also presses the game's attack (Y: Link's attack, its combo and sound); by default (`0`, since 2026-11-27: the animation moved Link's body under the hands, "four arms") the swing only hits (BetterVR's way). Only a swing whose hand really travels (peak 2 m/s for a slash, 1.5 m/s for a stab: a wrist flick is under 1) with a melee weapon in Link's hand presses it or turns the weapon's sensor on; the others count in the `vr` field `swings_ignored` |
 | `SAVAGEWIND_VR_WEAPON_HITS` | 1 | first person: the held weapon's actor (its physics, its hits) follows the hand; `0`: the animation's place |
 | `SAVAGEWIND_VR_BOW_ARC` | 1 | `0` / `off`: no arc of the shot while the bow is drawn; `dot`: only the aiming dot (10 m out, BetterVR's "only the aiming dot"); `faint`: every third dot (Options > VR > Bow trajectory) |
 | `SAVAGEWIND_VR_BOW_STRING` | 1 | first person, the bow drawn: its string's nock bones (String_L_2 / String_R_2 of the bow's model) at the string hand, at most 0.9 m from the grip (BetterVR's hook_PoseBowString); `0`: the draw animation's string |
@@ -264,6 +264,8 @@ All the settings, as environment variables:
 | `SAVAGEWIND_LOG_NEW_FS` / `SAVAGEWIND_WATCH_FS` | off | (development) each fragment shader the first time it draws, with the frame / the draws of the listed shader hashes (comma separated), at most a line a second each: how the scope's lens was told apart |
 | `SAVAGEWIND_VR_SNAP_DEGREES` | 45 | the step |
 | `SAVAGEWIND_VR_HEIGHT` | 1440 | the eye images' height (the width follows the headset's shape); Options > VR > Eye resolution (1080, 1440, 1800, 2160; applied live); with Video > Render scale above 100% the game draws them sharper. In VR the Video page leaves out the rows that do nothing there (fullscreen, monitor, window size, wide-screen fill, HUD at edges, field of view, frame rate, VSync) |
+| `SAVAGEWIND_VR_RAY_FIX` | 1 | `0`: the local lights' view ray as the game makes it, for a centred field (Stereo: a torch's light on one side in one eye and on the other in the other); `SAVAGEWIND_VR_RAY_SIGN="<x> <y>"` its signs (a check) |
+| `SAVAGEWIND_VR_PAIR_POSE` | 1 | `0`: Stereo's right frame animates Link again instead of drawing the left frame's pose (his body somewhere else in each eye while walking) |
 | `SAVAGEWIND_VR_ASYMMETRIC` | 1 | `0`: each eye's picture covers a symmetric field (the wider side mirrored) instead of the eye's own off-centre one |
 | `SAVAGEWIND_VR_DEPTH` | off | `1`: each eye also submits the game's scene depth (`XR_KHR_composition_layer_depth`) when the runtime offers its format. Off by default: a Quest 3 run through Virtual Desktop with it on lost the Vulkan device as the world came up (2026-11-19) |
 | `SAVAGEWIND_VR_TAA` | 1 | `0`: in stereo, SMAA in place of Anti-aliasing TAA for the run (the earlier behaviour) |
@@ -416,13 +418,14 @@ BOTW VR has its own version, apart from Savage Wind's (the recomp it is built on
 `<phase>-<release>` ("alpha-2026.11.26.2", shown as "alpha 2026.11.26.2"). The release is the date and that day's
 number, as the tag `vr-<release>`: set `BOTWVR_RELEASE` in the commit the tag is made on (`vr-release.yml` refuses a
 tag that does not match). The phase stays alpha until every serious bug is called fixed, then beta. The release files
-are `BOTW-VR-<version>-Windows.zip`, `-Linux-x86_64.AppImage` and `-Linux-SteamFrame-aarch64.AppImage`; logs start
+are `BOTW-VR-Recomp-<version>-Windows.zip`, `-x86_64.AppImage` and `-SteamFrame-aarch64.AppImage` (the project's name,
+no "Linux": the AppImage catalog's test asks for both); logs start
 with `BOTW VR alpha 2026.11.26.2 (Savage Wind 0.6.0-alpha.6)`.
 
 ### Release package (Windows)
 
 `make dist VR=1` is the upstream release (`make dist`, docs/BUILD-windows.md: `make deps-windows`,
-`tools/fetch_zig.sh`, `make gen-helper` first) with VR built in. Its zip, `build/dist/BOTW-VR-<version>-Windows.zip`,
+`tools/fetch_zig.sh`, `make gen-helper` first) with VR built in. Its zip, `build/dist/BOTW-VR-Recomp-<version>-Windows.zip`,
 holds no game code (the player's own dump is set up and the game code built on their PC at the first start, as
 upstream), defaults every game executable to VR, and adds:
 - `Savage Wind VR.exe` (tools/vr/vr_launcher.c): the game started from its own folder with `SAVAGEWIND_VR=1`; it
@@ -507,7 +510,9 @@ Without `VR=1` the device.c hooks are macros that make the plain Vulkan calls.
 | `python tools/vr/test_vr_drop.py --save <scratch save> [--item bow]` | as above | the drop gesture: the weapon or bow out, its grip held at the right hip; the quick selector's native drop reports the item dropped and done, and its model lies on the ground |
 | `python tools/vr/test_vr_swing_hits.py --save <scratch save>` | as above | hits by swinging: the melee weapon out, a fast cut with `SAVAGEWIND_VR_SWING_ATTACK=0`; two runs: with swing hits the weapon's sensor (its actor + 0xd09) is on in the cut and off before and after it, without them never |
 | `python tools/vr/test_vr_weapon_hits.py --save <scratch save>` | as above | the weapon's hits at the hand: the melee weapon out, the right controller held far to the right; two runs: with the hits on, the weapon's actor is moved (`weapons_moved`) and its matrices are at the controller, 0.7 m from Link; off, 0.4 m, where the animation holds it |
-| `python tools/vr/test_vr_bow.py --save <scratch save>` | as above | the bow aimed by hand: the bow taken out, the hands held 60 deg right of the head, a draw and a shot; the arrow flies within 8 deg of the hands' line and away from the head's; the left eye's pictures (fake_xr captures) show the arc's dots while drawing, not before and not after the shot |
+| `python tools/vr/test_vr_bow.py --save <scratch save> [--others 2]` | as above | the bow aimed by hand: the bow taken out, the hands held 60 deg right of the head, a draw and a shot; every arrow flies within 8 deg of the hands' line and away from the head's (a multi-shot bow, `tools/vr/save_equip.py` and `--others 2`: its other arrows too, turned with the main one at main+0x92cfbc); the left eye's pictures (fake_xr captures) show the arc's dots while drawing, not before and not after the shot |
+| `python tools/vr/test_vr_attack_arms.py --save <scratch save>` | as above | attacking shows two arms: the melee weapon out, four fast cuts; read as attacks, none presses the game's attack (its animation: "four arms", 2026-11-27), the swing still hits, and the armor's wrists stay on Link's (`armor_wrist_off`); `--swing-attack 1` is the negative control |
+| `python tools/vr/test_vr_body_walk.py --save <scratch save>` | as above | Stereo, walking: Link's body the same in both eyes (eyes 0 m apart, looking down at him; "the whole body flickers", 2026-11-27); the right frame draws the left frame's pose (`SAVAGEWIND_VR_PAIR_POSE=0` is the negative control) |
 
 For the case format and the distinction between replayable fake-runtime evidence and headset evidence, see
 [Writing repeatable VR regression cases](vr/TESTING.md).

@@ -149,6 +149,11 @@ def main():
                 time.sleep(0.1)
             time.sleep(1.5)
             game.cmd('press', btn, ok=False)
+            # (the first frames with the world back: at 160-240 fps the first one or two after the press were still
+            # the closing menu, its flat layer only - no eyes to compare, "no capture")
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 10 and game.cmd('vr', ok=False, timeout=30).get('world_view') is False:
+                time.sleep(0.02)
             shot('after_' + btn, 0.6, 4)
             tags += ['after_%s_%d' % (btn, i) for i in range(4)]
             send('stick {} 0 0'.format(R)); time.sleep(1.5)

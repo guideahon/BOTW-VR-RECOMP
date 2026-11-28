@@ -11,7 +11,7 @@ part of the common field that differs by more than --level grey levels (colour, 
 moving things (smoke, leaves, water) differ a little there too: compare a mode against that, not against zero.
 
   python tools/vr/test_vr_eye_match.py --save <scratch save> [--mode multiview|stereo|mono] [--place Kakariko]
-        [--hour 12] [--yaws 0 90 180 270] [--pitch -10] [--limit 1.0] [--out build/vr/eye_match]
+        [--hour 12] [--yaws 0 90 180 270] [--pitch -10] [--limit 1.0] [--out build/vr/eye_match] [--exe <game>]
 Passes when every capture's differing part is under --limit percent.
 """
 import argparse
@@ -64,7 +64,9 @@ def main():
     ap.add_argument('--level', type=int, default=24)
     ap.add_argument('--limit', type=float, default=1.0)
     ap.add_argument('--env', nargs='*', default=[])
+    ap.add_argument('--exe', default=T.EXE)
     a = ap.parse_args()
+    T.EXE = a.exe
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     live = os.path.join(out, 'fake_xr_live.txt')

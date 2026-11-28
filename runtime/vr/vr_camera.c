@@ -1210,6 +1210,17 @@ bool vr_neutral_heading(float *heading) {
     return ok;
 }
 
+// vr_skel.c (the game's thread, at a model's skeleton): the eye of the frame in progress and its pair's id,
+// without choosing it (a frame's eye is chosen by its clock step, before its updates: vr_pair.h); -1 out of stereo play
+int vr_frame_eye_peek(uint64_t *pair) {
+    if (!vr_world_view() || !stereo_on()) return -1;
+    pthread_mutex_lock(&lock);
+    int eye = c.pair.open ? c.pair.eye : c.pair.next;
+    *pair = c.pair.open || eye ? c.pair.id : c.pair.serial + 1;
+    pthread_mutex_unlock(&lock);
+    return eye;
+}
+
 // exec.c (the game's thread, translating the frame's commands): the eye the frame in progress is drawn for, in play in
 // stereo (0 left, 1 right; -1 otherwise). Fixed by the frame's first camera (vr_pair_camera), before its passes.
 int vr_frame_eye(void) {
@@ -1282,6 +1293,18 @@ bool vr_job_skip_doubled(void) {
     static _Atomic uint64_t n;
     if (n++ == 0) LOG("[vr] stereo: actors' job-push skips doubled (two game frames a moment)\n");
     return true;
+}
+
+// exec.c (the game's thread, translating the frame's commands): the field of the eye being drawn, in tangents - its
+// centre (cx, cy: the off-centre eye's) and half-size (tx, ty). false out of stereo play's world view, and in synchronous
+// stereo / multiview (one game frame for both eyes)
+bool vr_eye_field(float *cx, float *cy, float *tx, float *ty) {
+    if (!vr_world_view() || !stereo_on() || vr_sync_mode()) return false;
+    pthread_mutex_lock(&lock);
+    bool ok = c.cur.world && c.tan_x > 0 && c.tan_y > 0;
+    if (ok) *cx = c.off_x, *cy = c.off_y, *tx = c.tan_x, *ty = c.tan_y;
+    pthread_mutex_unlock(&lock);
+    return ok;
 }
 
 // mvec.c (TAA, the game's thread at the frame's composite): the offset vr_persp_offset gives the frame being drawn

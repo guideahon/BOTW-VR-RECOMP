@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """The bow aimed by hand (docs/VR.md), against fake_xr: equips the bow with the left-shoulder grip, holds the hands
 60 degrees right of the head (the head keeps looking ahead), draws with the right trigger for 3 s and looses. Passes when
-the runtime turned the shot (arrows_aimed) and the arrow, logged in flight by SAVAGEWIND_VR_LOG_MODELS, flies along the
-hands' line and not where the head looks, and the eye's pictures show the arc's yellow dots while drawing, not
+the runtime turned the shot (arrows_aimed) and every arrow, logged in flight by SAVAGEWIND_VR_LOG_MODELS, flies along the
+hands' line and not where the head looks (with a multi-shot bow equipped, --others 2: a Lynel bow's other two as well), and the eye's pictures show the arc's yellow dots while drawing, not
 before and not after the shot.
 
-  python tools/vr/test_vr_bow.py --save <scratch save> [--out build/vr/bow]
+  python tools/vr/test_vr_bow.py --save <scratch save> [--exe build/native-vr/savagewind] [--others 2] [--out build/vr/bow]
 """
 import argparse
 import math
@@ -17,6 +17,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import re_run  # noqa: E402
 import perf_routes  # noqa: E402
+import test_vr_game as T  # noqa: E402
 
 GL = '/user/hand/left/input/squeeze/value'
 TR = '/user/hand/right/input/trigger/value'
@@ -45,10 +46,14 @@ def script():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--save', required=True)
+    ap.add_argument('--exe', default=T.EXE)
+    ap.add_argument('--others', type=int, default=0,
+                    help='a multi-shot bow equipped: at least this many other arrows turned with the main one')
     ap.add_argument('--out', default='build/vr/bow')
     ap.add_argument('--capture-every', type=int, default=30,
                     help='fake_xr frames between screenshots (a larger gap reduces GPU readback stalls)')
     a = ap.parse_args()
+    T.EXE = os.path.abspath(a.exe)
     env = {'FAKE_XR_CAPTURE_EVERY': str(a.capture_every), 'SAVAGEWIND_VR_LOG_MODELS': 'Weapon_Arrow',
            'SAVAGEWIND_VR_LOG_ARROWS': '1'}
     game, proc, log = re_run.boot(a.save, a.out, env, script())
@@ -75,7 +80,8 @@ def main():
         t_shot = time.time()   # the trigger let go at 12: the arc gone
         while now() < base + 14:
             time.sleep(0.1)
-        aimed = game.cmd('vr', ok=False).get('arrows_aimed', 0)
+        st = game.cmd('vr', ok=False)
+        aimed, side = st.get('arrows_aimed', 0), st.get('side_arrows_aimed', 0)
         t_after = time.time()
     finally:
         perf_routes.stop_game(game, proc, log)
@@ -84,16 +90,19 @@ def main():
     hand = re.findall(r'\[vr-arrow\] aimed by hand: (\S+) \S+ (\S+)', text)
     head_h = math.degrees(math.atan2(float(shot[0][0]), float(shot[0][1]))) if shot else None
     hand_h = math.degrees(math.atan2(float(hand[0][0]), float(hand[0][1]))) if hand else None
-    # the arrow in flight: a Weapon_Arrow model 4..10 m from Link
-    flown = []
-    for m in re.finditer(r'\[vr-model\] \d+ Weapon_Arrow\S* \S+ (\S+) \S+ (\S+)', text):
-        dx, dz = float(m.group(1)) - lx, float(m.group(2)) - lz
-        if 4 < math.hypot(dx, dz) < 10:
-            flown.append(math.degrees(math.atan2(dx, dz)))
-    fly_h = sum(flown) / len(flown) if flown else None
-    print('arrows aimed', aimed, '| head heading', head_h, '| hands', hand_h, '| arrow flew', fly_h)
-    ok = (aimed >= 1 and hand_h is not None and fly_h is not None and abs(fly_h - hand_h) < 8 and
-          (head_h is None or abs(fly_h - head_h) > 20))
+    # each arrow in flight (a Weapon_Arrow model, by its address): its heading when first 4..10 m from Link. A multi-
+    # shot bow's other arrows (2026-11-27: they flew where the head looked) must go along the hands too, within the
+    # bow's spread
+    flown = {}
+    for m in re.finditer(r'\[vr-model\] \d+ Weapon_Arrow\S* (\S+) (\S+) \S+ (\S+)', text):
+        dx, dz = float(m.group(2)) - lx, float(m.group(3)) - lz
+        if 4 < math.hypot(dx, dz) < 10 and m.group(1) not in flown:
+            flown[m.group(1)] = math.degrees(math.atan2(dx, dz))
+    fly = sorted(flown.values())
+    print('arrows aimed', aimed, '(others', side, ') | head heading', head_h, '| hands', hand_h, '| arrows flew',
+          ['%.1f' % f for f in fly])
+    ok = (aimed >= 1 and hand_h is not None and fly and all(abs(f - hand_h) < 8 for f in fly) and
+          (head_h is None or all(abs(f - head_h) > 20 for f in fly)) and side >= a.others)
     # the arc's dots in the left eye's pictures: before the draw, during it and after the shot
     def dots(path):
         b = open(path, 'rb').read()

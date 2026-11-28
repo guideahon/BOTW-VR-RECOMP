@@ -69,6 +69,16 @@ static inline vr_vec3 vr_quat_rotate(vr_quat q, vr_vec3 v) {  // q v q*
     vr_vec3 t = vr_v3_scale(vr_v3_cross(u, v), 2.0f);
     return vr_v3_add(vr_v3_add(v, vr_v3_scale(t, q.w)), vr_v3_cross(u, t));
 }
+// The shortest turn taking the unit vector a to the unit vector b (opposite ones: half a turn about any perpendicular)
+static inline vr_quat vr_quat_between(vr_vec3 a, vr_vec3 b) {
+    vr_vec3 ax = vr_v3_cross(a, b);
+    float s = vr_v3_len(ax), c = vr_v3_dot(a, b);
+    if (s < 1e-6f) {
+        if (c > 0) return vr_quat_identity();
+        ax = fabsf(a.x) < 0.9f ? vr_v3_cross(a, vr_v3(1, 0, 0)) : vr_v3_cross(a, vr_v3(0, 1, 0));
+    }
+    return vr_quat_axis_angle(ax, atan2f(s, c));
+}
 // The rotation's heading about +Y in XR terms: 0 when its forward (-Z) stays -Z, +a after vr_quat_yaw(a). Its pitch and
 // roll are left out (the forward projected on the floor); straight up or down it is 0.
 static inline float vr_quat_heading(vr_quat q) {

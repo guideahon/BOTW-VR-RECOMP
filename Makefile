@@ -460,7 +460,7 @@ dmg: app
 # out: every Vulkan driver installs the loader in System32. Saves and game files go next to the exe at run time.
 # Needs: Windows 10+ x64, a Vulkan 1.3 driver, an SSE4.2 CPU (GENARCH_COMPAT x86-64-v2; checked at startup).
 DIST     := build/dist/Savage Wind
-DIST_ZIP := $(if $(filter 1,$(VR)),BOTW-VR-$(VERSION)-Windows.zip,SavageWind-$(VERSION)-windows.zip)
+DIST_ZIP := $(if $(filter 1,$(VR)),BOTW-VR-Recomp-$(VERSION)-Windows.zip,SavageWind-$(VERSION)-windows.zip)
 WIN_B    := build/win-release
 # The release runtime is profile-guided with ThinLTO (tools/pgo/runtime.profdata: +19..33% fps at 1080p/1440p TAA on a
 # 5700X3D + 3080 Ti, see tools/pgo/README.md). DIST_PGO= and DIST_LTO= (empty) build it plain, e.g. with a clang other

@@ -352,6 +352,10 @@ SITES = [
     # two game frames (tools/patches.py _job_push_skip; the VR mode doubles it in stereo, as BetterVR does)
     Site('job_push_skip', 'code', '52800048 391a1008 f942cc00 b4000000/ff00001f 14000000/fc000000 d65f03c0', 0),
     Site('arrow_aim', 'code', '1e200908 1e2009ad 1e200929 aa1403e0 1e2a094e', 3),
+    # a multi-shot bow's other arrows (the Lynel bows' spread, LeadShot): their own shoot step (main+0x92ce7c), the
+    # unit direction s8 s9 s11 just made from the arrow's start to its target (+0xc3c, the spread in it), about to load
+    # the first speed (tools/patches.py _arrow_aim_side; the VR mode turns them with the main arrow)
+    Site('arrow_aim_side', 'code', '1e200908 1e200929 1e20096b bd4c4a8c aa1f03f5', 3),
     # the lifted object thrown (the grab-throw action's throw, main+0xc76d60, at its animation's throw frame): its
     # velocity just made at sp + 4 (Link's forward x ThrowSpeedF, + ThrowSpeedY up), handed to the object next
     # (tools/patches.py _grab_throw; the VR mode throws it with the hand's own velocity, as BetterVR)
@@ -502,6 +506,7 @@ OPTIONAL_GROUPS = [
     ('lookat_update',),  # (the free camera: without it Home does nothing)
     ('skel_calc',),  # (VR: Link's bones; without it his head stays in first person)
     ('arrow_aim',),
+    ('arrow_aim_side',),  # (VR: a multi-shot bow's other arrows aimed by hand too; without them they follow the head)
     ('grab_throw',),  # (VR: objects thrown with the hand's velocity; without it the game's throw)
     ('ui_project',),  # (VR: HUD markers on the floating panel; without it they sit where a flat screen has them)
     ('weapon_bind',),
@@ -649,6 +654,7 @@ KNOWN = {
         'lookat_update': 0x7000eb2d5c,
         'skel_calc': 0x7000f97900,
         'arrow_aim': 0x7000931590,
+        'arrow_aim_side': 0x700092cfbc,
         'grab_throw': 0x7000c76e20,
         'ui_project': 0x7000e1de34,
         'weapon_bind': 0x7001525fb8,

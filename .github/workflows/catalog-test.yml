@@ -1,0 +1,85 @@
+# The AppImage catalog's test (https://github.com/AppImage/appimage.github.io, code/worker.sh) on the same kind of
+# runner: the AppImage started with no arguments under firejail --net=none on Xvfb, no window manager, no Vulkan driver,
+# no game files; it must show a window within 30 seconds. When it doesn't, every thread's backtrace, the logs and the
+# screen are kept as the job's artifact. Run it on a release's AppImage (url input) or on a branch push of this file.
+name: AppImage catalog test
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: The AppImage to test (a release asset's download URL)
+        required: true
+  push:
+    branches: [catalog-test]
+
+jobs:
+  window:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      APPIMAGE_URL: ${{ inputs.url || 'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-2026.11.28.1/BOTW-VR-Recomp-alpha-2026.11.28.1-x86_64.AppImage' }}
+    steps:
+      - name: The catalog's packages (code/worker.sh's workflow), and gdb for the backtraces
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q imagemagick xvfb icewm x11-utils x11-apps xdotool libgl1-mesa-dri mesa-utils \
+            libosmesa6 libsdl2-2.0-0 libfuse2 gdb >/dev/null
+          dpkg -l | grep -iE 'vulkan|zenity|fuse' || true
+          ls /usr/share/vulkan/icd.d /etc/vulkan/icd.d 2>&1 || true
+          env | sort | grep -E '^(XDG|DBUS|HOME|USER|DISPLAY|WAYLAND)' || true
+      - name: The catalog's firejail (Alpine, git 2023-08-25)
+        run: |
+          mkdir fj && cd fj
+          FILE=$(wget -q "http://dl-cdn.alpinelinux.org/alpine/v3.13/main/x86_64/" -O - | grep musl-1 | head -n 1 | cut -d '"' -f 2)
+          wget -c -q "http://dl-cdn.alpinelinux.org/alpine/v3.13/main/x86_64/$FILE"
+          wget -c -q https://github.com/AppImage/appimage.github.io/releases/download/deps/alpine-firejail-git20230825.tar.gz
+          mkdir firejail
+          sudo tar xf alpine-firejail-git20230825.tar.gz
+          sudo tar xf musl-*.apk -C ./firejail/ 2>/dev/null || true
+          sudo tar xf firejail-0*.apk -C ./firejail/ 2>/dev/null || true
+          sudo cp -Rf ./firejail/etc/* /etc/; sudo cp -Rf ./firejail/lib/* /lib/; sudo cp -Rf ./firejail/usr/* /usr/
+          sudo chown root:root /usr/bin/firejail; sudo chmod u+s /usr/bin/firejail
+          firejail --version | head -1
+      - name: Run it as the catalog does
+        run: |
+          mkdir -p out "$HOME/.local/share/appimagekit" && touch "$HOME/.local/share/appimagekit/no_desktopintegration"
+          wget -q -O BeingTested.AppImage "$APPIMAGE_URL" && chmod +x BeingTested.AppImage
+          Xvfb :99 -screen 0 800x600x24 >/dev/null 2>&1 &
+          export DISPLAY=:99
+          sleep 2
+          sudo sysctl vm.mmap_min_addr=0
+          sudo sysctl kernel.unprivileged_userns_clone=1 || true
+          firejail --quiet --noprofile --net=none --appimage ./BeingTested.AppImage > out/app-stdout.txt 2>&1 &
+          APID=$!
+          START=$(date +%s); RESULT="no window after 30 s"
+          for i in $(seq 1 30); do
+            sleep 1
+            if ! kill -0 $APID 2>/dev/null; then RESULT="exited after $i s"; break; fi
+            if timeout 5 xdotool search --onlyvisible --name '.' >/dev/null 2>&1; then RESULT="PASS: a window after $i s"; break; fi
+          done
+          echo "RESULT: $RESULT" | tee out/result.txt
+          xwininfo -root -tree > out/windows.txt 2>&1 || true
+          for w in $(xwininfo -root -tree | grep -E '^ +0x' | awk '{print $1}'); do
+            echo "== $w"; xprop -id $w WM_NAME _NET_WM_NAME WM_CLASS _NET_WM_WINDOW_TYPE 2>&1; xwininfo -id $w | grep -E 'Map State|Override|geometry'
+          done | tee out/props.txt
+          echo "visible+name: $(xdotool search --onlyvisible --name '.' 2>&1 | tr '\n' ' ') rc=$?"
+          echo "name only: $(xdotool search --name '.' 2>&1 | tr '\n' ' ')"
+          echo "visible only: $(xdotool search --onlyvisible --name '' 2>&1 | tr '\n' ' ')"
+          xdotool version || true
+          import -window root out/screen.png 2>/dev/null || true
+          ps -eo pid,ppid,stat,etimes,wchan:32,args > out/ps.txt
+          for p in $(pgrep -f 'usr/bin/savagewind'); do
+            for t in /proc/$p/task/*; do echo "$(cat $t/comm) $(sudo cat $t/wchan) $(sudo cat $t/stack 2>/dev/null | head -8 | tr '\n' ' ')"; done > out/threads-$p.txt
+            sudo gdb -p $p -batch -ex 'set pagination off' -ex 'thread apply all bt 25' > out/gdb-$p.txt 2>&1 || true
+          done
+          for p in $(pgrep -f 'AppRun|zenity|xmessage|kdialog|notify-send'); do sudo gdb -p $p -batch -ex 'bt 25' >> out/gdb-others.txt 2>&1 || true; done
+          find "$HOME/.local/share/savagewind" /tmp -maxdepth 3 -name 'savagewind*.log' -exec cp --backup=numbered {} out/ \; 2>/dev/null || true
+          sudo kill $APID 2>/dev/null || true
+          cat out/result.txt out/ps.txt; tail -n 60 out/savagewind.log 2>/dev/null; cat out/savagewind-launcher.log 2>/dev/null
+          for f in out/gdb-*.txt; do echo "== $f"; grep -E '^(Thread|#)' "$f" | head -150; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: catalog-test
+          path: out/

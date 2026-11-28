@@ -662,7 +662,7 @@ void build_vr_items(std::vector<Item> &v) {
     v.push_back(vr_toggle("Easy swings", "Slower swings count as attacks too (BetterVR's easy profile).", VR_OPT_SWING,
                           true));
     v.push_back(vr_toggle("Swings play Link's attack", "Off: a swing only hits, Link does not play his attack "
-                          "(as BetterVR).", VR_OPT_SWING_ATTACK, false));
+                          "(as BetterVR).", VR_OPT_SWING_ATTACK, true));
     v.push_back(vr_toggle("Hit by swinging", "The weapon hurts what it touches while you swing it, harder the faster "
                           "the swing.", VR_OPT_SWING_HITS, false));
     v.push_back(vr_toggle("Hits where your hand is", "The weapon hits where you hold it, not where Link's animation "

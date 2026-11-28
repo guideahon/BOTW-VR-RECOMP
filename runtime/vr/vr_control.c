@@ -19,6 +19,7 @@ bool vr_input_state(uint64_t *buttons, int32_t sticks[4], uint64_t *syncs);  // 
 void vr_hand_tracking_state(bool active[2], bool valid[2], bool tracked[2]);  // runtime/vr/vr_input.c
 uint64_t vr_rumble_pulses(void);  // runtime/vr/vr_input.c
 uint64_t vr_arrows_aimed(void);   // runtime/vr/vr_skel.c
+uint64_t vr_side_arrows_aimed(void);   // runtime/vr/vr_skel.c
 uint64_t vr_arc_frames(void);     // runtime/vr/xr_vulkan.c
 uint64_t vr_weapons_moved(void);  // runtime/vr/vr_skel.c
 uint64_t vr_swing_hits(void);     // runtime/vr/vr_skel.c
@@ -99,6 +100,8 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     }
     control_field_int(r, "stereo_pairs", (int64_t)vr_stereo_pairs());
     { extern uint64_t vr_pair_hands_kept(void); control_field_int(r, "pair_hands_kept", (int64_t)vr_pair_hands_kept()); }
+    { extern uint64_t vk_vr_rays_fixed(void); control_field_int(r, "rays_fixed", (int64_t)vk_vr_rays_fixed()); }
+    { extern uint64_t vr_pair_poses_kept(void); control_field_int(r, "pair_poses_kept", (int64_t)vr_pair_poses_kept()); }
     control_field_int(r, "pair_anchors", (int64_t)vr_pair_anchors());
     {
         extern void vr_anchor_checks(uint64_t *frames, uint64_t *mismatch);
@@ -139,12 +142,22 @@ static void cmd_vr(int argc, char **argv, ControlReply *r) {
     control_field_bool(r, "motion_shield", shield);
     control_field_int(r, "rumble_pulses", (int64_t)vr_rumble_pulses());
     control_field_int(r, "arrows_aimed", (int64_t)vr_arrows_aimed());
+    control_field_int(r, "side_arrows_aimed", (int64_t)vr_side_arrows_aimed());
+    {
+        extern void vr_skel_armor_off(float *, float *, uint64_t *, uint64_t *);
+        float last, max;
+        uint64_t checks, off;
+        vr_skel_armor_off(&last, &max, &checks, &off);
+        control_field_num(r, "armor_wrist_off", last), control_field_num(r, "armor_wrist_off_max", max);
+        control_field_int(r, "armor_checks", (int64_t)checks), control_field_int(r, "armor_off_frames", (int64_t)off);
+    }
     { extern uint64_t vk_rune_aims(void); control_field_int(r, "rune_aims", (int64_t)vk_rune_aims()); }  // (exec.c: rune picks set by VR, the hand or the eye's axis)
     control_field_int(r, "arc_frames", (int64_t)vr_arc_frames());
     control_field_int(r, "weapons_moved", (int64_t)vr_weapons_moved());
     control_field_int(r, "swing_hits", (int64_t)vr_swing_hits());
     { extern uint64_t vr_kept_turns(void); control_field_int(r, "kept_turns", (int64_t)vr_kept_turns()); }
     { extern uint32_t vr_swings_ignored(void); control_field_int(r, "swings_ignored", (int64_t)vr_swings_ignored()); }
+    { extern uint32_t vr_swing_attacks(void); control_field_int(r, "swing_attacks", (int64_t)vr_swing_attacks()); }
     { extern uint32_t vr_no_shake(void); control_field_int(r, "no_shake", (int64_t)vr_no_shake()); }
     { extern uint64_t vr_guide_frames(void); control_field_int(r, "slot_guide_frames", (int64_t)vr_guide_frames()); }
     { extern uint32_t vr_hand_throws(void); control_field_int(r, "hand_throws", (int64_t)vr_hand_throws()); }

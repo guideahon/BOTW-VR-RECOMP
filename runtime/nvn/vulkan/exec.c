@@ -5463,6 +5463,10 @@ static bool fxaa_patch(uint64_t addr, uint64_t size, VkDescriptorBufferInfo *out
 static struct { uint64_t addr[16]; VkDescriptorBufferInfo bi; } gsnap_cs;
 
 // Constant buffer k of a stage (renderer.m bind_cbufs), copied into transient memory.
+#ifdef SW_VR
+static uint64_t vr_rays_fixed;   // (cbuf_info: the lights' view rays given the eye's centre; the `vr` command)
+uint64_t vk_vr_rays_fixed(void) { return vr_rays_fixed; }
+#endif
 static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32_t gx, uint32_t gy, uint32_t gz) {
     static const uint8_t zeros[0x10000];
     if (k == 0) {
@@ -5514,6 +5518,58 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
         return ubo_span(vk_transient_copy(zeros, size, 256), size);
     }
 #ifdef SW_VR
+    {   // (research) SAVAGEWIND_VR_CBUF_DIFF=<present>: from that present on, for 4 presents, every constant buffer a draw
+        // binds - the eye, the shader, the slot, the address, the size, a hash of its bytes and its first 8 floats - to
+        // the log ([cbuf]); a pair's two frames compared show what the game changes between the eyes (fire light, 2026-11-27)
+        // (SAVAGEWIND_VR_CBUF_DIFF=<file>: from the present after that file appears, instead of a present number)
+        static long long at = -2;
+        static const char *trig;
+        static uint64_t last_pc = ~0ull;
+        if (at == -2) {
+            trig = getenv("SAVAGEWIND_VR_CBUF_DIFF");
+            at = trig && *trig >= '0' && *trig <= '9' ? atoll(trig) : -1;
+            if (at >= 0) trig = NULL;
+        }
+        extern uint64_t renderer_present_count(void);
+        if (trig && at < 0 && renderer_present_count() != last_pc) {
+            last_pc = renderer_present_count();
+            FILE *tf = fopen(trig, "r");
+            if (tf) fclose(tf), at = (long long)last_pc + 1;
+        }
+        if (at >= 0) {
+            extern int vr_translating_eye(void);
+            uint64_t pc = renderer_present_count();
+            if (pc >= (uint64_t)at && pc < (uint64_t)at + 4) {
+                const uint8_t *b = (const uint8_t *)(uintptr_t)r.addr;
+                uint64_t h = 1469598103934665603ull;
+                for (uint64_t i = 0; i < size; i++) h = (h ^ b[i]) * 1099511628211ull;
+                const float *f = (const float *)(const void *)b;
+                static int full = -1;   // SAVAGEWIND_VR_CBUF_FULL=1: each distinct block once a present, all its floats ([cbuf-full])
+                if (full < 0) full = getenv("SAVAGEWIND_VR_CBUF_FULL") != NULL;
+                if (full) {
+                    static uint64_t seen[1 << 16], seen_pc;
+                    if (seen_pc != pc) memset(seen, 0, sizeof seen), seen_pc = pc;
+                    uint64_t key = h ^ ((uint64_t)st.program->stages[stage].code_addr * 31 + (uint64_t)k);
+                    uint64_t *slot = &seen[key & 0xffff];
+                    if (*slot != key) {
+                        *slot = key;
+                        char line[16384];
+                        int o = snprintf(line, sizeof line, "[cbuf-full] p %llu eye %d st %d sh %llx k %d n %llu h %016llx:",
+                                         (unsigned long long)pc, vr_translating_eye(), stage,
+                                         (unsigned long long)st.program->stages[stage].code_addr, k, (unsigned long long)size,
+                                         (unsigned long long)h);
+                        for (uint64_t i = 0; i + 4 <= size && i < 4096 && o < (int)sizeof line - 24; i += 4)
+                            o += snprintf(line + o, sizeof line - (size_t)o, " %.6g", f[i / 4]);
+                        LOG("%s\n", line);
+                    }
+                }
+                LOG("[cbuf] p %llu eye %d st %d sh %llx k %d a %llx n %llu h %016llx f %g %g %g %g %g %g %g %g\n",
+                    (unsigned long long)pc, vr_translating_eye(), stage, (unsigned long long)st.program->stages[stage].code_addr,
+                    k, (unsigned long long)r.addr, (unsigned long long)size, (unsigned long long)h,
+                    f[0], f[1], f[2], f[3], size >= 32 ? f[4] : 0, size >= 32 ? f[5] : 0, size >= 32 ? f[6] : 0, size >= 32 ? f[7] : 0);
+            }
+        }
+    }
     {   // (vr_sync.c: where the camera is in the draws' constants, SAVAGEWIND_VR_SYNC_CENSUS=1)
         extern void vr_sync_census(uint64_t, int, int, const void *, uint64_t, int, int);
         NvnTexture *t0 = st.rt.ncolor ? st.rt.color[0] : st.rt.depth;
@@ -5587,6 +5643,37 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
             mvc[ms].addr = hud_src ? 0 : r.addr, mvc[ms].size = r.size, mvc[ms].half = half, mvc[ms].gen = gen, mvc[ms].serial = uub_serial;
             mvc[ms].mask = mask, mvc[ms].chunk = active, mvc[ms].d = dd;
             return dd;
+        }
+    }
+    {   // Stereo: the local lights' view ray (2026-11-27: "the light lights things from the left in one eye and from the
+        // right in the other"). The lights (a torch's, a lamp's: vertex shader 72cb759a00 on 1.9.0, one draw a light)
+        // make each pixel's view ray from the camera's field: cb3 +0xd0 (tan x, -tan y, centre x, centre y), the ray
+        // ndc * tan - centre. The game leaves the centre 0 - its projections are centred - but each eye's is off-centre
+        // (vr_camera.c), so the light was worked out for the wrong place on the screen: shifted one way in the left eye
+        // and the other in the right (Kakariko at night: the torch's light on the rock to its right in one eye, on the
+        // wall to its left in the other; with symmetric fields both eyes 0.03% apart). The block, told by content (the
+        // eye's own half-size there, the centre 0), gets the eye's centre. SAVAGEWIND_VR_RAY_FIX=0: as the game has it;
+        // SAVAGEWIND_VR_RAY_SIGN="<x> <y>": the signs (a check: "1 1" put the light
+        // further off, 5.2% between the eyes; "-1 1" matched the eyes but not the symmetric picture)
+        static int on = -1;
+        static float sx = -1, sy = -1;   // (the ray's centre is minus the field's: measured, against symmetric fields)
+        if (on < 0) {
+            const char *e = getenv("SAVAGEWIND_VR_RAY_FIX"), *g = getenv("SAVAGEWIND_VR_RAY_SIGN");
+            on = !(e && *e == '0');
+            if (g) sscanf(g, "%f %f", &sx, &sy);
+        }
+        extern bool vr_eye_field(float *, float *, float *, float *);
+        float cx, cy, tx, ty;
+        if (on && stage == 0 && k == 3 && size >= 0xe0 && size <= 0x1000 && vr_eye_field(&cx, &cy, &tx, &ty) &&
+            (cx != 0 || cy != 0)) {
+            const float *g = (const float *)(uintptr_t)r.addr;
+            if (fabsf(g[52] - tx) < 1e-3f * tx && fabsf(g[53] + ty) < 1e-3f * ty && g[54] == 0 && g[55] == 0) {
+                float tmp[0x1000 / 4];
+                memcpy(tmp, g, size);
+                tmp[54] = sx * cx, tmp[55] = sy * cy;
+                vr_rays_fixed++;
+                return ubo_span(vk_transient_copy(tmp, size, 256), size);
+            }
         }
     }
     if (sync_right && sync_cam_buf(r.addr, size)) {   // (synchronous stereo's right pass: the right eye's camera in the

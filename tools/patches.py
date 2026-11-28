@@ -1220,6 +1220,21 @@ def _arrow_aim(gen, a):
             f'  /* {a:#x}: mov x0, x20 (an arrow leaving the bow: its direction made) */')
 
 
+# A multi-shot bow's other arrows (a Lynel bow's three, LeadShot): each has its own shoot step (main+0x92ce7c, x20 the
+# arrow actor): the unit direction s8 s9 s11 from its start (actor + 0x3a4 / 0x3b4 / 0x3c4, or + 0xc30 with + 0xc79 set)
+# to its target (+ 0xc3c, copied to x29 - 0x38: sp + 0xa30, which goes out as its TargetPos) has just been made; next
+# the first speed is loaded. The runtime may turn both (rt_arrow_aim_side, runtime/hle/arrow.c; the VR mode turns them
+# as the main arrow was turned, so the spread stays about the bow's line), then the displaced ldr s12, [x20, #0xc48].
+def _arrow_aim_side(gen, a):
+    assert _word(gen, a) == 0xbd4c4a8c, hex(_word(gen, a))  # ldr s12, [x20, #0xc48]
+    return ('{ extern void rt_arrow_aim_side(uint64_t, float *, float *); '
+            'float d[3] = { rt_vf32(c, 8), rt_vf32(c, 9), rt_vf32(c, 11) }; '
+            'rt_arrow_aim_side(c->x[20], d, (float *)(uintptr_t)(c->sp + 0xa30)); union { float f; uint32_t u; } k; '
+            'k.f = d[0]; c->v[8] = k.u; k.f = d[1]; c->v[9] = k.u; k.f = d[2]; c->v[11] = k.u; '
+            'c->v[12] = LD32(c->x[20] + 0xc48); }'
+            f'  /* {a:#x}: ldr s12, [x20, #0xc48] (a multi-shot bow\'s other arrow: its direction made) */')
+
+
 # A lifted object thrown: the grab-throw action's throw (main+0xc76d60, called from its calc_ main+0xc76f54 when the
 # animation reaches its throw frame) has just made the throw velocity at sp + 4 (Link's forward, the player matrix's
 # z column at + 0x1b20 / 0x1b30 / 0x1b40, x (ThrowSpeedF + charge x OverThrowInertiaRate), plus ThrowSpeedY up) and
@@ -1289,6 +1304,7 @@ PATCHES = {
     'lookat_update': _lookat_update,
     'skel_calc': _skel_calc,
     'arrow_aim': _arrow_aim,
+    'arrow_aim_side': _arrow_aim_side,
     'grab_throw': _grab_throw,
     'ui_project': _ui_project,
     'weapon_bind': _weapon_bind,

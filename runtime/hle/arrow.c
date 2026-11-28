@@ -42,3 +42,16 @@ void rt_arrow_aim(float *dir, const float *origin, float *target) {
     (void)dir, (void)origin, (void)target;
 #endif
 }
+
+// A multi-shot bow's other arrows (tools/patches.py _arrow_aim_side, main+0x92cfbc): their shoot step has just made
+// the way each flies (from its start to its target, the bow's spread in it); actor is the arrow, target its TargetPos.
+#ifdef SW_VR
+void vr_arrow_aim_side(uint64_t actor, float *dir, float *target);
+#endif
+void rt_arrow_aim_side(uint64_t actor, float *dir, float *target) {
+#ifdef SW_VR
+    vr_arrow_aim_side(actor, dir, target);
+#else
+    (void)actor, (void)dir, (void)target;
+#endif
+}

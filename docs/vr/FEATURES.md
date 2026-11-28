@@ -143,7 +143,7 @@ Summary: 193 features; implemented 173, AI validated 145, human validated 4, fai
 | A04 | It hits when swung, harder the faster | BVR | ✅ | ✅ | ⬜ | A soft swing and a hard one: different damage |
 | A05 | One hit per swing | BVR | ✅ | ✅ | ⬜ | Options > VR > One hit per swing: the same enemy is not hit twice |
 | A06 | Cutting trees | BVR | ✅ | ✅ | ⬜ | A chop at a tree: it falls |
-| A07 | A swing also plays Link's attack | Mod | ✅ | ✅ | ⬜ | Options > VR > Swings play Link's attack: off, it hits without the animation |
+| A07 | A swing also plays Link's attack | Mod | ✅ | ✅ | ⬜ | Options > VR > Swings play Link's attack (off by default since 2026-11-27: its animation moved Link's body under the hands - "four arms"): off, it hits without the animation |
 | A08 | Easy swings profile | BVR | ✅ | ✅ | ⬜ | Options > VR > Easy swings |
 | A09 | Two-handed weapons held with both hands | BVR | ✅ | ✅ | ⬜ | Options > VR > Two-handed grip; a claymore out, left grip on the hilt: the blade points at the other hand |
 | A10 | Lighting fires, cutting ropes by motion | BVR | ✅ | ⬜ | ⬜ | A torch to the grass; cut a rope |

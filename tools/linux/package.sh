@@ -1,8 +1,9 @@
 #!/bin/bash
 # tools/linux/package.sh <x86_64|aarch64> (from tools/linux/appimage.sh or the local PC Maker): the game built
 # against build/linux/<arch>/deps and, outside Maker mode, the game code generator helper put together
-# as an AppDir and packed by appimagetool: build/dist/Savage_Wind-<version>-<arch>.AppImage (VR builds name Linux
-# and Steam Frame explicitly).
+# as an AppDir and packed by appimagetool: build/dist/Savage_Wind-<version>-<arch>.AppImage; VR builds
+# build/dist/BOTW-VR-Recomp-<version>-<arch>.AppImage, -SteamFrame-aarch64 for the Steam Frame (no "Linux" in the name:
+# every AppImage is, and the AppImage catalog warns about it).
 # Shipped next to the executable (usr/bin, where runtime/paths.c rt_resource looks): what the start screen
 # builds the game code with on the player's machine (runtime/gamebuild.c: swgen/, zig/ from tools/fetch_zig.sh,
 # gamelib-src/), the window icon, the start screen font. Releases include no game code; Maker mode includes the user's
@@ -32,11 +33,12 @@ fi
 [ -n "$STRIP" ] || { echo "package: install LLVM's llvm-strip (or set LLVM_STRIP)" >&2; exit 1; }
 if [ "$VR" = 1 ]; then
     case "$ARCH" in
-        x86_64) VR_ASSET_TARGET=Linux ;;
-        aarch64) VR_ASSET_TARGET=Linux-SteamFrame ;;
+        x86_64) VR_ASSET_TARGET= ;;
+        aarch64) VR_ASSET_TARGET=-SteamFrame ;;
         *) echo "package: unsupported VR AppImage architecture: $ARCH" >&2; exit 1 ;;
     esac
-    OUT=build/dist/BOTW-VR-$VERSION-$VR_ASSET_TARGET-$ARCH.AppImage
+    # (the project's name, as the repository, the README and the desktop file say it: the AppImage catalog compares them)
+    OUT=build/dist/BOTW-VR-Recomp-$VERSION$VR_ASSET_TARGET-$ARCH.AppImage
 else
     OUT=build/dist/Savage_Wind-$VERSION-$ARCH.AppImage
 fi
@@ -102,7 +104,12 @@ if [ "$VR" = 1 ]; then   # (the VR build starts in VR, as Windows' "Savage Wind 
     cp docs/VR.md docs/vr/SETUP.md docs/vr/SETUP.es.md docs/vr/FEATURES.md docs/vr/FEATURES.es.md "$APPDIR/usr/bin/VR/"
 fi
 cp tools/linux/savagewind.desktop "$APPDIR/"
-if [ "$VR_MAKER" = 1 ]; then sed -i 's/^Name=.*/Name=Savage Wind VR/; s/^Comment=.*/Comment=BOTW VR, prepared on PC/' "$APPDIR/savagewind.desktop"; fi
+if [ "$VR_MAKER" = 1 ]; then sed -i 's/^Name=.*/Name=Savage Wind VR/; s/^Comment=.*/Comment=BOTW VR, prepared on PC/' "$APPDIR/savagewind.desktop"
+elif [ "$VR" = 1 ]; then   # (BOTW VR's release: named as the project, the README and the AppImage file name are)
+    sed -i 's/^Name=Savage Wind$/Name=BOTW VR Recomp/; s/^Comment=.*/Comment=Breath of the Wild in PC VR, from your own copy of the game/
+            s/^Name=Savage Wind Configuration$/Name=BOTW VR Recomp Configuration/' "$APPDIR/savagewind.desktop"
+    grep -qx 'Name=BOTW VR Recomp' "$APPDIR/savagewind.desktop" || { echo "package: the desktop file's Name wasn't set" >&2; exit 1; }
+fi
 cp docs/icon/icon_1024.png "$APPDIR/savagewind.png" && ln -sf savagewind.png "$APPDIR/.DirIcon"
 
 # libraries: what savagewind needs (DT_NEEDED, recursively) that deps/ provides; anything else must be a system one

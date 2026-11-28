@@ -11,13 +11,13 @@ juego) con un modo PC-VR por OpenXR: estéreo, head tracking 6DOF, HUD flotante,
 En [Releases](https://github.com/guideahon/BOTW-VR-RECOMP/releases) hay builds listos, sin código del juego adentro (se
 arma en tu PC desde tus propios archivos la primera vez, como hace Savage Wind):
 
-- **Windows**: `BOTW-VR-<versión>-Windows.zip`. Descomprimilo en una carpeta donde puedas escribir, abrí
+- **Windows**: `BOTW-VR-Recomp-<versión>-Windows.zip`. Descomprimilo en una carpeta donde puedas escribir, abrí
   `Savage Wind VR.exe`, elegí tu juego extraído (`exefs/` y `romfs/`, paso 2) y dejalo prepararse. Todos los ejecutables
   del paquete VR inician en VR de forma predeterminada (`SAVAGEWIND_VR=0` inicia en plano).
-- **Linux PC** (x86-64): `BOTW-VR-<versión>-Linux-x86_64.AppImage`. Dale `chmod +x` y ejecutalo; arranca en VR
+- **Linux PC** (x86-64): `BOTW-VR-Recomp-<versión>-x86_64.AppImage`. Dale `chmod +x` y ejecutalo; arranca en VR
   (`SAVAGEWIND_VR=0` para jugar en plano). Necesita un runtime OpenXR: SteamVR, Monado o WiVRn
   ([docs/linux.md](../linux.md)).
-- **Steam Frame** (Linux ARM64, experimental): `BOTW-VR-<versión>-Linux-SteamFrame-aarch64.AppImage`.
+- **Steam Frame** (Linux ARM64, experimental): `BOTW-VR-Recomp-<versión>-SteamFrame-aarch64.AppImage`.
   Dale `chmod +x` y ejecutalo. La configuración y el juego todavía necesitan pruebas en el visor.
 
 Después andá al paso 5. Compilar desde el código fuente son los pasos 3 y 4.

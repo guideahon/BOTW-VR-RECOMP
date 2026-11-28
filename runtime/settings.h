@@ -101,7 +101,7 @@ enum { AUDIO_OUT_STEREO = 0, AUDIO_OUT_SURROUND_51 = 1, AUDIO_OUT_HEADPHONES_3D 
     X(VR_OPT_RUMBLE_GAIN, "vr_rumble_strength", 0) /* percent (0: 100) */ \
     X(VR_OPT_MOTION, "vr_motion_combat", 1)      /* 0 on */ \
     X(VR_OPT_SWING, "vr_easy_swings", 0)         /* 0 normal, 1 BetterVR's easy profile */ \
-    X(VR_OPT_SWING_ATTACK, "vr_swing_attack", 1) /* 0 on: a swing also presses the game's attack */ \
+    X(VR_OPT_SWING_ATTACK, "vr_swing_anim", 1) /* 1 on (off by default, 2026-11-27): a swing also presses the game's attack */ \
     X(VR_OPT_SWING_HITS, "vr_swing_hits", 1)     /* 0 on */ \
     X(VR_OPT_WEAPON_HITS, "vr_weapon_hits", 1)   /* 0 on */ \
     X(VR_OPT_SHIELD, "vr_shield_gesture", 1)     /* 0 on */ \

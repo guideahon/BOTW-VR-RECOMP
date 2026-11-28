@@ -1,7 +1,8 @@
 # BOTW VR's release builds (no game code inside: the player's machine builds it from their own files):
-#   windows: build/dist/BOTW-VR-<version>-Windows.zip (when the windows input is on)
-#   linux:   build/dist/BOTW-VR-<version>-Linux-x86_64.AppImage
-#   Steam Frame: build/dist/BOTW-VR-<version>-Linux-SteamFrame-aarch64.AppImage
+#   windows: build/dist/BOTW-VR-Recomp-<version>-Windows.zip (when the windows input is on)
+#   linux:   build/dist/BOTW-VR-Recomp-<version>-x86_64.AppImage
+#   Steam Frame: build/dist/BOTW-VR-Recomp-<version>-SteamFrame-aarch64.AppImage
+# (no "Linux" in the AppImages' names, and the project's name in all of them: the AppImage catalog checks both)
 # attached to the release named by the tag input (made as a pre-release if it does not exist yet).
 name: VR release
 
@@ -53,25 +54,24 @@ jobs:
         env:
           BUILD_ARCH: ${{ inputs.arch }}
         run: make appimage VR=1 ARCH="$BUILD_ARCH"
-      - name: Name the Linux target
+      - name: The Linux target's name
         env:
           BUILD_ARCH: ${{ inputs.arch }}
         run: |
+          # (tools/linux/package.sh names it)
           VERSION=$(sed -n 's/^#define BOTWVR_PHASE "\(.*\)"/\1/p' runtime/vr/botwvr_version.h)-$(sed -n 's/^#define BOTWVR_RELEASE "\(.*\)"/\1/p' runtime/vr/botwvr_version.h)
-          OLD="build/dist/BOTW-VR-$VERSION-$BUILD_ARCH.AppImage"
           case "$BUILD_ARCH" in
-            x86_64) NEW="build/dist/BOTW-VR-$VERSION-Linux-x86_64.AppImage" ;;
-            aarch64) NEW="build/dist/BOTW-VR-$VERSION-Linux-SteamFrame-aarch64.AppImage" ;;
+            x86_64) NEW="build/dist/BOTW-VR-Recomp-$VERSION-x86_64.AppImage" ;;
+            aarch64) NEW="build/dist/BOTW-VR-Recomp-$VERSION-SteamFrame-aarch64.AppImage" ;;
             *) echo "unsupported architecture: $BUILD_ARCH" >&2; exit 1 ;;
           esac
-          if [ -f "$OLD" ]; then mv "$OLD" "$NEW"; fi
           test -f "$NEW"
       - name: Smoke test (x86_64, from its FUSE mount)
         if: inputs.arch == 'x86_64'
         run: |
           # (the AppImage as players run it, mounted: a launcher that broke the mount once passed every build step)
           sudo apt-get install -y -q fuse3 libfuse2 >/dev/null 2>&1 || true
-          F=$(ls build/dist/*-Linux-x86_64.AppImage)
+          F=$(ls build/dist/BOTW-VR-Recomp-*-x86_64.AppImage)
           chmod +x "$F"
           export SAVAGEWIND_DATA_ROOT="$RUNNER_TEMP/sw-data" SAVAGEWIND_HIDDEN=1 SAVAGEWIND_VR=0
           timeout 120 "$F" --version
@@ -92,15 +92,11 @@ jobs:
               --notes "BOTW VR builds: Windows, Linux x86_64, and experimental Linux ARM64 for Steam Frame." || \
             { sleep 20; gh release view "$RELEASE_TAG" >/dev/null; }
           VERSION=$(sed -n 's/^#define BOTWVR_PHASE "\(.*\)"/\1/p' runtime/vr/botwvr_version.h)-$(sed -n 's/^#define BOTWVR_RELEASE "\(.*\)"/\1/p' runtime/vr/botwvr_version.h)
-          OLD_NAME="BOTW-VR-$VERSION-$BUILD_ARCH.AppImage"
           case "$BUILD_ARCH" in
-            x86_64) NEW_FILE="build/dist/BOTW-VR-$VERSION-Linux-x86_64.AppImage" ;;
-            aarch64) NEW_FILE="build/dist/BOTW-VR-$VERSION-Linux-SteamFrame-aarch64.AppImage" ;;
+            x86_64) NEW_FILE="build/dist/BOTW-VR-Recomp-$VERSION-x86_64.AppImage" ;;
+            aarch64) NEW_FILE="build/dist/BOTW-VR-Recomp-$VERSION-SteamFrame-aarch64.AppImage" ;;
             *) echo "unsupported architecture: $BUILD_ARCH" >&2; exit 1 ;;
           esac
-          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fxq "$OLD_NAME"; then
-            gh release delete-asset "$RELEASE_TAG" "$OLD_NAME" --yes
-          fi
           gh release upload "$RELEASE_TAG" "$NEW_FILE" --clobber
 
   windows:

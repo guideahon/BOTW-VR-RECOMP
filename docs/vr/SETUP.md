@@ -12,12 +12,12 @@ Switch.
 [Releases](https://github.com/guideahon/BOTW-VR-RECOMP/releases) has ready builds with no game code inside (it is built
 on your PC from your own files the first time, as Savage Wind does):
 
-- **Windows**: `BOTW-VR-<version>-Windows.zip`. Extract it to a folder you can write to, start
+- **Windows**: `BOTW-VR-Recomp-<version>-Windows.zip`. Extract it to a folder you can write to, start
   `Savage Wind VR.exe`, pick your extracted game (`exefs/` and `romfs/`, step 2 below) and let it set up. Every game
   executable in this VR package starts in VR by default (`SAVAGEWIND_VR=0` starts flat).
-- **Linux PC** (x86-64): `BOTW-VR-<version>-Linux-x86_64.AppImage`. `chmod +x` it and run it; it starts in VR
+- **Linux PC** (x86-64): `BOTW-VR-Recomp-<version>-x86_64.AppImage`. `chmod +x` it and run it; it starts in VR
   (`SAVAGEWIND_VR=0` to play flat). Needs an OpenXR runtime: SteamVR, Monado or WiVRn ([docs/linux.md](../linux.md)).
-- **Steam Frame** (Linux ARM64, experimental): `BOTW-VR-<version>-Linux-SteamFrame-aarch64.AppImage`.
+- **Steam Frame** (Linux ARM64, experimental): `BOTW-VR-Recomp-<version>-SteamFrame-aarch64.AppImage`.
   `chmod +x` it and run it. Setup and gameplay still need testing on the headset.
 
 Then go to step 5. Building from source is steps 3 and 4.

@@ -160,7 +160,7 @@ static struct {
     float snap_deg;
     // motion combat
     bool motion;           // SAVAGEWIND_VR_MOTION (on)
-    bool swing_attack;     // SAVAGEWIND_VR_SWING_ATTACK (on): a swing also presses the game's attack (Y)
+    bool swing_attack;     // SAVAGEWIND_VR_SWING_ATTACK=1 (off by default): a swing also presses the game's attack (Y)
     int easy;              // the swing profile in use (vr_melee: 1 BetterVR's easy one; -1 none yet)
     bool shield_gesture;   // SAVAGEWIND_VR_SHIELD (on)
     XrSpace hand[2];       // the grips' poses, left and right
@@ -176,6 +176,7 @@ static struct {
     float lin_peak;        // the hand's fastest speed (m/s) since its motion locked as a slash or a stab
     bool swing_ok;         // the attack going passed the gates below (vr_swing: the weapon's sensor follows it)
     uint32_t swings_ignored;
+    uint32_t swing_attacks;   // swings that pressed the game's attack (Swings play Link's attack on)
     // BetterVR's scheme and gestures (vr_gestures.h)
     bool bettervr;         // SAVAGEWIND_VR_CONTROLS: quest (the default) or bettervr (gestures), or classic (vr_input_map.h)
     bool quest;            // ... the Quest layout (vr_gestures.h)
@@ -279,7 +280,8 @@ void vr_input_setup(XrSession session) {
 // the options (vr_options.c: the Options screen's VR page or SAVAGEWIND_VR_*), each frame: a change applies at once
 static void apply_options(void) {
     in.motion = vr_opt_on(VR_OPT_MOTION) && in.hand[1] != XR_NULL_HANDLE;
-    in.swing_attack = vr_opt_on(VR_OPT_SWING_ATTACK);
+    in.swing_attack = vr_opt(VR_OPT_SWING_ATTACK) == 1;   // (off by default: the game's attack animation moved
+    // Link's body and shoulders while the arms followed the controllers - "as if Link had four arms", 2026-11-27)
     in.shield_gesture = in.motion && vr_opt_on(VR_OPT_SHIELD) && in.hand[0] != XR_NULL_HANDLE;
     int easy = vr_opt(VR_OPT_SWING) == 1;
     if (easy != in.easy) vr_melee_init(&in.melee, easy), in.easy = easy;
@@ -461,7 +463,7 @@ static void motion(double now) {
                     in.swings_ignored++;
                 } else {   // (the game's attack, held long enough to be seen, and the weapon's sensor)
                     in.swing_ok = true;
-                    if (in.swing_attack) in.attack_until = now + 0.12;
+                    if (in.swing_attack) in.attack_until = now + 0.12, in.swing_attacks++;
                     pulse(in.left_handed ? 0 : 1, 0.5f + 0.5f * (in.melee.power > 1 ? 1 : in.melee.power), 0.06);
                 }
             }
@@ -974,6 +976,7 @@ bool vr_turn_stick_recent(void) {
 
 // for `vr`: the controllers' state as the game last got it
 uint32_t vr_swings_ignored(void) { return in.swings_ignored; }
+uint32_t vr_swing_attacks(void) { return in.swing_attacks; }
 uint32_t vr_no_shake(void) { return in.no_shake; }
 
 void vr_motion_state(uint32_t *attacks, uint32_t *slashes, uint32_t *stabs, float *power, bool *shield, bool *on) {
