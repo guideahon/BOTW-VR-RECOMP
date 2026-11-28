@@ -24,6 +24,9 @@ engineering: [re-notes.md](re-notes.md); the state of every feature: [FEATURES.m
   opens with a notice across the top that the game itself needs a driver (`SAVAGEWIND_NO_SOFTWARE_VULKAN=1`: the error
   box as before). The catalog's runner: the start screen in 1 s on llvmpipe; this PC's RTX 3090 still picked as
   before. Credited in docs/third-party.md, each package's license in usr/lib/lavapipe/licenses/.
+- **Update information (28.4):** the AppImages carry AppImageUpdate's (`gh-releases-zsync`, `latest-all`: the newest
+  release, pre-releases included, as every one so far) and each release has the `.zsync` next to its AppImage, so
+  AppImageUpdate and the like download only what changed. The app's own updater is unchanged.
 - **CI's i18n check** failed since 26.2: the logs' product line (`rt_product`) read as three menu texts; marked
   `i18n-skip`.
 - **Names:** the release files are `BOTW-VR-Recomp-<version>-...` without "Linux" (`-x86_64.AppImage`,

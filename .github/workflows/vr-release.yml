@@ -97,7 +97,8 @@ jobs:
             aarch64) NEW_FILE="build/dist/BOTW-VR-Recomp-$VERSION-SteamFrame-aarch64.AppImage" ;;
             *) echo "unsupported architecture: $BUILD_ARCH" >&2; exit 1 ;;
           esac
-          gh release upload "$RELEASE_TAG" "$NEW_FILE" --clobber
+          test -f "$NEW_FILE.zsync"   # (AppImageUpdate's delta file: tools/linux/package.sh)
+          gh release upload "$RELEASE_TAG" "$NEW_FILE" "$NEW_FILE.zsync" --clobber
 
   windows:
     if: inputs.windows

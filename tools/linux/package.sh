@@ -215,6 +215,19 @@ case $ARCH in
 esac
 chmod +x build/linux/src/appimagetool-x86_64.AppImage
 mkdir -p build/dist && rm -f "$OUT"
-APPIMAGE_EXTRACT_AND_RUN=1 ARCH=$ARCH build/linux/src/appimagetool-x86_64.AppImage --no-appstream \
+# BOTW VR's releases: update information for AppImageUpdate and the like (the newest release, pre-releases included:
+# every one so far is), and its .zsync next to the AppImage, uploaded with it (vr-release.yml). The app's own updater
+# (runtime/update_appimage.c) doesn't use them.
+UPDARGS=()
+if [ "$VR" = 1 ] && [ "$VR_MAKER" != 1 ]; then
+    UPDATE_REPO=${BOTWVR_UPDATE_REPO:-guideahon/BOTW-VR-RECOMP}
+    UPDARGS=(-u "gh-releases-zsync|${UPDATE_REPO%%/*}|${UPDATE_REPO#*/}|latest-all|BOTW-VR-Recomp-*$VR_ASSET_TARGET-$ARCH.AppImage.zsync")
+fi
+rm -f "$OUT.zsync" "$(basename "$OUT").zsync"
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH=$ARCH build/linux/src/appimagetool-x86_64.AppImage --no-appstream "${UPDARGS[@]}" \
     --runtime-file "build/linux/src/runtime-$ARCH" "$APPDIR" "$OUT"
+if [ ${#UPDARGS[@]} -gt 0 ]; then   # (appimagetool writes the .zsync in the working folder)
+    [ -f "$OUT.zsync" ] || mv "$(basename "$OUT").zsync" "$OUT.zsync"
+    ls -la "$OUT.zsync"
+fi
 ls -la "$OUT"

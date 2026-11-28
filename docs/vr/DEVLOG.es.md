@@ -29,6 +29,10 @@ probar con el visor puesto, en [CHECKLIST.es.md](CHECKLIST.es.md); el estado de 
   (`SAVAGEWIND_NO_SOFTWARE_VULKAN=1`: el cuadro de error como antes). En el runner del catálogo: la pantalla de inicio
   en 1 s sobre llvmpipe; la RTX 3090 de esta PC se sigue eligiendo como antes. Acreditado en docs/third-party.md, la
   licencia de cada paquete en usr/lib/lavapipe/licenses/.
+- **Información de actualización (28.4):** los AppImage llevan la de AppImageUpdate (`gh-releases-zsync`,
+  `latest-all`: la release más nueva, pre-releases incluidas, como lo son todas hasta ahora) y cada release tiene el
+  `.zsync` junto a su AppImage, así AppImageUpdate y similares descargan solo lo que cambió. El actualizador propio del
+  programa no cambia.
 - **El chequeo i18n del CI** fallaba desde 26.2: la línea de producto de los logs (`rt_product`) se leía como tres
   textos de menú; marcada `i18n-skip`.
 - **Nombres:** los archivos de la release son `BOTW-VR-Recomp-<versión>-...` sin "Linux" (`-x86_64.AppImage`,
