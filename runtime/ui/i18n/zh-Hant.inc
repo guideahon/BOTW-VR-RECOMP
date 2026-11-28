@@ -1406,3 +1406,5 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "隱藏螢幕上的視窗")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "頭戴裝置顯示遊戲時，隱藏螢幕上的遊戲視窗（遊玩時不會更新）。頭戴裝置斷線時視窗會恢復。")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "在頭戴裝置中，不論視訊設定為何，繪製距離為 Potato、抗鋸齒為 SMAA（平面遊玩保留視訊設定）：Stereo 下每秒影格數提高約 30%。近處畫面相同；遠處的樹木和建築較少。關閉：使用視訊設定。")
+T("No Vulkan graphics driver was found: this screen is drawn in software, and the game cannot run.", "找不到 Vulkan 圖形驅動程式：此畫面由軟體繪製，遊戲無法執行。")
+T("Install your distribution's Mesa Vulkan drivers or your graphics card's own driver.", "請安裝發行版的 Mesa Vulkan 驅動程式或顯示卡本身的驅動程式。")

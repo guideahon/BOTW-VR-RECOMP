@@ -64,3 +64,12 @@ The Windows release zip also bundles, unchanged unless noted, under their own li
   Hebrew fonts, Medium, for the menus in Thai and Hebrew (SIL OFL 1.1, `NotoSansThai-OFL.txt`,
   `NotoSansHebrew-OFL.txt`).
 - Three colour LUTs in `colour-luts/` (CC0 1.0, from FreshLUTs: see "Credits" and `colour-luts/README.md`).
+
+## What the Linux x86_64 AppImage adds
+
+For systems without a Vulkan driver, the x86_64 AppImage also bundles Mesa's software Vulkan driver (lavapipe) from
+Ubuntu 22.04's `mesa-vulkan-drivers`, unchanged, with the libraries it needs beyond the base system: LLVM 15 (Apache
+2.0 with LLVM Exceptions), libxml2 and Expat (MIT), ICU (Unicode License), libedit and libbsd (BSD), libffi, libdrm,
+libxcb, libxshmfence and the other X11 libraries (MIT/X11), libwayland (MIT), zstd and xz (BSD, public domain). Mesa
+itself is MIT. Each package's license is in `usr/lib/lavapipe/licenses/`; the sources are Ubuntu's (`apt source
+<package>`). The app uses them only to show its start screen when no Vulkan driver is found.

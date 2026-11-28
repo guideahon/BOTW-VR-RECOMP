@@ -101,6 +101,35 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
 }
 
 // SAVAGEWIND_VK_VALIDATION=1: Khronos validation layer (MSYS2 package vulkan-validation-layers)
+// No Vulkan driver on this system at all (the window can't be a Vulkan one, no driver answers, or none lists a GPU):
+// the x86_64 AppImage carries Mesa's software Vulkan (lavapipe, usr/lib/lavapipe: tools/linux/package.sh), and the app
+// starts again on it once, so the start screen opens and says what is missing (launcher.mm: SAVAGEWIND_SOFTWARE_VULKAN)
+// instead of only an error box. The game itself needs a real GPU. Returns only when there is no such fallback.
+static void software_vulkan_retry(const char *why) {
+#ifdef __linux__
+    if (getenv("SAVAGEWIND_SOFTWARE_VULKAN") || getenv("SAVAGEWIND_NO_SOFTWARE_VULKAN")) return;
+    char exe[4096], icd[4200];
+    if (!plat_exe_path(exe, sizeof exe)) return;
+    char *slash = strrchr(exe, '/');
+    if (!slash) return;
+    *slash = 0;
+    snprintf(icd, sizeof icd, "%s/../lib/lavapipe/lvp_icd.json", exe);
+    struct stat st;
+    if (stat(icd, &st) != 0) return;
+    LOG("[vk] no Vulkan driver (%s): starting again on the bundled software Vulkan (%s)\n", why, icd);
+    fflush(stdout);
+    fflush(stderr);
+    setenv("VK_ICD_FILENAMES", icd, 1);  // (older loaders, as Ubuntu 22.04's; VK_DRIVER_FILES the newer name)
+    setenv("VK_DRIVER_FILES", icd, 1);
+    setenv("SAVAGEWIND_SOFTWARE_VULKAN", "1", 1);
+    SDL_Quit();
+    plat_exec(NULL);
+    LOG("[vk] could not start again on the software Vulkan\n");
+#else
+    (void)why;
+#endif
+}
+
 static void create_instance(void) {
 #ifdef __APPLE__
     // MoltenVK: let Metal compile shaders with all its threads (macOS 13.3+). Every new pipeline is a whole Metal
@@ -195,6 +224,7 @@ static void create_instance(void) {
         validate = false;
         r = vr_vk_create_instance(&ci, &g_vk.inst);
     }
+    if (r != VK_SUCCESS) software_vulkan_retry("vkCreateInstance failed");
     if (r != VK_SUCCESS) FATAL("vkCreateInstance: %d (no Vulkan driver answered)\n", r);
     if (validate || ar) {
         PFN_vkCreateDebugUtilsMessengerEXT f =
@@ -282,6 +312,7 @@ static void vk13_load(void) {
 static void pick_device(void) {
     uint32_t n = 0;
     vkEnumeratePhysicalDevices(g_vk.inst, &n, NULL);
+    if (!n) software_vulkan_retry("no Vulkan device");
     if (!n) FATAL("no Vulkan device\n");
     VkPhysicalDevice *pd = calloc(n, sizeof *pd);
     vkEnumeratePhysicalDevices(g_vk.inst, &n, pd);
@@ -3770,7 +3801,12 @@ void ui_window_init(void) {
     }
     window = SDL_CreateWindowWithProperties(props);
     SDL_DestroyProperties(props);
-    if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
+    if (!window) {  // (SDL_GetError first: the retry's SDL_Quit clears it)
+        char err[300];
+        snprintf(err, sizeof err, "%s", SDL_GetError());
+        software_vulkan_retry(err);
+        FATAL("SDL_CreateWindow: %s\n", err);
+    }
     rt_window_icon(window);
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
     winsize_apply(window);

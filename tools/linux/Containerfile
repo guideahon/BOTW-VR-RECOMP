@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev libgl-dev libdrm-dev libgbm-dev \
         libpulse-dev libasound2-dev libpipewire-0.3-dev libdbus-1-dev libudev-dev libibus-1.0-dev \
         libvulkan-dev \
+        # Mesa's software Vulkan (lavapipe), bundled in the x86_64 AppImage for systems without a Vulkan driver
+        mesa-vulkan-drivers \
         # BOTW VR's OpenXR loader (VR=1 builds)
         libopenxr-dev \
     && add-apt-repository -y ppa:deadsnakes/ppa \

@@ -17,6 +17,15 @@ engineering: [re-notes.md](re-notes.md); the state of every feature: [FEATURES.m
   `xwininfo -tree` lists with a class, and SDL's X11 message box sets no WM_CLASS. With no window of ours yet, a plain
   one (a window surface: no Vulkan, no GPU) now sits under the box, with SDL's class. Both catalog tests count that
   way too: 28.1 fails them (as on the catalog), 28.2 passes; with Vulkan (lavapipe) the start screen opens as before.
+- **28.2, "the screenshot shows an error message":** the catalog also reads its screenshot, and ours was the error
+  box. The x86_64 AppImage now carries Mesa's software Vulkan (lavapipe, Ubuntu 22.04's, with LLVM and the libraries
+  it needs: usr/lib/lavapipe, +46 MB); with no Vulkan driver the app starts again on it once (device.c
+  `software_vulkan_retry`: the window or the instance can't be made, or no driver lists a GPU), and the start screen
+  opens with a notice across the top that the game itself needs a driver (`SAVAGEWIND_NO_SOFTWARE_VULKAN=1`: the error
+  box as before). The catalog's runner: the start screen in 1 s on llvmpipe; this PC's RTX 3090 still picked as
+  before. Credited in docs/third-party.md, each package's license in usr/lib/lavapipe/licenses/.
+- **CI's i18n check** failed since 26.2: the logs' product line (`rt_product`) read as three menu texts; marked
+  `i18n-skip`.
 - **Names:** the release files are `BOTW-VR-Recomp-<version>-...` without "Linux" (`-x86_64.AppImage`,
   `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), and the AppImage's desktop file says BOTW VR Recomp: the project's
   name, as the repository and the README, which the catalog compares.

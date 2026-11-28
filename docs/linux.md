@@ -31,6 +31,10 @@ library or a runtime that was not transferred. `SAVAGEWIND_DATA_ROOT=<dir>` uses
 [Moving the data folder](data-folder.md) for copying existing data and setting up a launch wrapper, including on Steam
 Deck.
 
+Without any Vulkan driver, the x86_64 AppImage starts again on the software Vulkan driver it carries (Mesa's lavapipe)
+so its start screen still opens, with a notice that the game needs a graphics driver: install your distribution's
+Mesa Vulkan drivers or your card's own. `SAVAGEWIND_NO_SOFTWARE_VULKAN=1` shows the error box instead.
+
 Controllers work as on the other systems (SDL3's gamepad support, bundled): Xbox, PlayStation (DualShock 4,
 DualSense), Switch Pro / Joy-Con, 8BitDo and other pads through the kernel's drivers, plugged in or paired while the
 game runs. For SDL's own drivers (rumble, LEDs and gyro on PlayStation /

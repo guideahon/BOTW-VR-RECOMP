@@ -1406,3 +1406,5 @@ T("Lets experimental features run (now: Rendering: Multiview). They are faster o
 T("Hide the window on the monitor", "モニターのウィンドウを隠す")
 T("While the headset shows the game, its window on the monitor is hidden (it is not updated in play). It comes back if the headset disconnects.", "ヘッドセットにゲームが映っている間、モニターのウィンドウを隠します（プレイ中は更新されません）。ヘッドセットが切断されると戻ります。")
 T("In the headset, Draw distance is Potato and Anti-aliasing SMAA, whatever Video says (flat play keeps Video's): about 30% more frames per second in Stereo. Up close the picture is the same; far off there are fewer trees and buildings. Off: Video's settings.", "ヘッドセットでは、ビデオの設定にかかわらず描画距離をPotato、アンチエイリアスをSMAAにします（通常画面のプレイではビデオの設定のまま）：Stereoで約30%フレームレートが上がります。近くの見た目は同じで、遠くの木や建物が少なくなります。オフ：ビデオの設定。")
+T("No Vulkan graphics driver was found: this screen is drawn in software, and the game cannot run.", "Vulkan グラフィックドライバーが見つかりません。この画面はソフトウェアで描画されており、ゲームは実行できません。")
+T("Install your distribution's Mesa Vulkan drivers or your graphics card's own driver.", "ディストリビューションの Mesa Vulkan ドライバー、またはグラフィックカードのドライバーをインストールしてください。")

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      APPIMAGE_URL: ${{ inputs.url || 'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-2026.11.28.2/BOTW-VR-Recomp-alpha-2026.11.28.2-x86_64.AppImage' }}
+      APPIMAGE_URL: ${{ inputs.url || 'https://github.com/guideahon/BOTW-VR-RECOMP/releases/download/vr-2026.11.28.3/BOTW-VR-Recomp-alpha-2026.11.28.3-x86_64.AppImage' }}
     steps:
       - name: The catalog's packages (code/worker.sh's workflow), and gdb for the backtraces
         run: |

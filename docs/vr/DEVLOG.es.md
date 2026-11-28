@@ -21,6 +21,16 @@ probar con el visor puesto, en [CHECKLIST.es.md](CHECKLIST.es.md); el estado de 
   ninguna ventana nuestra, ahora hay una simple (una superficie de ventana: sin Vulkan, sin GPU) debajo del cuadro, con
   la clase de SDL. Los dos tests del catálogo cuentan así también: 28.1 los falla (como en el catálogo), 28.2 los pasa;
   con Vulkan (lavapipe) la pantalla de inicio abre como antes.
+- **28.2, "la captura muestra un mensaje de error":** el catálogo también lee su captura de pantalla, y la nuestra
+  era el cuadro de error. El AppImage x86_64 ahora lleva el Vulkan por software de Mesa (lavapipe, el de Ubuntu 22.04,
+  con LLVM y las bibliotecas que necesita: usr/lib/lavapipe, +46 MB); sin driver Vulkan el programa vuelve a arrancar
+  una vez sobre él (device.c `software_vulkan_retry`: no se puede crear la ventana o la instancia, o ningún driver lista
+  una GPU), y la pantalla de inicio abre con un aviso arriba de que el juego en sí necesita un driver
+  (`SAVAGEWIND_NO_SOFTWARE_VULKAN=1`: el cuadro de error como antes). En el runner del catálogo: la pantalla de inicio
+  en 1 s sobre llvmpipe; la RTX 3090 de esta PC se sigue eligiendo como antes. Acreditado en docs/third-party.md, la
+  licencia de cada paquete en usr/lib/lavapipe/licenses/.
+- **El chequeo i18n del CI** fallaba desde 26.2: la línea de producto de los logs (`rt_product`) se leía como tres
+  textos de menú; marcada `i18n-skip`.
 - **Nombres:** los archivos de la release son `BOTW-VR-Recomp-<versión>-...` sin "Linux" (`-x86_64.AppImage`,
   `-SteamFrame-aarch64.AppImage`, `-Windows.zip`), y el archivo .desktop del AppImage dice BOTW VR Recomp: el nombre
   del proyecto, como el repositorio y el README, que el catálogo compara.

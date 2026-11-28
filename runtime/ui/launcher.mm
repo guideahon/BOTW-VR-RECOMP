@@ -126,11 +126,11 @@ static void save_png(id<MTLTexture> tex, const char *path) {
 #include "../vr/botwvr_version.h"
 #define APP_VERSION BOTWVR_VERSION
 #define APP_VERSION_SHOWN BOTWVR_PHASE " " BOTWVR_RELEASE
-extern "C" const char *rt_product(void) { return "BOTW VR " APP_VERSION_SHOWN " (Savage Wind " SAVAGEWIND_VERSION ")"; }
+extern "C" const char *rt_product(void) { return "BOTW VR " APP_VERSION_SHOWN " (Savage Wind " SAVAGEWIND_VERSION ")"; } // i18n-skip (the logs' product line)
 #else
 #define APP_VERSION SAVAGEWIND_VERSION
 #define APP_VERSION_SHOWN SAVAGEWIND_VERSION
-extern "C" const char *rt_product(void) { return "Savage Wind " SAVAGEWIND_VERSION; }
+extern "C" const char *rt_product(void) { return "Savage Wind " SAVAGEWIND_VERSION; } // i18n-skip
 #endif
 extern "C" const char *rt_version(void) { return APP_VERSION; }  // (the title screen's version line: fs.c)
 
@@ -2778,6 +2778,21 @@ extern "C" void launcher_run(const char *root, int mode) {
             // status (lower left, main page) and version (lower right) - not under the Settings window
             if (page != SETTINGS) {
             ImGui::PushFont(g_font_small);
+            static const bool software_vk = getenv("SAVAGEWIND_SOFTWARE_VULKAN") != NULL;  // (device.c software_vulkan_retry)
+            if (software_vk) {  // on every page, across the top: drawn by the bundled software Vulkan, no driver here
+                const char *l1 = tr("No Vulkan graphics driver was found: this screen is drawn in software, and the game "
+                                    "cannot run.");
+                const char *l2 = tr("Install your distribution's Mesa Vulkan drivers or your graphics card's own driver.");
+                ImDrawList *fg = ImGui::GetForegroundDrawList();
+                float lh = ImGui::GetTextLineHeightWithSpacing(), pad = 10 * s;
+                ImVec2 t1 = ImGui::CalcTextSize(l1), t2 = ImGui::CalcTextSize(l2);
+                float w = (t1.x > t2.x ? t1.x : t2.x) + 2 * pad;
+                ImVec2 a(ds.x * 0.5f - w * 0.5f, 12 * s), b(ds.x * 0.5f + w * 0.5f, 12 * s + 2 * lh + 2 * pad);
+                fg->AddRectFilled(a, b, IM_COL32(40, 20, 12, 235), 6 * s);
+                fg->AddRect(a, b, IM_COL32(255, 160, 100, 255), 6 * s);
+                fg->AddText(ImVec2(ds.x * 0.5f - t1.x * 0.5f, a.y + pad), IM_COL32(255, 184, 110, 255), l1);
+                fg->AddText(ImVec2(ds.x * 0.5f - t2.x * 0.5f, a.y + pad + lh), IM_COL32(230, 225, 215, 255), l2);
+            }
             if (page == MAIN) {
             ImGui::SetCursorPos(ImVec2(x0, ds.y - (status.empty() && dlc_st.state != RT_DLC_NONE ? 140 : 118) * s));
             static std::string main_id;  // (read again after the game files change)

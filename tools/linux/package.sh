@@ -177,6 +177,29 @@ for f in "$APPDIR/usr/bin/savagewind" "$APPDIR"/usr/lib/*; do
 done
 echo "bundled: $(ls "$APPDIR/usr/lib" | tr '\n' ' ')"
 
+# Mesa's software Vulkan (lavapipe) and the libraries it needs beyond the base system, in usr/lib/lavapipe with its
+# driver manifest: with no Vulkan driver on the system the app starts again on it (device.c software_vulkan_retry), so
+# the start screen opens and says what is missing (the AppImage catalog's test machine has none). x86_64 only: the
+# Steam Frame always has its GPU's driver. Their licenses next to them (licenses/<package>).
+if [ "$ARCH" = x86_64 ] && [ "$CROSS" = 0 ] && [ "$VR_MAKER" != 1 ]; then
+    LVP=$(ls /usr/lib/x86_64-linux-gnu/libvulkan_lvp.so 2>/dev/null) || { echo "package: no lavapipe (mesa-vulkan-drivers)" >&2; exit 1; }
+    LD=$APPDIR/usr/lib/lavapipe
+    mkdir -p "$LD/licenses"
+    LVP_BASE='^(libc|libm|libdl|libpthread|librt|libresolv|libstdc\+\+|libgcc_s|libz)\.so|^ld-linux|^linux-vdso'
+    for f in "$LVP" $(ldd "$LVP" | awk '$3 ~ /^\// {print $1 " " $3}' | while read -r n path; do
+                          [[ $n =~ $LVP_BASE ]] || echo "$path"; done); do
+        cp -L "$f" "$LD/$(basename "$f")"
+        patchelf --set-rpath '$ORIGIN' "$LD/$(basename "$f")"
+        pkg=$(dpkg -S "$(realpath "$f")" 2>/dev/null | head -1 | cut -d: -f1 || true)  # (usrmerge: /lib or /usr/lib)
+        if [ -z "$pkg" ]; then pkg=$(dpkg -S "$f" 2>/dev/null | head -1 | cut -d: -f1 || true); fi
+        if [ -n "$pkg" ] && [ -f "/usr/share/doc/$pkg/copyright" ]; then cp "/usr/share/doc/$pkg/copyright" "$LD/licenses/$pkg"
+        else echo "package: no license file found for $(basename "$f") (${pkg:-no package})" >&2; exit 1; fi
+    done
+    printf '{\n    "ICD": {\n        "api_version": "1.3.0",\n        "library_path": "./libvulkan_lvp.so"\n    },\n    "file_format_version": "1.0.0"\n}\n' > "$LD/lvp_icd.json"
+    [ -f "$LD/licenses/mesa-vulkan-drivers" ] || { echo "package: lavapipe's license wasn't found" >&2; exit 1; }
+    echo "lavapipe: $(ls "$LD" | tr '\n' ' ') ($(du -sh "$LD" | cut -f1))"
+fi
+
 # ---- AppImage (appimagetool runs extracted: no FUSE in the container)
 fetch() {  # url sha256 file
     [ -f "build/linux/src/$3" ] || { curl -fsSL -o "build/linux/src/$3.part" "$1" && mv "build/linux/src/$3.part" "build/linux/src/$3"; }
